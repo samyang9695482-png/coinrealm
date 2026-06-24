@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CoinRealm</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="navbar">
+    <div class="navbar-inner">
+      <a href="#home" class="logo" id="logo" data-i18n="CoinRealm">CoinRealm</a>
+      <div class="navbar-actions">
+        <button type="button" class="btn btn-secondary btn-lang" id="lang-toggle" aria-label="Switch language">
+          <span id="lang-label">中文</span>
+        </button>
+        <button type="button" class="btn btn-primary" id="connect-wallet" data-i18n="connectWallet">连接钱包</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="app-content" class="app-content">
+    <div class="card page-placeholder">
+      <p class="loading-text" data-i18n="loading">加载中...</p>
+    </div>
+  </main>
+
+  <footer class="app-footer" id="app-footer">
+    <div class="footer-inner">
+      <p class="footer-text">&copy; CoinRealm</p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
