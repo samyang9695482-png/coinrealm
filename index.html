@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- ==================== 顶部导航栏（保持不变） ==================== -->
   <header class="navbar">
     <div class="navbar-inner">
       <a href="#home" class="logo" id="logo" data-i18n="CoinRealm">CoinRealm</a>
@@ -19,42 +20,46 @@
     </div>
   </header>
 
+  <!-- ==================== 页面内容容器 ==================== -->
   <main id="app-content" class="app-content">
-    <!-- 首页（任务大厅）主容器 -->
-<div id="home-page" class="home-container">
-    
-  <!-- 1. Web3 广告横幅区 -->
-  <div class="ads-banner">
-      <span data-i18n="ads_banner">广告位（Web3 Ads）</span>
-  </div>
+    <!-- 首页（任务大厅）主容器 — 由路由 #home 显示 -->
+    <div id="home-page" class="home-container">
 
-  <!-- 2. 广播动态区 -->
-  <div class="broadcast-section">
-      <div class="broadcast-wrapper" id="broadcast-ticker">
-          <div class="broadcast-item"><span data-i18n="broadcast_prefix">用户</span> 0x1234... <span data-i18n="broadcast_done">完成了注册任务，获得</span> <span class="highlight">500 CRLM</span></div>
-          <div class="broadcast-item"><span data-i18n="broadcast_prefix">用户</span> 0x88f2... <span data-i18n="broadcast_done">完成了交易任务，获得</span> <span class="highlight">1200 CRLM</span></div>
-          <div class="broadcast-item"><span data-i18n="broadcast_prefix">用户</span> 0xabc9... <span data-i18n="broadcast_done">完成了官方任务，获得</span> <span class="highlight">2500 CRLM</span></div>
+      <!-- 1. Web3 广告横幅区 -->
+      <div class="ads-banner">
+        <span data-i18n="ads_banner">广告位（Web3 Ads）</span>
       </div>
-  </div>
 
-  <!-- 3. 新用户引导提示条 -->
-  <div id="user-guide-bar" class="user-guide-bar">
-      <div class="guide-content">
+      <!-- 2. 广播动态区 -->
+      <div class="broadcast-section">
+        <div class="broadcast-wrapper" id="broadcast-ticker">
+          <div class="broadcast-item">
+            <span data-i18n="broadcast_prefix">用户</span> 0x1234... <span data-i18n="broadcast_done">完成了注册任务，获得</span> <span class="highlight">500 CRLM</span>
+          </div>
+          <div class="broadcast-item">
+            <span data-i18n="broadcast_prefix">用户</span> 0x88f2... <span data-i18n="broadcast_done">完成了交易任务，获得</span> <span class="highlight">1200 CRLM</span>
+          </div>
+          <div class="broadcast-item">
+            <span data-i18n="broadcast_prefix">用户</span> 0xabc9... <span data-i18n="broadcast_done">完成了官方任务，获得</span> <span class="highlight">2500 CRLM</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. 新用户引导提示条 -->
+      <div id="user-guide-bar" class="user-guide-bar">
+        <div class="guide-content">
           <span data-i18n="guide_text">欢迎来到 CoinRealm！选择一个任务，开始赚取 CRLM 吧。</span>
+        </div>
+        <button id="close-guide-btn" class="close-guide-btn">&times;</button>
       </div>
-      <button id="close-guide-btn" class="close-guide-btn">&times;</button>
-  </div>
 
-  <!-- 4. 筛选与搜索栏 -->
-  <div class="filter-search-bar">
-      <!-- 左侧：搜索框 -->
-      <div class="search-box">
+      <!-- 4. 筛选与搜索栏 -->
+      <div class="filter-search-bar">
+        <div class="search-box">
           <span class="search-icon">🔍</span>
           <input type="text" id="task-search" data-placeholder="search_placeholder" placeholder="搜索任务...">
-      </div>
-      
-      <!-- 中间：类型标签 -->
-      <div class="filter-tags" id="filter-tags">
+        </div>
+        <div class="filter-tags" id="filter-tags">
           <button class="tag-btn active" data-type="all" data-i18n="tag_all">全部</button>
           <button class="tag-btn" data-type="official" data-i18n="tag_official">官方</button>
           <button class="tag-btn" data-type="airdrop" data-i18n="tag_airdrop">空投</button>
@@ -63,218 +68,282 @@
           <button class="tag-btn" data-type="game" data-i18n="tag_game">游戏</button>
           <button class="tag-btn" data-type="content" data-i18n="tag_content">内容</button>
           <button class="tag-btn" data-type="test" data-i18n="tag_test">测试</button>
-      </div>
-      
-      <!-- 右侧：排序下拉 -->
-      <div class="sort-dropdown-wrapper">
+        </div>
+        <div class="sort-dropdown-wrapper">
           <select id="sort-dropdown">
-              <option value="highest-value" data-i18n="sort_highest">价值最高</option>
-              <option value="latest" data-i18n="sort_latest">最新发布</option>
-              <option value="ending-soon" data-i18n="sort_ending">即将截止</option>
-              <option value="most-rewards" data-i18n="sort_rewards">奖励最多</option>
+            <option value="highest-value" data-i18n="sort_highest">价值最高</option>
+            <option value="latest" data-i18n="sort_latest">最新发布</option>
+            <option value="ending-soon" data-i18n="sort_ending">即将截止</option>
+            <option value="most-rewards" data-i18n="sort_rewards">奖励最多</option>
           </select>
+        </div>
       </div>
-  </div>
 
-  <!-- 任务展示核心区 -->
-  <div class="task-content-area">
-      
-      <!-- 6. 加载骨架屏 -->
-      <div id="skeleton-screen" class="task-grid">
-          <!-- 循环生成 6 个骨架占位卡片 -->
+      <!-- 任务展示核心区 -->
+      <div class="task-content-area">
+
+        <!-- 5. 加载骨架屏 -->
+        <div id="skeleton-screen" class="task-grid">
           <div class="skeleton-card">
-              <div class="skeleton-header">
-                  <div class="skeleton-avatar"></div>
-                  <div class="skeleton-info">
-                      <div class="skeleton-line short"></div>
-                      <div class="skeleton-line mini"></div>
-                  </div>
+            <div class="skeleton-header">
+              <div class="skeleton-avatar"></div>
+              <div class="skeleton-info">
+                <div class="skeleton-line short"></div>
+                <div class="skeleton-line mini"></div>
               </div>
-              <div class="skeleton-body">
-                  <div class="skeleton-line container"></div>
-              </div>
-              <div class="skeleton-footer">
-                  <div class="skeleton-line short"></div>
-                  <div class="skeleton-button"></div>
-              </div>
+            </div>
+            <div class="skeleton-body">
+              <div class="skeleton-line container"></div>
+            </div>
+            <div class="skeleton-footer">
+              <div class="skeleton-line short"></div>
+              <div class="skeleton-button"></div>
+            </div>
           </div>
-          <!-- 重复结构共 6 个 -->
-          <div class="skeleton-card"><div class="skeleton-header"><div class="skeleton-avatar"></div><div class="skeleton-info"><div class="skeleton-line short"></div><div class="skeleton-line mini"></div></div></div><div class="skeleton-body"><div class="skeleton-line container"></div></div><div class="skeleton-footer"><div class="skeleton-line short"></div><div class="skeleton-button"></div></div></div>
-          <div class="skeleton-card"><div class="skeleton-header"><div class="skeleton-avatar"></div><div class="skeleton-info"><div class="skeleton-line short"></div><div class="skeleton-line mini"></div></div></div><div class="skeleton-body"><div class="skeleton-line container"></div></div><div class="skeleton-footer"><div class="skeleton-line short"></div><div class="skeleton-button"></div></div></div>
-          <div class="skeleton-card"><div class="skeleton-header"><div class="skeleton-avatar"></div><div class="skeleton-info"><div class="skeleton-line short"></div><div class="skeleton-line mini"></div></div></div><div class="skeleton-body"><div class="skeleton-line container"></div></div><div class="skeleton-footer"><div class="skeleton-line short"></div><div class="skeleton-button"></div></div></div>
-          <div class="skeleton-card"><div class="skeleton-header"><div class="skeleton-avatar"></div><div class="skeleton-info"><div class="skeleton-line short"></div><div class="skeleton-line mini"></div></div></div><div class="skeleton-body"><div class="skeleton-line container"></div></div><div class="skeleton-footer"><div class="skeleton-line short"></div><div class="skeleton-button"></div></div></div>
-          <div class="skeleton-card"><div class="skeleton-header"><div class="skeleton-avatar"></div><div class="skeleton-info"><div class="skeleton-line short"></div><div class="skeleton-line mini"></div></div></div><div class="skeleton-body"><div class="skeleton-line container"></div></div><div class="skeleton-footer"><div class="skeleton-line short"></div><div class="skeleton-button"></div></div></div>
-      </div>
+          <div class="skeleton-card">
+            <div class="skeleton-header">
+              <div class="skeleton-avatar"></div>
+              <div class="skeleton-info">
+                <div class="skeleton-line short"></div>
+                <div class="skeleton-line mini"></div>
+              </div>
+            </div>
+            <div class="skeleton-body">
+              <div class="skeleton-line container"></div>
+            </div>
+            <div class="skeleton-footer">
+              <div class="skeleton-line short"></div>
+              <div class="skeleton-button"></div>
+            </div>
+          </div>
+          <div class="skeleton-card">
+            <div class="skeleton-header">
+              <div class="skeleton-avatar"></div>
+              <div class="skeleton-info">
+                <div class="skeleton-line short"></div>
+                <div class="skeleton-line mini"></div>
+              </div>
+            </div>
+            <div class="skeleton-body">
+              <div class="skeleton-line container"></div>
+            </div>
+            <div class="skeleton-footer">
+              <div class="skeleton-line short"></div>
+              <div class="skeleton-button"></div>
+            </div>
+          </div>
+          <div class="skeleton-card">
+            <div class="skeleton-header">
+              <div class="skeleton-avatar"></div>
+              <div class="skeleton-info">
+                <div class="skeleton-line short"></div>
+                <div class="skeleton-line mini"></div>
+              </div>
+            </div>
+            <div class="skeleton-body">
+              <div class="skeleton-line container"></div>
+            </div>
+            <div class="skeleton-footer">
+              <div class="skeleton-line short"></div>
+              <div class="skeleton-button"></div>
+            </div>
+          </div>
+          <div class="skeleton-card">
+            <div class="skeleton-header">
+              <div class="skeleton-avatar"></div>
+              <div class="skeleton-info">
+                <div class="skeleton-line short"></div>
+                <div class="skeleton-line mini"></div>
+              </div>
+            </div>
+            <div class="skeleton-body">
+              <div class="skeleton-line container"></div>
+            </div>
+            <div class="skeleton-footer">
+              <div class="skeleton-line short"></div>
+              <div class="skeleton-button"></div>
+            </div>
+          </div>
+          <div class="skeleton-card">
+            <div class="skeleton-header">
+              <div class="skeleton-avatar"></div>
+              <div class="skeleton-info">
+                <div class="skeleton-line short"></div>
+                <div class="skeleton-line mini"></div>
+              </div>
+            </div>
+            <div class="skeleton-body">
+              <div class="skeleton-line container"></div>
+            </div>
+            <div class="skeleton-footer">
+              <div class="skeleton-line short"></div>
+              <div class="skeleton-button"></div>
+            </div>
+          </div>
+        </div>
 
-      <!-- 5. 任务卡片瀑布流网格 -->
-      <div id="task-grid" class="task-grid hidden">
-          <!-- 卡片 1：官方任务示例 -->
+        <!-- 6. 任务卡片瀑布流网格 -->
+        <div id="task-grid" class="task-grid hidden">
+          <!-- 卡片 1：官方任务 -->
           <div class="task-card" data-category="official">
-              <div class="card-top">
-                  <div class="author-info">
-                      <div class="css-avatar"></div>
-                      <div class="meta-text">
-                          <span class="username">CoinRealm Core</span>
-                          <span class="level-badge">Lv.9</span>
-                      </div>
-                  </div>
-                  <span class="badge official-badge" data-i18n="badge_official">官方</span>
+            <div class="card-top">
+              <div class="author-info">
+                <div class="css-avatar"></div>
+                <div class="meta-text">
+                  <span class="username">CoinRealm Core</span>
+                  <span class="level-badge">Lv.9</span>
+                </div>
               </div>
-              <div class="reward-amount">1,500 CRLM</div>
-              <div class="card-bottom">
-                  <div class="meta-tags">
-                      <span class="type-label label-official" data-i18n="tag_official">官方</span>
-                      <span class="info-text"><span data-i18n="text_slots">剩余名额</span> 15/20</span>
-                      <span class="info-text">3 <span data-i18n="text_days">天后</span></span>
-                  </div>
-                  <button class="claim-btn" data-i18n="btn_claim">领取</button>
+              <span class="badge official-badge" data-i18n="badge_official">官方</span>
+            </div>
+            <div class="reward-amount">1,500 CRLM</div>
+            <div class="card-bottom">
+              <div class="meta-tags">
+                <span class="type-label label-official" data-i18n="tag_official">官方</span>
+                <span class="info-text"><span data-i18n="text_slots">剩余名额</span> 15/20</span>
+                <span class="info-text">3 <span data-i18n="text_days">天后</span></span>
               </div>
+              <button class="claim-btn" data-i18n="btn_claim">领取</button>
+            </div>
           </div>
 
-          <!-- 卡片 2：推广 + 空投任务示例 -->
+          <!-- 卡片 2：推广 + 空投任务 -->
           <div class="task-card" data-category="airdrop">
-              <div class="card-top">
-                  <div class="author-info">
-                      <div class="css-avatar"></div>
-                      <div class="meta-text">
-                          <span class="username">AlphaRadar</span>
-                          <span class="level-badge">Lv.5</span>
-                      </div>
-                  </div>
-                  <span class="badge promo-badge" data-i18n="badge_promo">推广</span>
+            <div class="card-top">
+              <div class="author-info">
+                <div class="css-avatar"></div>
+                <div class="meta-text">
+                  <span class="username">AlphaRadar</span>
+                  <span class="level-badge">Lv.5</span>
+                </div>
               </div>
-              <div class="reward-amount">500 CRLM</div>
-              <div class="card-bottom">
-                  <div class="meta-tags">
-                      <span class="type-label label-airdrop" data-i18n="tag_airdrop">空投</span>
-                      <span class="info-text"><span data-i18n="text_slots">剩余名额</span> 88/100</span>
-                      <span class="info-text">5 <span data-i18n="text_days">天后</span></span>
-                  </div>
-                  <button class="claim-btn" data-i18n="btn_claim">领取</button>
+              <span class="badge promo-badge" data-i18n="badge_promo">推广</span>
+            </div>
+            <div class="reward-amount">500 CRLM</div>
+            <div class="card-bottom">
+              <div class="meta-tags">
+                <span class="type-label label-airdrop" data-i18n="tag_airdrop">空投</span>
+                <span class="info-text"><span data-i18n="text_slots">剩余名额</span> 88/100</span>
+                <span class="info-text">5 <span data-i18n="text_days">天后</span></span>
               </div>
+              <button class="claim-btn" data-i18n="btn_claim">领取</button>
+            </div>
           </div>
 
-          <!-- 卡片 3：注册任务示例 -->
+          <!-- 卡片 3：注册任务 -->
           <div class="task-card" data-category="register">
-              <div class="card-top">
-                  <div class="author-info">
-                      <div class="css-avatar"></div>
-                      <div class="meta-text">
-                          <span class="username">LinkerDAO</span>
-                          <span class="level-badge">Lv.3</span>
-                      </div>
-                  </div>
+            <div class="card-top">
+              <div class="author-info">
+                <div class="css-avatar"></div>
+                <div class="meta-text">
+                  <span class="username">LinkerDAO</span>
+                  <span class="level-badge">Lv.3</span>
+                </div>
               </div>
-              <div class="reward-amount">300 CRLM</div>
-              <div class="card-bottom">
-                  <div class="meta-tags">
-                      <span class="type-label label-register" data-i18n="tag_register">注册</span>
-                      <span class="info-text"><span data-i18n="text_slots">剩余名额</span> 2/50</span>
-                      <span class="info-text">1 <span data-i18n="text_days">天后</span></span>
-                  </div>
-                  <button class="claim-btn" data-i18n="btn_claim">领取</button>
+            </div>
+            <div class="reward-amount">300 CRLM</div>
+            <div class="card-bottom">
+              <div class="meta-tags">
+                <span class="type-label label-register" data-i18n="tag_register">注册</span>
+                <span class="info-text"><span data-i18n="text_slots">剩余名额</span> 2/50</span>
+                <span class="info-text">1 <span data-i18n="text_days">天后</span></span>
               </div>
+              <button class="claim-btn" data-i18n="btn_claim">领取</button>
+            </div>
           </div>
 
-          <!-- 卡片 4：交易任务示例 -->
+          <!-- 卡片 4：交易任务 -->
           <div class="task-card" data-category="trade">
-              <div class="card-top">
-                  <div class="author-info">
-                      <div class="css-avatar"></div>
-                      <div class="meta-text">
-                          <span class="username">WhaleSwap</span>
-                          <span class="level-badge">Lv.6</span>
-                      </div>
-                  </div>
+            <div class="card-top">
+              <div class="author-info">
+                <div class="css-avatar"></div>
+                <div class="meta-text">
+                  <span class="username">WhaleSwap</span>
+                  <span class="level-badge">Lv.6</span>
+                </div>
               </div>
-              <div class="reward-amount">2,500 CRLM</div>
-              <div class="card-bottom">
-                  <div class="meta-tags">
-                      <span class="type-label label-trade" data-i18n="tag_trade">交易</span>
-                      <span class="info-text"><span data-i18n="text_slots">剩余名额</span> 11/15</span>
-                      <span class="info-text">7 <span data-i18n="text_days">天后</span></span>
-                  </div>
-                  <button class="claim-btn" data-i18n="btn_claim">领取</button>
+            </div>
+            <div class="reward-amount">2,500 CRLM</div>
+            <div class="card-bottom">
+              <div class="meta-tags">
+                <span class="type-label label-trade" data-i18n="tag_trade">交易</span>
+                <span class="info-text"><span data-i18n="text_slots">剩余名额</span> 11/15</span>
+                <span class="info-text">7 <span data-i18n="text_days">天后</span></span>
               </div>
+              <button class="claim-btn" data-i18n="btn_claim">领取</button>
+            </div>
           </div>
 
-          <!-- 卡片 5：游戏任务示例 -->
+          <!-- 卡片 5：游戏任务 -->
           <div class="task-card" data-category="game">
-              <div class="card-top">
-                  <div class="author-info">
-                      <div class="css-avatar"></div>
-                      <div class="meta-text">
-                          <span class="username">GameFi_Hub</span>
-                          <span class="level-badge">Lv.4</span>
-                      </div>
-                  </div>
+            <div class="card-top">
+              <div class="author-info">
+                <div class="css-avatar"></div>
+                <div class="meta-text">
+                  <span class="username">GameFi_Hub</span>
+                  <span class="level-badge">Lv.4</span>
+                </div>
               </div>
-              <div class="reward-amount">800 CRLM</div>
-              <div class="card-bottom">
-                  <div class="meta-tags">
-                      <span class="type-label label-game" data-i18n="tag_game">游戏</span>
-                      <span class="info-text"><span data-i18n="text_slots">剩余名额</span> 40/200</span>
-                      <span class="info-text">12 <span data-i18n="text_days">天后</span></span>
-                  </div>
-                  <button class="claim-btn" data-i18n="btn_claim">领取</button>
+            </div>
+            <div class="reward-amount">800 CRLM</div>
+            <div class="card-bottom">
+              <div class="meta-tags">
+                <span class="type-label label-game" data-i18n="tag_game">游戏</span>
+                <span class="info-text"><span data-i18n="text_slots">剩余名额</span> 40/200</span>
+                <span class="info-text">12 <span data-i18n="text_days">天后</span></span>
               </div>
+              <button class="claim-btn" data-i18n="btn_claim">领取</button>
+            </div>
           </div>
 
-          <!-- 卡片 6：测试网任务示例 -->
+          <!-- 卡片 6：测试任务 -->
           <div class="task-card" data-category="test">
-              <div class="card-top">
-                  <div class="author-info">
-                      <div class="css-avatar"></div>
-                      <div class="meta-text">
-                          <span class="username">ZkLayer X</span>
-                          <span class="level-badge">Lv.8</span>
-                      </div>
-                  </div>
-                  <span class="badge official-badge" data-i18n="badge_official">官方</span>
+            <div class="card-top">
+              <div class="author-info">
+                <div class="css-avatar"></div>
+                <div class="meta-text">
+                  <span class="username">ZkLayer X</span>
+                  <span class="level-badge">Lv.8</span>
+                </div>
               </div>
-              <div class="reward-amount">3,000 CRLM</div>
-              <div class="card-bottom">
-                  <div class="meta-tags">
-                      <span class="type-label label-test" data-i18n="tag_test">测试</span>
-                      <span class="info-text"><span data-i18n="text_slots">剩余名额</span> 150/500</span>
-                      <span class="info-text">14 <span data-i18n="text_days">天后</span></span>
-                  </div>
-                  <button class="claim-btn" data-i18n="btn_claim">领取</button>
+              <span class="badge official-badge" data-i18n="badge_official">官方</span>
+            </div>
+            <div class="reward-amount">3,000 CRLM</div>
+            <div class="card-bottom">
+              <div class="meta-tags">
+                <span class="type-label label-test" data-i18n="tag_test">测试</span>
+                <span class="info-text"><span data-i18n="text_slots">剩余名额</span> 150/500</span>
+                <span class="info-text">14 <span data-i18n="text_days">天后</span></span>
               </div>
+              <button class="claim-btn" data-i18n="btn_claim">领取</button>
+            </div>
           </div>
-      </div>
+        </div>
 
-      <!-- 7. 空状态提示 -->
-      <div id="empty-state" class="empty-state hidden">
+        <!-- 7. 空状态提示 -->
+        <div id="empty-state" class="empty-state hidden">
           <p data-i18n="empty_text">没有找到相关任务，换个筛选试试？</p>
+        </div>
       </div>
-  </div>
 
-  <!-- 8. 右下角悬浮按钮群 -->
-  <div class="floating-actions">
-      <button class="float-btn post-task-btn" title="发布任务">+</button>
-      <button id="back-to-top-btn" class="float-btn back-to-top hidden" title="回到顶部">↑</button>
-  </div>
+      <!-- 8. 右下角悬浮按钮群 -->
+      <div class="floating-actions">
+        <button class="float-btn post-task-btn" title="发布任务">+</button>
+        <button id="back-to-top-btn" class="float-btn back-to-top hidden" title="回到顶部">↑</button>
+      </div>
 
-  <!-- 9. 底部页脚 -->
-  <footer class="home-footer">
-      <div class="footer-content">
+      <!-- 9. 底部页脚 -->
+      <footer class="home-footer">
+        <div class="footer-content">
           <span class="copyright">© 2024 CoinRealm</span>
           <div class="social-placeholders">
-              <span class="social-icon">𝕏 Twitter</span>
-              <span class="social-icon">👾 Discord</span>
+            <span class="social-icon">𝕏 Twitter</span>
+            <span class="social-icon">👾 Discord</span>
           </div>
-      </div>
-  </footer>
-</div>
+        </div>
+      </footer>
     </div>
   </main>
-
-  <footer class="app-footer" id="app-footer">
-    <div class="footer-inner">
-      <p class="footer-text">&copy; CoinRealm</p>
-    </div>
-  </footer>
 
   <script src="app.js"></script>
 </body>
