@@ -347,4 +347,215 @@
   }
 
 })();
+// ==========================================
+// 1. 多语言中英文字典追加 (请合并到已有 translations 中)
+// ==========================================
+const translations = {
+    zh: {
+        ads_banner: "广告位（Web3 Ads）",
+        broadcast_prefix: "用户",
+        broadcast_done: "完成了注册任务，获得",
+        guide_text: "欢迎来到 CoinRealm！选择一个任务，开始赚取 CRLM 吧。",
+        search_placeholder: "搜索任务...",
+        tag_all: "全部",
+        tag_official: "官方",
+        tag_airdrop: "空投",
+        tag_register: "注册",
+        tag_trade: "交易",
+        tag_game: "游戏",
+        tag_content: "内容",
+        tag_test: "测试",
+        sort_highest: "价值最高",
+        sort_latest: "最新发布",
+        sort_ending: "即将截止",
+        sort_rewards: "奖励最多",
+        badge_official: "官方",
+        badge_promo: "推广",
+        text_slots: "剩余名额",
+        text_days: "天后",
+        btn_claim: "领取",
+        empty_text: "没有找到相关任务，换个筛选试试？"
+    },
+    en: {
+        ads_banner: "Advertising Space (Web3 Ads)",
+        broadcast_prefix: "User",
+        broadcast_done: "completed the registration task and received",
+        guide_text: "Welcome to CoinRealm! Select a task and start earning CRLM.",
+        search_placeholder: "Search tasks...",
+        tag_all: "All",
+        tag_official: "Official",
+        tag_airdrop: "Airdrop",
+        tag_register: "Register",
+        tag_trade: "Trade",
+        tag_game: "Game",
+        tag_content: "Content",
+        tag_test: "Test",
+        sort_highest: "Highest Value",
+        sort_latest: "Latest Released",
+        sort_ending: "Ending Soon",
+        sort_rewards: "Most Rewards",
+        badge_official: "Official",
+        badge_promo: "Promo",
+        text_slots: "Slots left",
+        text_days: "days left",
+        btn_claim: "Claim",
+        empty_text: "No tasks found. Try changing your filters?"
+    }
+};
+
+// 当前全局语言变量声明（假设项目中已存在该状态控制）
+let currentLang = localStorage.getItem('coinrealm_lang') || 'zh';
+
+// ==========================================
+// 2. 首页核心业务逻辑与动态渲染切换
+// ==========================================
+
+function initHomePageLogic() {
+    // A. 新用户引导条关闭处理逻辑
+    const guideBar = document.getElementById('user-guide-bar');
+    const closeGuideBtn = document.getElementById('close-guide-btn');
+    
+    if (guideBar && closeGuideBtn) {
+        if (localStorage.getItem('coinrealm_guide_closed') === 'true') {
+            guideBar.classList.add('hidden');
+        } else {
+            guideBar.classList.remove('hidden');
+        }
+
+        closeGuideBtn.addEventListener('click', () => {
+            guideBar.classList.add('hidden');
+            localStorage.setItem('coinrealm_guide_closed', 'true');
+        });
+    }
+
+    // B. 骨架屏定时控制切入逻辑
+    const skeletonScreen = document.getElementById('skeleton-screen');
+    const taskGrid = document.getElementById('task-grid');
+    
+    if (skeletonScreen && taskGrid) {
+        skeletonScreen.classList.remove('hidden');
+        taskGrid.classList.add('hidden');
+        
+        setTimeout(() => {
+            skeletonScreen.classList.add('hidden');
+            taskGrid.classList.remove('hidden');
+            // 数据展现后刷新一次当前界面的语言文本
+            applyLanguageStrings();
+        }, 2000);
+    }
+
+    // C. 类型筛选标签切换交互逻辑
+    const tagButtons = document.querySelectorAll('#filter-tags .tag-btn');
+    const taskCards = document.querySelectorAll('#task-grid .task-card');
+    const emptyState = document.getElementById('empty-state');
+
+    tagButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            tagButtons.forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+
+            const selectedCategory = button.getAttribute('data-type');
+            let visibleCount = 0;
+
+            taskCards.forEach(card => {
+                const cardCategory = card.getAttribute('data-category');
+                if (selectedCategory === 'all' || cardCategory === selectedCategory) {
+                    card.classList.remove('hidden');
+                    visibleCount++;
+                } else {
+                    card.classList.add('hidden');
+                }
+            });
+
+            // 联动无数据时的空状态组件状态
+            if (visibleCount === 0) {
+                emptyState.classList.remove('hidden');
+                taskGrid.classList.add('hidden');
+            } else {
+                emptyState.classList.add('hidden');
+                // 仅在骨架屏倒计时结束后才展现网格
+                if(skeletonScreen.classList.contains('hidden')) {
+                    taskGrid.classList.remove('hidden');
+                }
+            }
+        });
+    });
+
+    // D. 排序下拉交互绑定 (由于是静态卡片，在此做占位交互展示结构)
+    const sortDropdown = document.getElementById('sort-dropdown');
+    if (sortDropdown) {
+        sortDropdown.addEventListener('change', (e) => {
+            console.log(`Sorting criteria changed to: ${e.target.value}`);
+            // 真实项目中这里将重新对 DOM 数组排序或发起新数据请求
+        });
+    }
+
+    // E. 回到顶部按钮逻辑
+    const backToTopBtn = document.getElementById('back-to-top-btn');
+    if (backToTopBtn) {
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 500) {
+                backToTopBtn.classList.remove('hidden');
+            } else {
+                backToTopBtn.classList.add('hidden');
+            }
+        });
+
+        backToTopBtn.addEventListener('click', () => {
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+        });
+    }
+}
+
+// ==========================================
+// 3. 全局多语言国际化渲染应用
+// ==========================================
+function applyLanguageStrings() {
+    const langData = translations[currentLang];
+    
+    // 1. 静态普通文本翻译映射
+    document.querySelectorAll('[data-i18n]').forEach(element => {
+        const key = element.getAttribute('data-i18n');
+        if (langData[key]) {
+            element.textContent = langData[key];
+        }
+    });
+
+    // 2. 表单及输入框 Placeholder 属性翻译映射
+    document.querySelectorAll('[data-placeholder]').forEach(element => {
+        const key = element.getAttribute('data-placeholder');
+        if (langData[key]) {
+            element.setAttribute('placeholder', langData[key]);
+        }
+    });
+}
+
+// ==========================================
+// 4. 路由系统挂载衔接机制 (请根据具体路由实现进行补充)
+// ==========================================
+// 示例：当触发 hashchange 切换进入 #home 路由时调用
+function handleRoute() {
+    const hash = window.location.hash || '#home';
+    if (hash === '#home') {
+        // 在此注入或展现 index.html 节点结构后，执行以下核心初始化
+        initHomePageLogic();
+        applyLanguageStrings();
+    }
+}
+
+// 语言切换控制对外桥接函数示例
+function switchLanguage(lang) {
+    currentLang = lang;
+    localStorage.setItem('coinrealm_lang', lang);
+    applyLanguageStrings();
+}
+
+// 页面加载完毕后默认触发一次
+window.addEventListener('DOMContentLoaded', () => {
+    handleRoute();
+});
+window.addEventListener('hashchange', handleRoute);
 
