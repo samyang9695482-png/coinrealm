@@ -427,4 +427,418 @@ img {
   }
 
 }
+/* --- CoinRealm 首页（任务大厅）专属样式规范 --- */
+
+.home-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 16px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: #f5f5f5;
+    box-sizing: border-box;
+}
+
+/* 1. 广告横幅区 */
+.ads-banner {
+    background-color: #e8e8e8;
+    height: 90px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #666666;
+    font-size: 14px;
+    margin-top: 16px;
+    margin-bottom: 16px;
+    border-radius: 4px;
+}
+
+/* 2. 广播动态区 */
+.broadcast-section {
+    background-color: #f0f4ff;
+    height: 60px;
+    overflow: hidden;
+    position: relative;
+    margin-bottom: 16px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+}
+.broadcast-wrapper {
+    position: absolute;
+    width: 100%;
+    animation: scrollBroadcast 12s linear infinite;
+}
+.broadcast-item {
+    height: 60px;
+    line-height: 60px;
+    padding-left: 24px;
+    color: #333333;
+    font-size: 14px;
+}
+.broadcast-item .highlight {
+    color: #f0b90b;
+    font-weight: bold;
+}
+@keyframes scrollBroadcast {
+    0% { transform: translateY(0); }
+    30% { transform: translateY(0); }
+    33% { transform: translateY(-60px); }
+    63% { transform: translateY(-60px); }
+    66% { transform: translateY(-120px); }
+    96% { transform: translateY(-120px); }
+    100% { transform: translateY(0); }
+}
+
+/* 3. 新用户引导提示条 */
+.user-guide-bar {
+    background-color: #e6f7ff;
+    border: 1px solid #91d5ff;
+    padding: 16px 24px;
+    margin-bottom: 24px;
+    border-radius: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.guide-content {
+    color: #0050b3;
+    font-size: 14px;
+}
+.close-guide-btn {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: #0050b3;
+    line-height: 1;
+}
+
+/* 4. 筛选与搜索栏 */
+.filter-search-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+.search-box {
+    position: relative;
+    flex: 1;
+    min-width: 200px;
+}
+.search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #999;
+}
+.search-box input {
+    width: 100%;
+    padding: 10px 12px 10px 36px;
+    border: 1px solid #dddddd;
+    border-radius: 20px;
+    outline: none;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+.filter-tags {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    white-space: nowrap;
+    padding-bottom: 4px;
+}
+.tag-btn {
+    background-color: #ffffff;
+    border: 1px solid #dddddd;
+    padding: 8px 16px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #333333;
+    transition: all 0.2s ease;
+}
+.tag-btn.active {
+    background-color: #f0b90b;
+    border-color: #f0b90b;
+    color: #1a1a2e;
+    font-weight: bold;
+}
+.sort-dropdown-wrapper select {
+    padding: 10px 16px;
+    border: 1px solid #dddddd;
+    border-radius: 8px;
+    outline: none;
+    background-color: #ffffff;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+/* 5. 任务卡片瀑布流网格 */
+.task-content-area {
+    min-height: 400px;
+    margin-bottom: 40px;
+}
+.task-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+}
+.task-card {
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 24px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: box-shadow 0.3s ease, transform 0.3s ease;
+    cursor: pointer;
+}
+.task-card:hover {
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}
+.card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+}
+.author-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.css-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background-color: #ccc;
+}
+.meta-text {
+    display: flex;
+    flex-direction: column;
+}
+.username {
+    font-size: 14px;
+    font-weight: 500;
+    color: #333333;
+}
+.level-badge {
+    font-size: 11px;
+    color: #666666;
+}
+.badge {
+    font-size: 12px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: bold;
+}
+.official-badge {
+    background-color: #f0b90b;
+    color: #1a1a2e;
+}
+.promo-badge {
+    background-color: #40a9ff;
+    color: #ffffff;
+}
+.reward-amount {
+    font-size: 24px;
+    color: #f0b90b;
+    font-weight: bold;
+    margin-bottom: 24px;
+}
+.card-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+}
+.meta-tags {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.type-label {
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    width: fit-content;
+}
+.label-official { background-color: #fffbe6; color: #d4b106; border: 1px solid #ffe58f; }
+.label-airdrop { background-color: #e6f7ff; color: #1890ff; border: 1px solid #91d5ff; }
+.label-register { background-color: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; }
+.label-trade { background-color: #fff0f6; color: #eb2f96; border: 1px solid #ffadd2; }
+.label-game { background-color: #f9f0ff; color: #722ed1; border: 1px solid #d3adf7; }
+.label-test { background-color: #e6fffb; color: #13c2c2; border: 1px solid #87e8de; }
+
+.info-text {
+    font-size: 12px;
+    color: #999999;
+}
+.claim-btn {
+    background-color: #f0b90b;
+    color: #1a1a2e;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+/* 6. 加载骨架屏 */
+.skeleton-card {
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 24px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+.skeleton-header {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.skeleton-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background-color: #e8e8e8;
+}
+.skeleton-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.skeleton-line {
+    height: 12px;
+    background-color: #e8e8e8;
+    border-radius: 4px;
+}
+.skeleton-line.short { width: 60%; }
+.skeleton-line.mini { width: 30%; }
+.skeleton-line.container { width: 100%; height: 32px; }
+.skeleton-body {
+    margin-bottom: 24px;
+}
+.skeleton-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.skeleton-button {
+    width: 60px;
+    height: 28px;
+    background-color: #e8e8e8;
+    border-radius: 4px;
+}
+/* 脉冲动画效果 */
+.skeleton-card .skeleton-avatar,
+.skeleton-card .skeleton-line,
+.skeleton-card .skeleton-button {
+    animation: pulse 1.5s infinite ease-in-out;
+}
+@keyframes pulse {
+    0% { opacity: 0.6; }
+    50% { opacity: 1; }
+    100% { opacity: 0.6; }
+}
+
+/* 7. 空状态提示 */
+.empty-state {
+    text-align: center;
+    padding: 60px 0;
+    color: #999999;
+    font-size: 16px;
+}
+
+/* 8. 右下角悬浮按钮群 */
+.floating-actions {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    z-index: 999;
+}
+.float-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    border: none;
+    transition: all 0.2s ease;
+}
+.post-task-btn {
+    background-color: #f0b90b;
+    color: #1a1a2e;
+}
+.back-to-top {
+    background-color: #ffffff;
+    color: #1a1a2e;
+    border: 1px solid #dddddd;
+    font-size: 20px;
+}
+
+/* 9. 底部页脚 */
+.home-footer {
+    background-color: #1a1a2e;
+    color: #ffffff;
+    padding: 24px 0;
+    margin-top: 40px;
+    margin-left: -16px;
+    margin-right: -16px;
+}
+.footer-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+.copyright {
+    font-size: 14px;
+    color: #888888;
+}
+.social-placeholders {
+    display: flex;
+    gap: 16px;
+    font-size: 14px;
+    color: #888888;
+}
+
+/* 工具类控制显隐 */
+.hidden {
+    display: none !important;
+}
+
+/* 响应式断点适配 */
+@media (max-width: 992px) {
+    .task-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+@media (max-width: 600px) {
+    .task-grid {
+        grid-template-columns: 1fr;
+    }
+    .filter-search-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .footer-content {
+        flex-direction: column;
+        text-align: center;
+    }
+}
 
