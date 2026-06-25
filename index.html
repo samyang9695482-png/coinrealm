@@ -799,6 +799,49 @@
       </div>
 
     </div>
+
+    <!-- 发布者主页 — 由路由 #publisher 显示 -->
+    <div id="publisher-page" class="publisher-container hidden">
+
+      <!-- 发布者信息卡片 -->
+      <div class="publisher-info-card">
+        <span id="pub-official-badge" class="pub-official-corner hidden" data-i18n="pub_official_badge">官方认证</span>
+        <div class="publisher-avatar"></div>
+        <h2 id="pub-username" class="publisher-username">AlphaRadar</h2>
+        <span id="pub-level-badge" class="publisher-level-badge">Lv.5 大师</span>
+        <span id="pub-high-risk-tag" class="pub-high-risk-tag hidden" data-i18n="pub_high_risk">⚠️ 高风险</span>
+      </div>
+
+      <!-- 信誉数据行 -->
+      <div class="publisher-stats-card">
+        <div class="publisher-stat-col">
+          <span id="pub-reputation-score" class="publisher-stat-value pub-stat-green">98%</span>
+          <span class="publisher-stat-label" data-i18n="pub_stat_reputation">信誉分</span>
+        </div>
+        <div class="publisher-stat-col">
+          <span id="pub-completion-rate" class="publisher-stat-value">96%</span>
+          <span class="publisher-stat-label" data-i18n="pub_stat_completion">完成率</span>
+        </div>
+        <div class="publisher-stat-col">
+          <span id="pub-task-count" class="publisher-stat-value">23</span>
+          <span class="publisher-stat-label" data-i18n="pub_stat_tasks">历史任务数</span>
+        </div>
+        <div class="publisher-stat-col">
+          <span id="pub-register-date" class="publisher-stat-value">2024年3月</span>
+          <span class="publisher-stat-label" data-i18n="pub_stat_registered">注册时间</span>
+        </div>
+      </div>
+
+      <!-- 进行中的任务 -->
+      <div class="publisher-tasks-section">
+        <h3 class="publisher-tasks-title" data-i18n="pub_tasks_title">进行中的任务</h3>
+        <div id="pub-task-grid" class="task-grid pub-task-grid"></div>
+        <div id="pub-empty-state" class="publisher-empty-state hidden">
+          <p data-i18n="pub_empty_text">该发布者暂无进行中的任务</p>
+        </div>
+      </div>
+
+    </div>
   </main>
 
   <script src="app.js"></script>

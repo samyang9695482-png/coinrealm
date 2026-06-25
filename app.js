@@ -2748,3 +2748,265 @@ window.addEventListener('hashchange', handleRoute);
     });
   }
 })();
+
+// ==========================================
+// 13. 发布者主页 (#publisher) — 任务卡 #011
+// ==========================================
+(function () {
+  'use strict';
+
+  var APP_CONTENT_HTML = '';
+  var appContentEl = document.getElementById('app-content');
+  if (appContentEl) {
+    APP_CONTENT_HTML = appContentEl.innerHTML;
+  }
+
+  var publisherInitialized = false;
+
+  var samplePublisher = {
+    username: 'AlphaRadar',
+    level: 5,
+    levelLabelKey: 'pub_level_master',
+    reputationScore: 98,
+    completionRate: 96,
+    taskCount: 23,
+    registeredAt: '2024年3月',
+    registeredAtEn: 'Mar 2024',
+    isOfficial: false,
+    isHighRisk: false,
+    hasActiveTasks: true,
+    tasks: [
+      { type: 'airdrop', reward: 500, slotsLeft: 88, slotsTotal: 100, daysLeft: 5 },
+      { type: 'register', reward: 300, slotsLeft: 2, slotsTotal: 50, daysLeft: 1 },
+      { type: 'trade', reward: 2500, slotsLeft: 11, slotsTotal: 15, daysLeft: 7 },
+      { type: 'game', reward: 800, slotsLeft: 40, slotsTotal: 200, daysLeft: 12 }
+    ]
+  };
+
+  var publisherTranslations = {
+    zh: {
+      pub_official_badge: '官方认证',
+      pub_high_risk: '⚠️ 高风险',
+      pub_stat_reputation: '信誉分',
+      pub_stat_completion: '完成率',
+      pub_stat_tasks: '历史任务数',
+      pub_stat_registered: '注册时间',
+      pub_tasks_title: '进行中的任务',
+      pub_empty_text: '该发布者暂无进行中的任务',
+      pub_level_master: '大师',
+      pub_level_badge: 'Lv.{level} {label}',
+      pub_task_count_unit: '{count} 个',
+      pub_percent: '{value}%',
+      pub_alert_claim: '任务领取成功！',
+      pub_text_slots: '剩余名额',
+      pub_text_days: '天后',
+      pub_btn_claim: '领取',
+      tag_airdrop: '空投',
+      tag_register: '注册',
+      tag_trade: '交易',
+      tag_game: '游戏',
+      tag_official: '官方',
+      tag_content: '内容',
+      tag_test: '测试'
+    },
+    en: {
+      pub_official_badge: 'Official Verified',
+      pub_high_risk: '⚠️ High Risk',
+      pub_stat_reputation: 'Reputation',
+      pub_stat_completion: 'Completion Rate',
+      pub_stat_tasks: 'Tasks Published',
+      pub_stat_registered: 'Registered',
+      pub_tasks_title: 'Active Tasks',
+      pub_empty_text: 'This publisher has no active tasks',
+      pub_level_master: 'Master',
+      pub_level_badge: 'Lv.{level} {label}',
+      pub_task_count_unit: '{count}',
+      pub_percent: '{value}%',
+      pub_alert_claim: 'Task claimed successfully!',
+      pub_text_slots: 'Slots left',
+      pub_text_days: 'days left',
+      pub_btn_claim: 'Claim',
+      tag_airdrop: 'Airdrop',
+      tag_register: 'Register',
+      tag_trade: 'Trade',
+      tag_game: 'Game',
+      tag_official: 'Official',
+      tag_content: 'Content',
+      tag_test: 'Test'
+    }
+  };
+
+  function getLang() {
+    var saved = localStorage.getItem('coinrealm_lang');
+    return saved === 'en' ? 'en' : 'zh';
+  }
+
+  function pubT(key, vars) {
+    var dict = publisherTranslations[getLang()];
+    var text = dict[key] || key;
+    if (vars) {
+      Object.keys(vars).forEach(function (k) {
+        text = text.replace('{' + k + '}', vars[k]);
+      });
+    }
+    return text;
+  }
+
+  function formatNumber(num) {
+    return String(num).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  function applyPublisherI18n() {
+    document.querySelectorAll('#publisher-page [data-i18n]').forEach(function (el) {
+      var key = el.getAttribute('data-i18n');
+      if (publisherTranslations[getLang()][key]) {
+        el.textContent = pubT(key);
+      }
+    });
+  }
+
+  function renderTaskCard(task) {
+    var typeKey = 'tag_' + task.type;
+    var labelClass = 'label-' + task.type;
+
+    return (
+      '<div class="task-card" data-category="' + task.type + '">' +
+        '<div class="reward-amount">' + formatNumber(task.reward) + ' CRLM</div>' +
+        '<div class="card-bottom">' +
+          '<div class="meta-tags">' +
+            '<span class="type-label ' + labelClass + '">' + pubT(typeKey) + '</span>' +
+            '<span class="info-text">' + pubT('pub_text_slots') + ' ' + task.slotsLeft + '/' + task.slotsTotal + '</span>' +
+            '<span class="info-text">' + task.daysLeft + ' ' + pubT('pub_text_days') + '</span>' +
+          '</div>' +
+          '<button type="button" class="claim-btn pub-claim-btn">' + pubT('pub_btn_claim') + '</button>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function renderPublisherTasks() {
+    var grid = document.getElementById('pub-task-grid');
+    var emptyState = document.getElementById('pub-empty-state');
+    var publisher = samplePublisher;
+
+    if (!grid || !emptyState) return;
+
+    if (!publisher.hasActiveTasks || !publisher.tasks.length) {
+      grid.innerHTML = '';
+      grid.classList.add('hidden');
+      emptyState.classList.remove('hidden');
+      return;
+    }
+
+    grid.classList.remove('hidden');
+    emptyState.classList.add('hidden');
+    grid.innerHTML = publisher.tasks.map(renderTaskCard).join('');
+
+    grid.querySelectorAll('.pub-claim-btn').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        alert(pubT('pub_alert_claim'));
+      });
+    });
+  }
+
+  function renderPublisherPage() {
+    var publisher = samplePublisher;
+    var isZh = getLang() === 'zh';
+
+    var officialBadge = document.getElementById('pub-official-badge');
+    if (officialBadge) {
+      if (publisher.isOfficial) {
+        officialBadge.classList.remove('hidden');
+      } else {
+        officialBadge.classList.add('hidden');
+      }
+    }
+
+    var highRiskTag = document.getElementById('pub-high-risk-tag');
+    if (highRiskTag) {
+      if (publisher.isHighRisk) {
+        highRiskTag.classList.remove('hidden');
+      } else {
+        highRiskTag.classList.add('hidden');
+      }
+    }
+
+    var usernameEl = document.getElementById('pub-username');
+    if (usernameEl) usernameEl.textContent = publisher.username;
+
+    var levelBadge = document.getElementById('pub-level-badge');
+    if (levelBadge) {
+      levelBadge.textContent = pubT('pub_level_badge', {
+        level: publisher.level,
+        label: pubT(publisher.levelLabelKey)
+      });
+    }
+
+    var reputationEl = document.getElementById('pub-reputation-score');
+    if (reputationEl) {
+      reputationEl.textContent = pubT('pub_percent', { value: publisher.reputationScore });
+    }
+
+    var completionEl = document.getElementById('pub-completion-rate');
+    if (completionEl) {
+      completionEl.textContent = pubT('pub_percent', { value: publisher.completionRate });
+    }
+
+    var taskCountEl = document.getElementById('pub-task-count');
+    if (taskCountEl) {
+      taskCountEl.textContent = pubT('pub_task_count_unit', { count: publisher.taskCount });
+    }
+
+    var registerEl = document.getElementById('pub-register-date');
+    if (registerEl) {
+      registerEl.textContent = isZh ? publisher.registeredAt : publisher.registeredAtEn;
+    }
+
+    renderPublisherTasks();
+    applyPublisherI18n();
+  }
+
+  function initPublisherEvents() {
+    if (publisherInitialized) return;
+    publisherInitialized = true;
+  }
+
+  function restoreAppContentIfNeeded() {
+    if (!appContentEl || !APP_CONTENT_HTML) return;
+    if (!document.getElementById('home-page')) {
+      appContentEl.innerHTML = APP_CONTENT_HTML;
+      publisherInitialized = false;
+    }
+  }
+
+  function handlePublisherRoute() {
+    restoreAppContentIfNeeded();
+
+    var route = window.location.hash.replace(/^#/, '') || 'home';
+    var publisherPage = document.getElementById('publisher-page');
+
+    if (publisherPage) {
+      if (route === 'publisher') {
+        publisherPage.classList.remove('hidden');
+        initPublisherEvents();
+        renderPublisherPage();
+      } else {
+        publisherPage.classList.add('hidden');
+      }
+    }
+  }
+
+  window.addEventListener('hashchange', handlePublisherRoute);
+
+  window.addEventListener('DOMContentLoaded', function () {
+    setTimeout(handlePublisherRoute, 0);
+  });
+
+  var langToggleBtn = document.getElementById('lang-toggle');
+  if (langToggleBtn) {
+    langToggleBtn.addEventListener('click', function () {
+      setTimeout(handlePublisherRoute, 0);
+    });
+  }
+})();
