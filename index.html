@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CoinRealm</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -971,7 +972,12 @@
 
     </div>
   </main>
-
+<script>
+  // 初始化 Supabase 客户端
+  const SUPABASE_URL = 'https://ocpuksssvnueknhfcfco.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_XXFWPmwswaH4ESVjcBSIfg_6X7h7S4a';
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+</script>
   <script src="app.js"></script>
 </body>
 </html>
