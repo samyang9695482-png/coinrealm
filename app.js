@@ -1310,3 +1310,272 @@ window.addEventListener('hashchange', handleRoute);
     });
   }
 })();
+
+// ==========================================
+// 7. 任务提交页 (#submit-task) — 任务卡 #005
+// ==========================================
+(function () {
+  'use strict';
+
+  var APP_CONTENT_HTML = '';
+  var appContentEl = document.getElementById('app-content');
+  if (appContentEl) {
+    APP_CONTENT_HTML = appContentEl.innerHTML;
+  }
+
+  var submitState = 'form';
+  var uploadedFiles = [];
+  var submitTaskInitialized = false;
+
+  var sampleSubmitTask = {
+    title: '注册XX交易所，领取空投',
+    titleEn: 'Register on XX Exchange & Claim Airdrop',
+    reward: 500,
+    rewardUnit: 'CRLM'
+  };
+
+  var submitTaskTranslations = {
+    zh: {
+      st_title_submit: '提交凭证',
+      st_title_waiting: '等待审核',
+      st_ph_desc: '请描述你是如何完成任务的...',
+      st_upload_main: '📷 点击或拖拽上传截图',
+      st_upload_hint: '支持 JPG、PNG 格式，单张不超过 5MB',
+      st_ph_note: '补充说明（可选）',
+      st_waiting_text: '你的凭证已提交，等待发布者审核',
+      st_waiting_sub: '预计 48 小时内完成审核',
+      st_btn_submit: '提交审核',
+      st_btn_submitted: '已提交',
+      st_alert_desc: '请填写任务完成描述',
+      st_alert_max_files: '最多上传 3 张截图'
+    },
+    en: {
+      st_title_submit: 'Submit Proof',
+      st_title_waiting: 'Pending Review',
+      st_ph_desc: 'Describe how you completed the task...',
+      st_upload_main: '📷 Click or drag to upload screenshots',
+      st_upload_hint: 'JPG, PNG supported, max 5MB per file',
+      st_ph_note: 'Additional notes (optional)',
+      st_waiting_text: 'Your proof has been submitted and is awaiting publisher review',
+      st_waiting_sub: 'Review expected within 48 hours',
+      st_btn_submit: 'Submit for Review',
+      st_btn_submitted: 'Submitted',
+      st_alert_desc: 'Please fill in the task completion description',
+      st_alert_max_files: 'Maximum 3 screenshots allowed'
+    }
+  };
+
+  function getLang() {
+    var saved = localStorage.getItem('coinrealm_lang');
+    return saved === 'en' ? 'en' : 'zh';
+  }
+
+  function stT(key) {
+    var dict = submitTaskTranslations[getLang()];
+    return dict[key] || key;
+  }
+
+  function renderFileList() {
+    var listEl = document.getElementById('st-file-list');
+    if (!listEl) return;
+
+    listEl.innerHTML = '';
+    uploadedFiles.forEach(function (file, index) {
+      var li = document.createElement('li');
+      li.className = 'submit-task-file-item';
+      li.innerHTML =
+        '<span class="st-file-name">' + file.name + '</span>' +
+        '<button type="button" class="st-file-delete" data-index="' + index + '" aria-label="Delete">&times;</button>';
+      listEl.appendChild(li);
+    });
+
+    listEl.querySelectorAll('.st-file-delete').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var idx = parseInt(btn.getAttribute('data-index'), 10);
+        uploadedFiles.splice(idx, 1);
+        renderFileList();
+      });
+    });
+  }
+
+  function handleFilesSelected(fileList) {
+    var files = Array.from(fileList);
+    var remaining = 3 - uploadedFiles.length;
+
+    if (remaining <= 0) {
+      alert(stT('st_alert_max_files'));
+      return;
+    }
+
+    if (files.length > remaining) {
+      alert(stT('st_alert_max_files'));
+      files = files.slice(0, remaining);
+    }
+
+    files.forEach(function (file) {
+      uploadedFiles.push({ name: file.name });
+    });
+
+    renderFileList();
+  }
+
+  function applySubmitTaskI18n() {
+    document.querySelectorAll('#submit-task-page [data-i18n]').forEach(function (el) {
+      var key = el.getAttribute('data-i18n');
+      if (submitTaskTranslations[getLang()][key]) {
+        el.textContent = stT(key);
+      }
+    });
+
+    document.querySelectorAll('#submit-task-page [data-placeholder]').forEach(function (el) {
+      var key = el.getAttribute('data-placeholder');
+      if (submitTaskTranslations[getLang()][key]) {
+        el.setAttribute('placeholder', stT(key));
+      }
+    });
+
+    updatePageStateUI();
+  }
+
+  function updatePageStateUI() {
+    var pageTitle = document.getElementById('st-page-title');
+    var formSection = document.getElementById('st-form-section');
+    var waitingSection = document.getElementById('st-waiting-section');
+    var submitBtn = document.getElementById('st-submit-btn');
+
+    if (submitState === 'waiting') {
+      if (pageTitle) pageTitle.textContent = stT('st_title_waiting');
+      if (formSection) formSection.classList.add('hidden');
+      if (waitingSection) waitingSection.classList.remove('hidden');
+      if (submitBtn) {
+        submitBtn.textContent = stT('st_btn_submitted');
+        submitBtn.classList.remove('st-btn-gold');
+        submitBtn.classList.add('st-btn-disabled');
+        submitBtn.disabled = true;
+      }
+    } else {
+      if (pageTitle) pageTitle.textContent = stT('st_title_submit');
+      if (formSection) formSection.classList.remove('hidden');
+      if (waitingSection) waitingSection.classList.add('hidden');
+      if (submitBtn) {
+        submitBtn.textContent = stT('st_btn_submit');
+        submitBtn.classList.remove('st-btn-disabled');
+        submitBtn.classList.add('st-btn-gold');
+        submitBtn.disabled = false;
+      }
+    }
+  }
+
+  function renderSummaryCard() {
+    var titleEl = document.getElementById('st-task-title');
+    var rewardEl = document.getElementById('st-task-reward');
+    var isZh = getLang() === 'zh';
+
+    if (titleEl) {
+      titleEl.textContent = isZh ? sampleSubmitTask.title : sampleSubmitTask.titleEn;
+    }
+    if (rewardEl) {
+      rewardEl.textContent = sampleSubmitTask.reward + ' ' + sampleSubmitTask.rewardUnit;
+    }
+  }
+
+  function initSubmitTaskEvents() {
+    if (submitTaskInitialized) return;
+    submitTaskInitialized = true;
+
+    var uploadZone = document.getElementById('st-upload-zone');
+    var fileInput = document.getElementById('st-file-input');
+
+    if (uploadZone && fileInput) {
+      uploadZone.addEventListener('click', function () {
+        fileInput.click();
+      });
+
+      uploadZone.addEventListener('dragover', function (e) {
+        e.preventDefault();
+        uploadZone.style.borderColor = '#f0b90b';
+      });
+
+      uploadZone.addEventListener('dragleave', function () {
+        uploadZone.style.borderColor = '';
+      });
+
+      uploadZone.addEventListener('drop', function (e) {
+        e.preventDefault();
+        uploadZone.style.borderColor = '';
+        if (e.dataTransfer && e.dataTransfer.files) {
+          handleFilesSelected(e.dataTransfer.files);
+        }
+      });
+
+      fileInput.addEventListener('change', function () {
+        if (fileInput.files && fileInput.files.length) {
+          handleFilesSelected(fileInput.files);
+        }
+        fileInput.value = '';
+      });
+    }
+
+    var submitBtn = document.getElementById('st-submit-btn');
+    if (submitBtn) {
+      submitBtn.addEventListener('click', function () {
+        if (submitState === 'waiting') return;
+
+        var desc = document.getElementById('st-description');
+        if (!desc || !desc.value.trim()) {
+          alert(stT('st_alert_desc'));
+          return;
+        }
+
+        submitState = 'waiting';
+        updatePageStateUI();
+      });
+    }
+  }
+
+  function renderSubmitTaskPage() {
+    renderSummaryCard();
+    initSubmitTaskEvents();
+    applySubmitTaskI18n();
+  }
+
+  function restoreAppContentIfNeeded() {
+    if (!appContentEl || !APP_CONTENT_HTML) return;
+    if (!document.getElementById('home-page')) {
+      appContentEl.innerHTML = APP_CONTENT_HTML;
+      submitTaskInitialized = false;
+      submitState = 'form';
+      uploadedFiles = [];
+    }
+  }
+
+  function handleSubmitTaskRoute() {
+    restoreAppContentIfNeeded();
+
+    var route = window.location.hash.replace(/^#/, '') || 'home';
+    var submitTaskPage = document.getElementById('submit-task-page');
+
+    if (submitTaskPage) {
+      if (route === 'submit-task') {
+        submitTaskPage.classList.remove('hidden');
+        renderSubmitTaskPage();
+      } else {
+        submitTaskPage.classList.add('hidden');
+      }
+    }
+  }
+
+  window.addEventListener('hashchange', handleSubmitTaskRoute);
+
+  window.addEventListener('DOMContentLoaded', function () {
+    setTimeout(handleSubmitTaskRoute, 0);
+  });
+
+  var langToggleBtn = document.getElementById('lang-toggle');
+  if (langToggleBtn) {
+    langToggleBtn.addEventListener('click', function () {
+      setTimeout(handleSubmitTaskRoute, 0);
+    });
+  }
+})();

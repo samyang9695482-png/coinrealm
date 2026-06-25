@@ -537,6 +537,49 @@
       </div>
 
     </div>
+
+    <!-- 任务提交页 — 由路由 #submit-task 显示 -->
+    <div id="submit-task-page" class="submit-task-container hidden">
+
+      <h1 id="st-page-title" class="submit-task-title" data-i18n="st_title_submit">提交凭证</h1>
+
+      <div class="submit-task-summary-card">
+        <span id="st-task-title" class="st-summary-title">注册XX交易所，领取空投</span>
+        <span id="st-task-reward" class="st-summary-reward">500 CRLM</span>
+      </div>
+
+      <!-- 提交表单状态 -->
+      <div id="st-form-section" class="submit-task-form-card">
+        <div class="submit-task-field">
+          <textarea id="st-description" class="submit-task-textarea" data-placeholder="st_ph_desc" placeholder="请描述你是如何完成任务的..."></textarea>
+        </div>
+
+        <div class="submit-task-field">
+          <div id="st-upload-zone" class="submit-task-upload-zone">
+            <input type="file" id="st-file-input" class="submit-task-file-input" accept="image/jpeg,image/png,.jpg,.jpeg,.png" multiple hidden>
+            <p class="st-upload-main" data-i18n="st_upload_main">📷 点击或拖拽上传截图</p>
+            <p class="st-upload-hint" data-i18n="st_upload_hint">支持 JPG、PNG 格式，单张不超过 5MB</p>
+          </div>
+          <ul id="st-file-list" class="submit-task-file-list"></ul>
+        </div>
+
+        <div class="submit-task-field">
+          <input type="text" id="st-extra-note" class="submit-task-input" data-placeholder="st_ph_note" placeholder="补充说明（可选）">
+        </div>
+      </div>
+
+      <!-- 等待审核状态 -->
+      <div id="st-waiting-section" class="submit-task-waiting-card hidden">
+        <div class="st-waiting-icon">⏳</div>
+        <p class="st-waiting-text" data-i18n="st_waiting_text">你的凭证已提交，等待发布者审核</p>
+        <p class="st-waiting-sub" data-i18n="st_waiting_sub">预计 48 小时内完成审核</p>
+      </div>
+
+      <div class="submit-task-action-bar">
+        <button type="button" id="st-submit-btn" class="st-action-btn st-btn-gold" data-i18n="st_btn_submit">提交审核</button>
+      </div>
+
+    </div>
   </main>
 
   <script src="app.js"></script>
