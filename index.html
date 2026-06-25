@@ -842,6 +842,48 @@
       </div>
 
     </div>
+
+    <!-- 审核管理页 — 由路由 #review 显示 -->
+    <div id="review-page" class="review-container hidden">
+
+      <h1 class="review-title" data-i18n="rv_page_title">审核管理</h1>
+
+      <!-- 任务选择 -->
+      <div class="review-select-card">
+        <label class="review-select-label" for="rv-task-select" data-i18n="rv_select_label">选择要审核的任务</label>
+        <select id="rv-task-select" class="review-select">
+          <option value="task1" data-i18n="rv_task_1">注册XX交易所</option>
+          <option value="task2" data-i18n="rv_task_2">试玩Web3游戏</option>
+          <option value="task3" data-i18n="rv_task_3">转发推文任务</option>
+        </select>
+      </div>
+
+      <!-- 提交列表 -->
+      <div class="review-list-card">
+        <div class="review-list-header">
+          <h2 class="review-list-title" data-i18n="rv_list_title">待审核提交</h2>
+          <span id="rv-pending-count" class="review-pending-count">共 3 条</span>
+        </div>
+        <ul id="rv-submission-list" class="review-submission-list"></ul>
+        <div id="rv-empty-state" class="review-empty-state hidden">
+          <p data-i18n="rv_empty_text">所有提交已审核完毕</p>
+        </div>
+      </div>
+
+      <!-- 驳回弹窗 -->
+      <div id="rv-reject-modal" class="review-modal hidden">
+        <div class="review-modal-overlay"></div>
+        <div class="review-modal-card">
+          <h3 class="review-modal-title" data-i18n="rv_reject_title">驳回理由</h3>
+          <textarea id="rv-reject-reason" class="review-modal-textarea" data-placeholder="rv_reject_ph" placeholder="请填写驳回理由..."></textarea>
+          <div class="review-modal-actions">
+            <button type="button" id="rv-reject-confirm" class="review-btn-reject" data-i18n="rv_reject_confirm">确认驳回</button>
+            <button type="button" id="rv-reject-cancel" class="review-btn-cancel" data-i18n="rv_reject_cancel">取消</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
   </main>
 
   <script src="app.js"></script>

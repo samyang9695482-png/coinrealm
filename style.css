@@ -2707,3 +2707,314 @@ img {
         grid-template-columns: 1fr;
     }
 }
+
+/* ==================== 审核管理页 (#review) ==================== */
+
+.review-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 16px 24px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+.review-title {
+    text-align: center;
+    font-size: 24px;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin-bottom: 24px;
+}
+
+.review-select-card,
+.review-list-card {
+    background-color: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    padding: 24px;
+    margin-bottom: 16px;
+}
+
+.review-select-label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: #1a1a2e;
+    margin-bottom: 8px;
+}
+
+.review-select {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 14px;
+    font-family: inherit;
+    color: #1a1a2e;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: #fff;
+    box-sizing: border-box;
+}
+
+.review-select:focus {
+    outline: none;
+    border-color: #f0b90b;
+}
+
+.review-list-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    gap: 12px;
+}
+
+.review-list-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #1a1a2e;
+}
+
+.review-pending-count {
+    font-size: 13px;
+    color: #999;
+}
+
+.review-submission-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.review-submission-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 16px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.review-submission-item:last-child {
+    border-bottom: none;
+}
+
+.rv-user-block {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    min-width: 120px;
+}
+
+.rv-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: #ccc;
+    flex-shrink: 0;
+}
+
+.rv-username {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1a1a2e;
+}
+
+.rv-content-block {
+    flex: 1;
+    min-width: 0;
+}
+
+.rv-submit-time {
+    font-size: 12px;
+    color: #999;
+    margin-bottom: 6px;
+}
+
+.rv-submit-summary {
+    font-size: 14px;
+    color: #333;
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.rv-status-approved {
+    font-size: 14px;
+    font-weight: 600;
+    color: #52c41a;
+}
+
+.rv-status-rejected {
+    font-size: 14px;
+    font-weight: 600;
+    color: #999;
+}
+
+.rv-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.rv-btn-approve {
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #ffffff;
+    background-color: #52c41a;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.rv-btn-approve:hover {
+    opacity: 0.9;
+}
+
+.rv-btn-reject {
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #ffffff;
+    background-color: #ff4d4f;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.rv-btn-reject:hover {
+    opacity: 0.9;
+}
+
+.review-empty-state {
+    text-align: center;
+    padding: 40px 16px;
+    color: #999;
+    font-size: 15px;
+}
+
+.review-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+.review-modal.hidden {
+    display: none !important;
+}
+
+.review-modal-overlay {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.45);
+}
+
+.review-modal-card {
+    position: relative;
+    width: 100%;
+    max-width: 480px;
+    background-color: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+    padding: 24px;
+    z-index: 1;
+}
+
+.review-modal-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin-bottom: 16px;
+}
+
+.review-modal-textarea {
+    width: 100%;
+    height: 100px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 10px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+    box-sizing: border-box;
+    margin-bottom: 16px;
+}
+
+.review-modal-textarea:focus {
+    outline: none;
+    border-color: #f0b90b;
+}
+
+.review-modal-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.review-btn-reject {
+    flex: 1;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #ffffff;
+    background-color: #ff4d4f;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.review-btn-cancel {
+    flex: 1;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #666;
+    background-color: #ffffff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+@media (max-width: 768px) {
+    .review-container {
+        padding: 0 12px 24px;
+    }
+
+    .review-title {
+        font-size: 20px;
+        margin-bottom: 16px;
+    }
+
+    .review-select-card,
+    .review-list-card {
+        padding: 16px;
+    }
+
+    .review-submission-item {
+        flex-wrap: wrap;
+    }
+
+    .rv-user-block {
+        min-width: 0;
+    }
+
+    .rv-content-block {
+        flex: 1 1 100%;
+        order: 2;
+    }
+
+    .rv-actions {
+        flex: 1 1 100%;
+        order: 3;
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .rv-btn-approve,
+    .rv-btn-reject {
+        width: 100%;
+    }
+}
