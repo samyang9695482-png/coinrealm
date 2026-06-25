@@ -2527,3 +2527,224 @@ window.addEventListener('hashchange', handleRoute);
     });
   }
 })();
+
+// ==========================================
+// 12. 广播历史页 (#broadcast-history) — 任务卡 #010
+// ==========================================
+(function () {
+  'use strict';
+
+  var APP_CONTENT_HTML = '';
+  var appContentEl = document.getElementById('app-content');
+  if (appContentEl) {
+    APP_CONTENT_HTML = appContentEl.innerHTML;
+  }
+
+  var visibleCount = 10;
+  var loadMoreUsed = false;
+  var broadcastInitialized = false;
+
+  var allBroadcasts = [
+    { user: '0x1234...ab9f', taskKey: 'register', reward: 500, timeKey: 'bh_time_3min' },
+    { user: '0x88f2...c3d1', taskKey: 'trade', reward: 1200, timeKey: 'bh_time_8min' },
+    { user: '0xabc9...7e2a', taskKey: 'official', reward: 2500, timeKey: 'bh_time_15min' },
+    { user: '0x5566...f890', taskKey: 'airdrop', reward: 800, timeKey: 'bh_time_25min' },
+    { user: '0xdead...beef', taskKey: 'game', reward: 650, timeKey: 'bh_time_40min' },
+    { user: '0xface...cafe', taskKey: 'register', reward: 300, timeKey: 'bh_time_1h' },
+    { user: '0x1024...2048', taskKey: 'trade', reward: 1800, timeKey: 'bh_time_2h' },
+    { user: '0x7777...8888', taskKey: 'content', reward: 420, timeKey: 'bh_time_3h' },
+    { user: '0xaaaa...bbbb', taskKey: 'test', reward: 1500, timeKey: 'bh_time_5h' },
+    { user: '0xcccc...dddd', taskKey: 'register', reward: 350, timeKey: 'bh_time_8h' },
+    { user: '0xeeee...ffff', taskKey: 'official', reward: 3200, timeKey: 'bh_time_yesterday' },
+    { user: '0x1111...2222', taskKey: 'airdrop', reward: 900, timeKey: 'bh_time_yesterday' },
+    { user: '0x3333...4444', taskKey: 'trade', reward: 2100, timeKey: 'bh_time_2days' },
+    { user: '0x5555...6666', taskKey: 'game', reward: 720, timeKey: 'bh_time_2days' },
+    { user: '0x9999...0000', taskKey: 'register', reward: 480, timeKey: 'bh_time_3days' }
+  ];
+
+  var broadcastTranslations = {
+    zh: {
+      bh_page_title: '最新战报',
+      bh_load_more: '加载更多',
+      bh_no_more: '没有更多了',
+      bh_user_prefix: '用户',
+      bh_task_register: '注册任务',
+      bh_task_trade: '交易任务',
+      bh_task_official: '官方任务',
+      bh_task_airdrop: '空投任务',
+      bh_task_game: '游戏任务',
+      bh_task_content: '内容任务',
+      bh_task_test: '测试任务',
+      bh_event_done: '完成了{task}，获得',
+      bh_time_3min: '3分钟前',
+      bh_time_8min: '8分钟前',
+      bh_time_15min: '15分钟前',
+      bh_time_25min: '25分钟前',
+      bh_time_40min: '40分钟前',
+      bh_time_1h: '1小时前',
+      bh_time_2h: '2小时前',
+      bh_time_3h: '3小时前',
+      bh_time_5h: '5小时前',
+      bh_time_8h: '8小时前',
+      bh_time_yesterday: '昨天',
+      bh_time_2days: '2天前',
+      bh_time_3days: '3天前'
+    },
+    en: {
+      bh_page_title: 'Latest Activity',
+      bh_load_more: 'Load More',
+      bh_no_more: 'No More',
+      bh_user_prefix: 'User',
+      bh_task_register: 'registration task',
+      bh_task_trade: 'trading task',
+      bh_task_official: 'official task',
+      bh_task_airdrop: 'airdrop task',
+      bh_task_game: 'game task',
+      bh_task_content: 'content task',
+      bh_task_test: 'test task',
+      bh_event_done: 'completed {task} and received',
+      bh_time_3min: '3 min ago',
+      bh_time_8min: '8 min ago',
+      bh_time_15min: '15 min ago',
+      bh_time_25min: '25 min ago',
+      bh_time_40min: '40 min ago',
+      bh_time_1h: '1 hour ago',
+      bh_time_2h: '2 hours ago',
+      bh_time_3h: '3 hours ago',
+      bh_time_5h: '5 hours ago',
+      bh_time_8h: '8 hours ago',
+      bh_time_yesterday: 'Yesterday',
+      bh_time_2days: '2 days ago',
+      bh_time_3days: '3 days ago'
+    }
+  };
+
+  function getLang() {
+    var saved = localStorage.getItem('coinrealm_lang');
+    return saved === 'en' ? 'en' : 'zh';
+  }
+
+  function bhT(key, vars) {
+    var dict = broadcastTranslations[getLang()];
+    var text = dict[key] || key;
+    if (vars) {
+      Object.keys(vars).forEach(function (k) {
+        text = text.replace('{' + k + '}', vars[k]);
+      });
+    }
+    return text;
+  }
+
+  function getTaskName(taskKey) {
+    return bhT('bh_task_' + taskKey);
+  }
+
+  function renderBroadcastItem(item) {
+    var taskName = getTaskName(item.taskKey);
+    var desc =
+      bhT('bh_user_prefix') + ' ' + item.user + ' ' +
+      bhT('bh_event_done', { task: taskName }) + ' ' +
+      '<span class="bh-reward-highlight">' + item.reward.toLocaleString() + ' CRLM</span>';
+
+    return (
+      '<li class="broadcast-history-item">' +
+        '<div class="bh-avatar"></div>' +
+        '<p class="bh-content">' + desc + '</p>' +
+        '<span class="bh-time">' + bhT(item.timeKey) + '</span>' +
+      '</li>'
+    );
+  }
+
+  function renderBroadcastList() {
+    var listEl = document.getElementById('bh-broadcast-list');
+    if (!listEl) return;
+
+    var items = allBroadcasts.slice(0, visibleCount);
+    listEl.innerHTML = items.map(renderBroadcastItem).join('');
+  }
+
+  function updateLoadMoreButton() {
+    var btn = document.getElementById('bh-load-more-btn');
+    if (!btn) return;
+
+    if (loadMoreUsed) {
+      btn.textContent = bhT('bh_no_more');
+      btn.disabled = true;
+    } else {
+      btn.textContent = bhT('bh_load_more');
+      btn.disabled = false;
+    }
+  }
+
+  function applyBroadcastI18n() {
+    document.querySelectorAll('#broadcast-history-page [data-i18n]').forEach(function (el) {
+      var key = el.getAttribute('data-i18n');
+      if (broadcastTranslations[getLang()][key]) {
+        el.textContent = bhT(key);
+      }
+    });
+    updateLoadMoreButton();
+  }
+
+  function initBroadcastEvents() {
+    if (broadcastInitialized) return;
+    broadcastInitialized = true;
+
+    var loadBtn = document.getElementById('bh-load-more-btn');
+    if (loadBtn) {
+      loadBtn.addEventListener('click', function () {
+        if (loadMoreUsed) return;
+        visibleCount = allBroadcasts.length;
+        loadMoreUsed = true;
+        renderBroadcastList();
+        updateLoadMoreButton();
+      });
+    }
+  }
+
+  function renderBroadcastHistoryPage() {
+    renderBroadcastList();
+    updateLoadMoreButton();
+    initBroadcastEvents();
+    applyBroadcastI18n();
+  }
+
+  function restoreAppContentIfNeeded() {
+    if (!appContentEl || !APP_CONTENT_HTML) return;
+    if (!document.getElementById('home-page')) {
+      appContentEl.innerHTML = APP_CONTENT_HTML;
+      broadcastInitialized = false;
+      visibleCount = 10;
+      loadMoreUsed = false;
+    }
+  }
+
+  function handleBroadcastHistoryRoute() {
+    restoreAppContentIfNeeded();
+
+    var route = window.location.hash.replace(/^#/, '') || 'home';
+    var broadcastPage = document.getElementById('broadcast-history-page');
+
+    if (broadcastPage) {
+      if (route === 'broadcast-history') {
+        broadcastPage.classList.remove('hidden');
+        renderBroadcastHistoryPage();
+      } else {
+        broadcastPage.classList.add('hidden');
+      }
+    }
+  }
+
+  window.addEventListener('hashchange', handleBroadcastHistoryRoute);
+
+  window.addEventListener('DOMContentLoaded', function () {
+    setTimeout(handleBroadcastHistoryRoute, 0);
+  });
+
+  var langToggleBtn = document.getElementById('lang-toggle');
+  if (langToggleBtn) {
+    langToggleBtn.addEventListener('click', function () {
+      setTimeout(handleBroadcastHistoryRoute, 0);
+    });
+  }
+})();

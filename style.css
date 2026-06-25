@@ -2384,3 +2384,140 @@ img {
         font-size: 12px;
     }
 }
+
+/* ==================== 广播历史页 (#broadcast-history) ==================== */
+
+.broadcast-history-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 16px 24px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+.broadcast-history-title {
+    text-align: center;
+    font-size: 24px;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin-bottom: 24px;
+}
+
+.broadcast-history-card {
+    background-color: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+}
+
+.broadcast-history-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.broadcast-history-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px 24px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.broadcast-history-item:last-child {
+    border-bottom: none;
+}
+
+.bh-avatar {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: #ccc;
+}
+
+.bh-content {
+    flex: 1;
+    min-width: 0;
+    font-size: 14px;
+    color: #333;
+    line-height: 1.6;
+}
+
+.bh-reward-highlight {
+    color: #f0b90b;
+    font-weight: 700;
+}
+
+.bh-time {
+    flex-shrink: 0;
+    font-size: 12px;
+    color: #999;
+    white-space: nowrap;
+    margin-left: 8px;
+}
+
+.broadcast-history-load-wrap {
+    padding: 16px 24px 24px;
+    text-align: center;
+}
+
+.broadcast-history-load-btn {
+    display: inline-block;
+    padding: 10px 32px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #666;
+    background-color: #ffffff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: opacity 0.2s, border-color 0.2s;
+}
+
+.broadcast-history-load-btn:hover:not(:disabled) {
+    border-color: #f0b90b;
+    color: #1a1a2e;
+}
+
+.broadcast-history-load-btn:disabled {
+    color: #999;
+    background-color: #f5f5f5;
+    border-color: #e8e8e8;
+    cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+    .broadcast-history-container {
+        padding: 0 12px 24px;
+    }
+
+    .broadcast-history-title {
+        font-size: 20px;
+        margin-bottom: 16px;
+    }
+
+    .broadcast-history-item {
+        flex-wrap: wrap;
+        padding: 14px 16px;
+    }
+
+    .bh-avatar {
+        width: 32px;
+        height: 32px;
+    }
+
+    .bh-content {
+        flex: 1 1 calc(100% - 44px);
+    }
+
+    .bh-time {
+        flex: 1 1 100%;
+        margin-left: 44px;
+        margin-top: 4px;
+        white-space: normal;
+    }
+
+    .broadcast-history-load-wrap {
+        padding: 16px;
+    }
+}
