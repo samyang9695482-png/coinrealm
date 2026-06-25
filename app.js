@@ -2261,3 +2261,269 @@ window.addEventListener('hashchange', handleRoute);
     });
   }
 })();
+
+// ==========================================
+// 11. 排行榜页 (#leaderboard) — 任务卡 #009
+// ==========================================
+(function () {
+  'use strict';
+
+  var APP_CONTENT_HTML = '';
+  var appContentEl = document.getElementById('app-content');
+  if (appContentEl) {
+    APP_CONTENT_HTML = appContentEl.innerHTML;
+  }
+
+  var leaderboardType = 'earnings';
+  var leaderboardInitialized = false;
+
+  var rankBadges = ['🥇', '🥈', '🥉'];
+
+  var leaderboardData = {
+    earnings: [
+      { username: 'WhaleKing', level: 9, value: 125000 },
+      { username: 'CryptoAce', level: 8, value: 98500 },
+      { username: 'TaskMaster', level: 7, value: 87200 },
+      { username: 'CRLM_Hunter', level: 7, value: 76800 },
+      { username: 'DeFiPro', level: 6, value: 65400 },
+      { username: 'AlphaRadar', level: 6, value: 58900 },
+      { username: 'LinkerDAO', level: 5, value: 45200 },
+      { username: 'GameFi_Hub', level: 5, value: 39800 }
+    ],
+    invites: [
+      { username: 'InviteKing', level: 8, value: 156 },
+      { username: 'ReferPro', level: 7, value: 128 },
+      { username: 'ShareMaster', level: 7, value: 112 },
+      { username: 'GrowthHacker', level: 6, value: 98 },
+      { username: 'NodeRunner', level: 6, value: 85 },
+      { username: 'ChainLinker', level: 5, value: 72 },
+      { username: 'AlphaRadar', level: 5, value: 65 },
+      { username: 'NewbieGuide', level: 4, value: 58 }
+    ],
+    reputation: [
+      { username: 'TrustAce', level: 9, value: 99 },
+      { username: 'HonestTrader', level: 8, value: 98 },
+      { username: 'ReliableOne', level: 8, value: 97 },
+      { username: 'TopPublisher', level: 7, value: 96 },
+      { username: 'FairDeal', level: 7, value: 95 },
+      { username: 'AlphaRadar', level: 5, value: 94 },
+      { username: 'LinkerDAO', level: 5, value: 93 },
+      { username: 'WhaleSwap', level: 6, value: 92 }
+    ]
+  };
+
+  var myRankData = {
+    earnings: { rank: 42, username: 'AlphaRadar', level: 5, value: 15600 },
+    invites: { rank: 28, username: 'AlphaRadar', level: 5, value: 23 },
+    reputation: { rank: 15, username: 'AlphaRadar', level: 5, value: 98 }
+  };
+
+  var leaderboardTranslations = {
+    zh: {
+      lb_page_title: '排行榜',
+      lb_tab_earnings: '赚币榜',
+      lb_tab_invites: '邀请榜',
+      lb_tab_reputation: '信誉榜',
+      lb_level: 'Lv.{level}',
+      lb_my_rank: '#{rank}',
+      lb_earnings_value: '{amount} CRLM',
+      lb_invites_value: '{count} 人',
+      lb_reputation_value: '{score}%'
+    },
+    en: {
+      lb_page_title: 'Leaderboard',
+      lb_tab_earnings: 'Earnings',
+      lb_tab_invites: 'Invites',
+      lb_tab_reputation: 'Reputation',
+      lb_level: 'Lv.{level}',
+      lb_my_rank: '#{rank}',
+      lb_earnings_value: '{amount} CRLM',
+      lb_invites_value: '{count} people',
+      lb_reputation_value: '{score}%'
+    }
+  };
+
+  function getLang() {
+    var saved = localStorage.getItem('coinrealm_lang');
+    return saved === 'en' ? 'en' : 'zh';
+  }
+
+  function lbT(key, vars) {
+    var dict = leaderboardTranslations[getLang()];
+    var text = dict[key] || key;
+    if (vars) {
+      Object.keys(vars).forEach(function (k) {
+        text = text.replace('{' + k + '}', vars[k]);
+      });
+    }
+    return text;
+  }
+
+  function formatNumber(num) {
+    return String(num).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  function formatValue(type, value) {
+    if (type === 'earnings') {
+      return lbT('lb_earnings_value', { amount: formatNumber(value) });
+    }
+    if (type === 'invites') {
+      return lbT('lb_invites_value', { count: value });
+    }
+    return lbT('lb_reputation_value', { score: value });
+  }
+
+  function getRankDisplay(rank) {
+    if (rank <= 3) {
+      return '<span class="leaderboard-rank">' + rankBadges[rank - 1] + '</span>';
+    }
+    return '<span class="leaderboard-rank"><span class="leaderboard-rank-num">' + rank + '</span></span>';
+  }
+
+  function applyLeaderboardI18n() {
+    document.querySelectorAll('#leaderboard-page [data-i18n]').forEach(function (el) {
+      var key = el.getAttribute('data-i18n');
+      if (leaderboardTranslations[getLang()][key]) {
+        el.textContent = lbT(key);
+      }
+    });
+  }
+
+  function renderRankList() {
+    var listEl = document.getElementById('lb-rank-list');
+    if (!listEl) return;
+
+    var data = leaderboardData[leaderboardType];
+
+    listEl.innerHTML = data.map(function (item, index) {
+      var rank = index + 1;
+      var topClass = rank <= 3 ? ' leaderboard-item-top3' : '';
+      return (
+        '<li class="leaderboard-item' + topClass + '">' +
+          getRankDisplay(rank) +
+          '<div class="leaderboard-avatar"></div>' +
+          '<div class="leaderboard-user-info">' +
+            '<span class="leaderboard-username">' + item.username + '</span>' +
+            '<span class="leaderboard-level">' + lbT('lb_level', { level: item.level }) + '</span>' +
+          '</div>' +
+          '<span class="leaderboard-value">' + formatValue(leaderboardType, item.value) + '</span>' +
+        '</li>'
+      );
+    }).join('');
+  }
+
+  function renderMyRank() {
+    var myData = myRankData[leaderboardType];
+    if (!myData) return;
+
+    var rankEl = document.getElementById('lb-my-rank-num');
+    var usernameEl = document.getElementById('lb-my-username');
+    var levelEl = document.getElementById('lb-my-level');
+    var valueEl = document.getElementById('lb-my-value');
+
+    if (rankEl) rankEl.textContent = lbT('lb_my_rank', { rank: myData.rank });
+    if (usernameEl) usernameEl.textContent = myData.username;
+    if (levelEl) levelEl.textContent = lbT('lb_level', { level: myData.level });
+    if (valueEl) valueEl.textContent = formatValue(leaderboardType, myData.value);
+  }
+
+  function updateTabUI() {
+    var tabs = {
+      earnings: document.getElementById('lb-tab-earnings'),
+      invites: document.getElementById('lb-tab-invites'),
+      reputation: document.getElementById('lb-tab-reputation')
+    };
+
+    Object.keys(tabs).forEach(function (key) {
+      if (tabs[key]) {
+        if (leaderboardType === key) {
+          tabs[key].classList.add('leaderboard-tab-active');
+        } else {
+          tabs[key].classList.remove('leaderboard-tab-active');
+        }
+      }
+    });
+  }
+
+  function initLeaderboardEvents() {
+    if (leaderboardInitialized) return;
+    leaderboardInitialized = true;
+
+    var tabEarnings = document.getElementById('lb-tab-earnings');
+    var tabInvites = document.getElementById('lb-tab-invites');
+    var tabReputation = document.getElementById('lb-tab-reputation');
+
+    if (tabEarnings) {
+      tabEarnings.addEventListener('click', function () {
+        leaderboardType = 'earnings';
+        updateTabUI();
+        renderRankList();
+        renderMyRank();
+      });
+    }
+
+    if (tabInvites) {
+      tabInvites.addEventListener('click', function () {
+        leaderboardType = 'invites';
+        updateTabUI();
+        renderRankList();
+        renderMyRank();
+      });
+    }
+
+    if (tabReputation) {
+      tabReputation.addEventListener('click', function () {
+        leaderboardType = 'reputation';
+        updateTabUI();
+        renderRankList();
+        renderMyRank();
+      });
+    }
+  }
+
+  function renderLeaderboardPage() {
+    updateTabUI();
+    renderRankList();
+    renderMyRank();
+    initLeaderboardEvents();
+    applyLeaderboardI18n();
+  }
+
+  function restoreAppContentIfNeeded() {
+    if (!appContentEl || !APP_CONTENT_HTML) return;
+    if (!document.getElementById('home-page')) {
+      appContentEl.innerHTML = APP_CONTENT_HTML;
+      leaderboardInitialized = false;
+      leaderboardType = 'earnings';
+    }
+  }
+
+  function handleLeaderboardRoute() {
+    restoreAppContentIfNeeded();
+
+    var route = window.location.hash.replace(/^#/, '') || 'home';
+    var leaderboardPage = document.getElementById('leaderboard-page');
+
+    if (leaderboardPage) {
+      if (route === 'leaderboard') {
+        leaderboardPage.classList.remove('hidden');
+        renderLeaderboardPage();
+      } else {
+        leaderboardPage.classList.add('hidden');
+      }
+    }
+  }
+
+  window.addEventListener('hashchange', handleLeaderboardRoute);
+
+  window.addEventListener('DOMContentLoaded', function () {
+    setTimeout(handleLeaderboardRoute, 0);
+  });
+
+  var langToggleBtn = document.getElementById('lang-toggle');
+  if (langToggleBtn) {
+    langToggleBtn.addEventListener('click', function () {
+      setTimeout(handleLeaderboardRoute, 0);
+    });
+  }
+})();

@@ -753,6 +753,38 @@
       </div>
 
     </div>
+
+    <!-- 排行榜页 — 由路由 #leaderboard 显示 -->
+    <div id="leaderboard-page" class="leaderboard-container hidden">
+
+      <h1 class="leaderboard-title" data-i18n="lb_page_title">排行榜</h1>
+
+      <!-- 榜单切换标签 -->
+      <div class="leaderboard-tabs">
+        <button type="button" id="lb-tab-earnings" class="leaderboard-tab leaderboard-tab-active" data-i18n="lb_tab_earnings">赚币榜</button>
+        <button type="button" id="lb-tab-invites" class="leaderboard-tab" data-i18n="lb_tab_invites">邀请榜</button>
+        <button type="button" id="lb-tab-reputation" class="leaderboard-tab" data-i18n="lb_tab_reputation">信誉榜</button>
+      </div>
+
+      <!-- 排行榜列表 -->
+      <div class="leaderboard-list-card">
+        <ul id="lb-rank-list" class="leaderboard-list"></ul>
+      </div>
+
+      <!-- 我的排名（固定底部） -->
+      <div class="leaderboard-my-rank">
+        <span id="lb-my-rank-num" class="lb-my-rank-num">#42</span>
+        <div class="lb-my-rank-user">
+          <div class="leaderboard-avatar"></div>
+          <div class="lb-my-rank-info">
+            <span id="lb-my-username" class="lb-my-username">AlphaRadar</span>
+            <span id="lb-my-level" class="lb-my-level">Lv.5</span>
+          </div>
+        </div>
+        <span id="lb-my-value" class="lb-my-value">15,600 CRLM</span>
+      </div>
+
+    </div>
   </main>
 
   <script src="app.js"></script>

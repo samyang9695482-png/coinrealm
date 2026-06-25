@@ -2141,3 +2141,246 @@ img {
         width: 100%;
     }
 }
+
+/* ==================== 排行榜页 (#leaderboard) ==================== */
+
+.leaderboard-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 16px 100px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+.leaderboard-title {
+    text-align: center;
+    font-size: 24px;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin-bottom: 24px;
+}
+
+.leaderboard-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.leaderboard-tab {
+    padding: 10px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+    border: 1px solid #ddd;
+    background-color: #ffffff;
+    color: #666;
+}
+
+.leaderboard-tab-active {
+    background-color: #f0b90b;
+    border-color: #f0b90b;
+    color: #1a1a2e;
+}
+
+.leaderboard-list-card {
+    background-color: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+    margin-bottom: 16px;
+}
+
+.leaderboard-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.leaderboard-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    background-color: #ffffff;
+    transition: background-color 0.2s;
+}
+
+.leaderboard-item-top3 {
+    background-color: #fffbe6;
+}
+
+.leaderboard-item:hover {
+    background-color: #f9f9f9;
+}
+
+.leaderboard-item-top3:hover {
+    background-color: #fff8dc;
+}
+
+.leaderboard-rank {
+    flex-shrink: 0;
+    width: 36px;
+    text-align: center;
+    font-size: 22px;
+    line-height: 1;
+}
+
+.leaderboard-rank-num {
+    font-size: 16px;
+    font-weight: 600;
+    color: #999;
+}
+
+.leaderboard-avatar {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background-color: #ccc;
+}
+
+.leaderboard-user-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.leaderboard-username {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1a1a2e;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.leaderboard-level {
+    font-size: 11px;
+    color: #666;
+    background-color: #f5f5f5;
+    padding: 1px 6px;
+    border-radius: 4px;
+    width: fit-content;
+}
+
+.leaderboard-value {
+    flex-shrink: 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: #1a1a2e;
+    text-align: right;
+}
+
+.leaderboard-my-rank {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 14px 16px;
+    background-color: #ffffff;
+    border-top: 1px solid #e8e8e8;
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06);
+    border-left: 4px solid #f0b90b;
+    z-index: 1001;
+    box-sizing: border-box;
+}
+
+.lb-my-rank-num {
+    flex-shrink: 0;
+    font-size: 16px;
+    font-weight: 700;
+    color: #f0b90b;
+    min-width: 40px;
+}
+
+.lb-my-rank-user {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.lb-my-rank-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.lb-my-username {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1a1a2e;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.lb-my-level {
+    font-size: 11px;
+    color: #666;
+}
+
+.lb-my-value {
+    flex-shrink: 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: #1a1a2e;
+}
+
+@media (max-width: 768px) {
+    .leaderboard-container {
+        padding: 0 12px 100px;
+    }
+
+    .leaderboard-title {
+        font-size: 20px;
+        margin-bottom: 16px;
+    }
+
+    .leaderboard-tab {
+        flex: 1;
+        min-width: 90px;
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+
+    .leaderboard-rank {
+        width: 28px;
+        font-size: 18px;
+    }
+
+    .leaderboard-rank-num {
+        font-size: 14px;
+    }
+
+    .leaderboard-item {
+        padding: 12px;
+        gap: 8px;
+    }
+
+    .leaderboard-avatar {
+        width: 32px;
+        height: 32px;
+    }
+
+    .leaderboard-my-rank {
+        padding: 12px;
+        gap: 10px;
+    }
+
+    .lb-my-value {
+        font-size: 12px;
+    }
+}
