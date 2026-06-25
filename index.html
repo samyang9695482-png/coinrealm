@@ -650,6 +650,57 @@
       </div>
 
     </div>
+
+    <!-- 我的分红页 — 由路由 #dividends 显示 -->
+    <div id="dividends-page" class="dividends-container hidden">
+
+      <h1 class="dividends-title" data-i18n="dv_page_title">我的分红</h1>
+
+      <!-- 下次分红倒计时 -->
+      <div class="dividends-countdown-card">
+        <p class="dividends-countdown-label" data-i18n="dv_countdown_label">距离下次分红还有</p>
+        <p id="dv-countdown-value" class="dividends-countdown-value">3天 12小时 30分</p>
+        <p class="dividends-countdown-note" data-i18n="dv_countdown_note">分红每周结算一次</p>
+      </div>
+
+      <!-- 权重面板 -->
+      <div class="dividends-weight-card">
+        <h2 class="dividends-card-title" data-i18n="dv_weight_title">我的分红权重</h2>
+        <div class="dividends-weight-row">
+          <span class="dividends-weight-label" data-i18n="dv_holdings_label">持币量</span>
+          <span class="dividends-weight-value">
+            <span id="dv-holdings-amount">12,500 CRLM</span>
+            <span id="dv-holdings-bonus" class="dividends-weight-bonus">1.5x 加成</span>
+          </span>
+        </div>
+        <div class="dividends-weight-row">
+          <span class="dividends-weight-label" data-i18n="dv_invites_label">有效邀请人数</span>
+          <span class="dividends-weight-value">
+            <span id="dv-invites-count">23 人</span>
+            <span id="dv-invites-bonus" class="dividends-weight-bonus">1.5x 加成</span>
+          </span>
+        </div>
+        <div class="dividends-weight-row dividends-weight-row-highlight">
+          <span class="dividends-weight-label" data-i18n="dv_total_weight_label">综合权重</span>
+          <span id="dv-total-weight" class="dividends-total-weight">3.0x</span>
+        </div>
+      </div>
+
+      <!-- 上次分红 -->
+      <div class="dividends-last-card">
+        <h2 class="dividends-card-title" data-i18n="dv_last_title">上次分红</h2>
+        <p id="dv-last-amount" class="dividends-last-amount">+850 CRLM</p>
+        <p id="dv-last-date" class="dividends-last-meta">2025-01-15</p>
+        <p id="dv-last-source" class="dividends-last-meta">任务佣金分红</p>
+      </div>
+
+      <!-- 分红记录 -->
+      <div class="dividends-history-card">
+        <h2 class="dividends-card-title" data-i18n="dv_history_title">分红记录</h2>
+        <ul id="dv-history-list" class="dividends-history-list"></ul>
+      </div>
+
+    </div>
   </main>
 
   <script src="app.js"></script>

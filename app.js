@@ -1768,3 +1768,199 @@ window.addEventListener('hashchange', handleRoute);
     });
   }
 })();
+
+// ==========================================
+// 9. 我的分红页 (#dividends) — 任务卡 #007
+// ==========================================
+(function () {
+  'use strict';
+
+  var APP_CONTENT_HTML = '';
+  var appContentEl = document.getElementById('app-content');
+  if (appContentEl) {
+    APP_CONTENT_HTML = appContentEl.innerHTML;
+  }
+
+  var sampleDividendsData = {
+    countdown: { days: 3, hours: 12, minutes: 30 },
+    holdings: { amount: 12500, bonus: '1.5x' },
+    invites: { count: 23, bonus: '1.5x' },
+    totalWeight: '3.0x',
+    lastDividend: {
+      amount: 850,
+      date: '2025-01-15',
+      sourceKey: 'dv_source_commission'
+    },
+    history: [
+      { date: '2025-01-15', amount: 850, sourceKey: 'dv_source_commission' },
+      { date: '2025-01-08', amount: 720, sourceKey: 'dv_source_commission' },
+      { date: '2025-01-01', amount: 680, sourceKey: 'dv_source_holding' }
+    ]
+  };
+
+  var dividendsTranslations = {
+    zh: {
+      dv_page_title: '我的分红',
+      dv_countdown_label: '距离下次分红还有',
+      dv_countdown_note: '分红每周结算一次',
+      dv_countdown_value: '{days}天 {hours}小时 {minutes}分',
+      dv_weight_title: '我的分红权重',
+      dv_holdings_label: '持币量',
+      dv_invites_label: '有效邀请人数',
+      dv_total_weight_label: '综合权重',
+      dv_bonus: '{bonus} 加成',
+      dv_invites_unit: '{count} 人',
+      dv_last_title: '上次分红',
+      dv_history_title: '分红记录',
+      dv_source_commission: '任务佣金分红',
+      dv_source_holding: '持币权重分红',
+      dv_amount_plus: '+{amount} CRLM'
+    },
+    en: {
+      dv_page_title: 'My Dividends',
+      dv_countdown_label: 'Time until next dividend',
+      dv_countdown_note: 'Dividends settle weekly',
+      dv_countdown_value: '{days}d {hours}h {minutes}m',
+      dv_weight_title: 'My Dividend Weight',
+      dv_holdings_label: 'Token Holdings',
+      dv_invites_label: 'Valid Invites',
+      dv_total_weight_label: 'Total Weight',
+      dv_bonus: '{bonus} bonus',
+      dv_invites_unit: '{count} people',
+      dv_last_title: 'Last Dividend',
+      dv_history_title: 'Dividend History',
+      dv_source_commission: 'Task commission dividend',
+      dv_source_holding: 'Holding weight dividend',
+      dv_amount_plus: '+{amount} CRLM'
+    }
+  };
+
+  function getLang() {
+    var saved = localStorage.getItem('coinrealm_lang');
+    return saved === 'en' ? 'en' : 'zh';
+  }
+
+  function dvT(key, vars) {
+    var dict = dividendsTranslations[getLang()];
+    var text = dict[key] || key;
+    if (vars) {
+      Object.keys(vars).forEach(function (k) {
+        text = text.replace('{' + k + '}', vars[k]);
+      });
+    }
+    return text;
+  }
+
+  function formatNumber(num) {
+    return String(num).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  function applyDividendsI18n() {
+    document.querySelectorAll('#dividends-page [data-i18n]').forEach(function (el) {
+      var key = el.getAttribute('data-i18n');
+      if (dividendsTranslations[getLang()][key]) {
+        el.textContent = dvT(key);
+      }
+    });
+  }
+
+  function renderDividendsPage() {
+    var data = sampleDividendsData;
+
+    var countdownEl = document.getElementById('dv-countdown-value');
+    if (countdownEl) {
+      countdownEl.textContent = dvT('dv_countdown_value', {
+        days: data.countdown.days,
+        hours: data.countdown.hours,
+        minutes: data.countdown.minutes
+      });
+    }
+
+    var holdingsAmount = document.getElementById('dv-holdings-amount');
+    if (holdingsAmount) {
+      holdingsAmount.textContent = formatNumber(data.holdings.amount) + ' CRLM';
+    }
+
+    var holdingsBonus = document.getElementById('dv-holdings-bonus');
+    if (holdingsBonus) {
+      holdingsBonus.textContent = dvT('dv_bonus', { bonus: data.holdings.bonus });
+    }
+
+    var invitesCount = document.getElementById('dv-invites-count');
+    if (invitesCount) {
+      invitesCount.textContent = dvT('dv_invites_unit', { count: data.invites.count });
+    }
+
+    var invitesBonus = document.getElementById('dv-invites-bonus');
+    if (invitesBonus) {
+      invitesBonus.textContent = dvT('dv_bonus', { bonus: data.invites.bonus });
+    }
+
+    var totalWeight = document.getElementById('dv-total-weight');
+    if (totalWeight) totalWeight.textContent = data.totalWeight;
+
+    var lastAmount = document.getElementById('dv-last-amount');
+    if (lastAmount) {
+      lastAmount.textContent = dvT('dv_amount_plus', { amount: formatNumber(data.lastDividend.amount) });
+    }
+
+    var lastDate = document.getElementById('dv-last-date');
+    if (lastDate) lastDate.textContent = data.lastDividend.date;
+
+    var lastSource = document.getElementById('dv-last-source');
+    if (lastSource) {
+      lastSource.textContent = dvT(data.lastDividend.sourceKey);
+    }
+
+    var historyList = document.getElementById('dv-history-list');
+    if (historyList) {
+      historyList.innerHTML = data.history.map(function (item) {
+        return (
+          '<li class="dividends-history-item">' +
+            '<span class="dividends-history-date">' + item.date + '</span>' +
+            '<span class="dividends-history-amount">' + dvT('dv_amount_plus', { amount: formatNumber(item.amount) }) + '</span>' +
+            '<span class="dividends-history-source">' + dvT(item.sourceKey) + '</span>' +
+          '</li>'
+        );
+      }).join('');
+    }
+
+    applyDividendsI18n();
+  }
+
+  function restoreAppContentIfNeeded() {
+    if (!appContentEl || !APP_CONTENT_HTML) return;
+    if (!document.getElementById('home-page')) {
+      appContentEl.innerHTML = APP_CONTENT_HTML;
+    }
+  }
+
+  function handleDividendsRoute() {
+    restoreAppContentIfNeeded();
+
+    var route = window.location.hash.replace(/^#/, '') || 'home';
+    var dividendsPage = document.getElementById('dividends-page');
+
+    if (dividendsPage) {
+      if (route === 'dividends') {
+        dividendsPage.classList.remove('hidden');
+        renderDividendsPage();
+      } else {
+        dividendsPage.classList.add('hidden');
+      }
+    }
+  }
+
+  window.addEventListener('hashchange', handleDividendsRoute);
+
+  window.addEventListener('DOMContentLoaded', function () {
+    setTimeout(handleDividendsRoute, 0);
+  });
+
+  var langToggleBtn = document.getElementById('lang-toggle');
+  if (langToggleBtn) {
+    langToggleBtn.addEventListener('click', function () {
+      setTimeout(handleDividendsRoute, 0);
+    });
+  }
+})();
