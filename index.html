@@ -580,6 +580,76 @@
       </div>
 
     </div>
+
+    <!-- 个人中心页 — 由路由 #profile 显示 -->
+    <div id="profile-page" class="profile-container hidden">
+
+      <!-- 用户信息区 -->
+      <div class="profile-user-card">
+        <div class="profile-avatar"></div>
+        <h2 id="pf-username" class="profile-username">AlphaRadar</h2>
+        <span id="pf-level-badge" class="profile-level-badge">Lv.5 大师</span>
+        <span id="pf-reputation" class="profile-reputation">98% 完成率</span>
+      </div>
+
+      <!-- 资产卡片 -->
+      <div class="profile-asset-card">
+        <div class="profile-asset-left">
+          <div id="pf-crlm-balance" class="profile-crlm-balance">12,500 CRLM</div>
+          <div id="pf-usdt-value" class="profile-usdt-value">≈ 1,250 USDT</div>
+        </div>
+        <button type="button" class="profile-withdraw-btn" data-i18n="pf_btn_withdraw">提币</button>
+      </div>
+
+      <!-- 数据统计行 -->
+      <div class="profile-stats-row">
+        <div class="profile-stat-item">
+          <span id="pf-stat-progress" class="profile-stat-num">3</span>
+          <span class="profile-stat-label" data-i18n="pf_stat_progress">进行中</span>
+        </div>
+        <div class="profile-stat-item">
+          <span id="pf-stat-completed" class="profile-stat-num">28</span>
+          <span class="profile-stat-label" data-i18n="pf_stat_completed">已完成</span>
+        </div>
+        <div class="profile-stat-item">
+          <span id="pf-stat-earnings" class="profile-stat-num">15,600</span>
+          <span class="profile-stat-label" data-i18n="pf_stat_earnings">累计收益</span>
+        </div>
+      </div>
+
+      <!-- 功能入口列表 -->
+      <div class="profile-menu-card">
+        <a href="#home" class="profile-menu-item">
+          <span data-i18n="pf_menu_tasks">我的任务（进行中/已完成/已驳回）</span>
+          <span class="profile-menu-arrow">→</span>
+        </a>
+        <a href="#home" class="profile-menu-item">
+          <span data-i18n="pf_menu_publish">发布管理（我发布的任务列表）</span>
+          <span class="profile-menu-arrow">→</span>
+        </a>
+        <a href="#dividends" class="profile-menu-item" data-route="dividends">
+          <span data-i18n="pf_menu_dividends">我的分红</span>
+          <span class="profile-menu-arrow">→</span>
+        </a>
+        <a href="#exchange" class="profile-menu-item" data-route="exchange">
+          <span data-i18n="pf_menu_exchange">兑换市场</span>
+          <span class="profile-menu-arrow">→</span>
+        </a>
+        <a href="#leaderboard" class="profile-menu-item" data-route="leaderboard">
+          <span data-i18n="pf_menu_leaderboard">排行榜</span>
+          <span class="profile-menu-arrow">→</span>
+        </a>
+        <a href="#invite" class="profile-menu-item" data-route="invite">
+          <span data-i18n="pf_menu_invite">邀请好友</span>
+          <span class="profile-menu-arrow">→</span>
+        </a>
+        <a href="#home" class="profile-menu-item profile-menu-item-last">
+          <span data-i18n="pf_menu_settings">设置（语言/通知/退出登录）</span>
+          <span class="profile-menu-arrow">→</span>
+        </a>
+      </div>
+
+    </div>
   </main>
 
   <script src="app.js"></script>

@@ -1579,3 +1579,192 @@ window.addEventListener('hashchange', handleRoute);
     });
   }
 })();
+
+// ==========================================
+// 8. 个人中心页 (#profile) — 任务卡 #006
+// ==========================================
+(function () {
+  'use strict';
+
+  var APP_CONTENT_HTML = '';
+  var appContentEl = document.getElementById('app-content');
+  if (appContentEl) {
+    APP_CONTENT_HTML = appContentEl.innerHTML;
+  }
+
+  var profileInitialized = false;
+
+  var sampleUser = {
+    username: 'AlphaRadar',
+    level: 5,
+    levelLabelKey: 'pf_level_master',
+    completionRate: 98,
+    crlmBalance: 12500,
+    usdtValue: 1250,
+    stats: {
+      inProgress: 3,
+      completed: 28,
+      totalEarnings: 15600
+    }
+  };
+
+  var profileTranslations = {
+    zh: {
+      pf_btn_withdraw: '提币',
+      pf_stat_progress: '进行中',
+      pf_stat_completed: '已完成',
+      pf_stat_earnings: '累计收益',
+      pf_menu_tasks: '我的任务（进行中/已完成/已驳回）',
+      pf_menu_publish: '发布管理（我发布的任务列表）',
+      pf_menu_dividends: '我的分红',
+      pf_menu_exchange: '兑换市场',
+      pf_menu_leaderboard: '排行榜',
+      pf_menu_invite: '邀请好友',
+      pf_menu_settings: '设置（语言/通知/退出登录）',
+      pf_level_master: '大师',
+      pf_completion_rate: '{rate}% 完成率',
+      pf_level_badge: 'Lv.{level} {label}',
+      pf_usdt_approx: '≈ {amount} USDT'
+    },
+    en: {
+      pf_btn_withdraw: 'Withdraw',
+      pf_stat_progress: 'In Progress',
+      pf_stat_completed: 'Completed',
+      pf_stat_earnings: 'Total Earnings',
+      pf_menu_tasks: 'My Tasks (Active/Completed/Rejected)',
+      pf_menu_publish: 'Publish Management (My Published Tasks)',
+      pf_menu_dividends: 'My Dividends',
+      pf_menu_exchange: 'Exchange Market',
+      pf_menu_leaderboard: 'Leaderboard',
+      pf_menu_invite: 'Invite Friends',
+      pf_menu_settings: 'Settings (Language/Notifications/Logout)',
+      pf_level_master: 'Master',
+      pf_completion_rate: '{rate}% completion rate',
+      pf_level_badge: 'Lv.{level} {label}',
+      pf_usdt_approx: '≈ {amount} USDT'
+    }
+  };
+
+  function getLang() {
+    var saved = localStorage.getItem('coinrealm_lang');
+    return saved === 'en' ? 'en' : 'zh';
+  }
+
+  function pfT(key, vars) {
+    var dict = profileTranslations[getLang()];
+    var text = dict[key] || key;
+    if (vars) {
+      Object.keys(vars).forEach(function (k) {
+        text = text.replace('{' + k + '}', vars[k]);
+      });
+    }
+    return text;
+  }
+
+  function formatNumber(num) {
+    return String(num).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  function applyProfileI18n() {
+    document.querySelectorAll('#profile-page [data-i18n]').forEach(function (el) {
+      var key = el.getAttribute('data-i18n');
+      if (profileTranslations[getLang()][key]) {
+        el.textContent = pfT(key);
+      }
+    });
+  }
+
+  function renderProfilePage() {
+    var user = sampleUser;
+
+    var usernameEl = document.getElementById('pf-username');
+    if (usernameEl) usernameEl.textContent = user.username;
+
+    var levelBadge = document.getElementById('pf-level-badge');
+    if (levelBadge) {
+      levelBadge.textContent = pfT('pf_level_badge', {
+        level: user.level,
+        label: pfT(user.levelLabelKey)
+      });
+    }
+
+    var reputationEl = document.getElementById('pf-reputation');
+    if (reputationEl) {
+      reputationEl.textContent = pfT('pf_completion_rate', { rate: user.completionRate });
+    }
+
+    var crlmEl = document.getElementById('pf-crlm-balance');
+    if (crlmEl) {
+      crlmEl.textContent = formatNumber(user.crlmBalance) + ' CRLM';
+    }
+
+    var usdtEl = document.getElementById('pf-usdt-value');
+    if (usdtEl) {
+      usdtEl.textContent = pfT('pf_usdt_approx', { amount: formatNumber(user.usdtValue) });
+    }
+
+    var progressEl = document.getElementById('pf-stat-progress');
+    if (progressEl) progressEl.textContent = user.stats.inProgress;
+
+    var completedEl = document.getElementById('pf-stat-completed');
+    if (completedEl) completedEl.textContent = user.stats.completed;
+
+    var earningsEl = document.getElementById('pf-stat-earnings');
+    if (earningsEl) earningsEl.textContent = formatNumber(user.stats.totalEarnings);
+
+    applyProfileI18n();
+  }
+
+  function initProfileEvents() {
+    if (profileInitialized) return;
+    profileInitialized = true;
+
+    document.querySelectorAll('#profile-page .profile-menu-item[data-route]').forEach(function (item) {
+      item.addEventListener('click', function (e) {
+        var route = item.getAttribute('data-route');
+        if (route) {
+          e.preventDefault();
+          window.location.hash = route;
+        }
+      });
+    });
+  }
+
+  function restoreAppContentIfNeeded() {
+    if (!appContentEl || !APP_CONTENT_HTML) return;
+    if (!document.getElementById('home-page')) {
+      appContentEl.innerHTML = APP_CONTENT_HTML;
+      profileInitialized = false;
+    }
+  }
+
+  function handleProfileRoute() {
+    restoreAppContentIfNeeded();
+
+    var route = window.location.hash.replace(/^#/, '') || 'home';
+    var profilePage = document.getElementById('profile-page');
+
+    if (profilePage) {
+      if (route === 'profile') {
+        profilePage.classList.remove('hidden');
+        initProfileEvents();
+        renderProfilePage();
+      } else {
+        profilePage.classList.add('hidden');
+      }
+    }
+  }
+
+  window.addEventListener('hashchange', handleProfileRoute);
+
+  window.addEventListener('DOMContentLoaded', function () {
+    setTimeout(handleProfileRoute, 0);
+  });
+
+  var langToggleBtn = document.getElementById('lang-toggle');
+  if (langToggleBtn) {
+    langToggleBtn.addEventListener('click', function () {
+      setTimeout(handleProfileRoute, 0);
+    });
+  }
+})();
