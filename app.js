@@ -1964,3 +1964,300 @@ window.addEventListener('hashchange', handleRoute);
     });
   }
 })();
+
+// ==========================================
+// 10. 兑换市场页 (#exchange) — 任务卡 #008
+// ==========================================
+(function () {
+  'use strict';
+
+  var APP_CONTENT_HTML = '';
+  var appContentEl = document.getElementById('app-content');
+  if (appContentEl) {
+    APP_CONTENT_HTML = appContentEl.innerHTML;
+  }
+
+  var exchangeMode = 'buy';
+  var exchangeInitialized = false;
+
+  var buyOrders = [
+    { price: 0.10, qty: 1000, total: 100.00 },
+    { price: 0.098, qty: 2000, total: 196.00 },
+    { price: 0.102, qty: 500, total: 51.00 },
+    { price: 0.095, qty: 3000, total: 285.00 }
+  ];
+
+  var sellOrders = [
+    { price: 0.105, qty: 800, total: 84.00 },
+    { price: 0.108, qty: 1500, total: 162.00 },
+    { price: 0.103, qty: 600, total: 61.80 },
+    { price: 0.110, qty: 2500, total: 275.00 }
+  ];
+
+  var recentTrades = [
+    { time: '14:32:18', price: 0.101, qty: 500 },
+    { time: '14:28:05', price: 0.099, qty: 1200 },
+    { time: '14:15:42', price: 0.100, qty: 800 }
+  ];
+
+  var exchangeTranslations = {
+    zh: {
+      ex_page_title: '兑换市场',
+      ex_tab_buy: '买入 CRLM',
+      ex_tab_sell: '卖出 CRLM',
+      ex_col_price: '价格（CRLM/USDT）',
+      ex_col_qty: '数量（CRLM）',
+      ex_col_total: '总价（USDT）',
+      ex_col_action: '操作',
+      ex_no_more: '暂无更多挂单',
+      ex_form_title: '我要下单',
+      ex_ph_price: '价格',
+      ex_ph_qty: '数量',
+      ex_total_usdt: '{amount} USDT',
+      ex_btn_confirm: '确认挂单',
+      ex_btn_buy: '买入',
+      ex_btn_sell: '卖出',
+      ex_trades_title: '最新成交',
+      ex_alert_trade: '交易成功！',
+      ex_alert_required: '请填写价格和数量',
+      ex_alert_order: '挂单成功！',
+      ex_trade_qty: '{qty} CRLM'
+    },
+    en: {
+      ex_page_title: 'Exchange Market',
+      ex_tab_buy: 'Buy CRLM',
+      ex_tab_sell: 'Sell CRLM',
+      ex_col_price: 'Price (CRLM/USDT)',
+      ex_col_qty: 'Quantity (CRLM)',
+      ex_col_total: 'Total (USDT)',
+      ex_col_action: 'Action',
+      ex_no_more: 'No more orders',
+      ex_form_title: 'Place Order',
+      ex_ph_price: 'Price',
+      ex_ph_qty: 'Quantity',
+      ex_total_usdt: '{amount} USDT',
+      ex_btn_confirm: 'Confirm Order',
+      ex_btn_buy: 'Buy',
+      ex_btn_sell: 'Sell',
+      ex_trades_title: 'Recent Trades',
+      ex_alert_trade: 'Trade successful!',
+      ex_alert_required: 'Please enter price and quantity',
+      ex_alert_order: 'Order placed successfully!',
+      ex_trade_qty: '{qty} CRLM'
+    }
+  };
+
+  function getLang() {
+    var saved = localStorage.getItem('coinrealm_lang');
+    return saved === 'en' ? 'en' : 'zh';
+  }
+
+  function exT(key, vars) {
+    var dict = exchangeTranslations[getLang()];
+    var text = dict[key] || key;
+    if (vars) {
+      Object.keys(vars).forEach(function (k) {
+        text = text.replace('{' + k + '}', vars[k]);
+      });
+    }
+    return text;
+  }
+
+  function applyExchangeI18n() {
+    document.querySelectorAll('#exchange-page [data-i18n]').forEach(function (el) {
+      var key = el.getAttribute('data-i18n');
+      if (exchangeTranslations[getLang()][key]) {
+        el.textContent = exT(key);
+      }
+    });
+
+    document.querySelectorAll('#exchange-page [data-placeholder]').forEach(function (el) {
+      var key = el.getAttribute('data-placeholder');
+      if (exchangeTranslations[getLang()][key]) {
+        el.setAttribute('placeholder', exT(key));
+      }
+    });
+  }
+
+  function renderOrderList() {
+    var listEl = document.getElementById('ex-order-list');
+    if (!listEl) return;
+
+    var orders = exchangeMode === 'buy' ? buyOrders : sellOrders;
+    var actionKey = exchangeMode === 'buy' ? 'ex_btn_buy' : 'ex_btn_sell';
+    var actionText = exT(actionKey);
+
+    listEl.innerHTML = orders.map(function (order) {
+      return (
+        '<tr>' +
+          '<td>' + order.price.toFixed(4) + '</td>' +
+          '<td>' + order.qty.toLocaleString() + '</td>' +
+          '<td>' + order.total.toFixed(2) + '</td>' +
+          '<td><button type="button" class="exchange-action-btn ex-order-action-btn">' + actionText + '</button></td>' +
+        '</tr>'
+      );
+    }).join('');
+
+    listEl.querySelectorAll('.ex-order-action-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        alert(exT('ex_alert_trade'));
+      });
+    });
+  }
+
+  function renderTradesList() {
+    var listEl = document.getElementById('ex-trades-list');
+    if (!listEl) return;
+
+    listEl.innerHTML = recentTrades.map(function (trade) {
+      return (
+        '<li class="exchange-trades-item">' +
+          '<span class="exchange-trades-time">' + trade.time + '</span>' +
+          '<span class="exchange-trades-price">' + trade.price.toFixed(4) + '</span>' +
+          '<span class="exchange-trades-qty">' + exT('ex_trade_qty', { qty: trade.qty.toLocaleString() }) + '</span>' +
+        '</li>'
+      );
+    }).join('');
+  }
+
+  function updateTabUI() {
+    var tabBuy = document.getElementById('ex-tab-buy');
+    var tabSell = document.getElementById('ex-tab-sell');
+
+    if (tabBuy) {
+      if (exchangeMode === 'buy') {
+        tabBuy.classList.add('exchange-tab-active');
+      } else {
+        tabBuy.classList.remove('exchange-tab-active');
+      }
+    }
+
+    if (tabSell) {
+      if (exchangeMode === 'sell') {
+        tabSell.classList.add('exchange-tab-active');
+      } else {
+        tabSell.classList.remove('exchange-tab-active');
+      }
+    }
+  }
+
+  function updateTotalDisplay() {
+    var priceInput = document.getElementById('ex-input-price');
+    var qtyInput = document.getElementById('ex-input-qty');
+    var totalEl = document.getElementById('ex-total-display');
+
+    if (!totalEl) return;
+
+    var price = parseFloat(priceInput ? priceInput.value : '');
+    var qty = parseFloat(qtyInput ? qtyInput.value : '');
+
+    if (isNaN(price) || isNaN(qty) || price <= 0 || qty <= 0) {
+      totalEl.textContent = exT('ex_total_usdt', { amount: '0.00' });
+      return;
+    }
+
+    var total = (price * qty).toFixed(2);
+    totalEl.textContent = exT('ex_total_usdt', { amount: total });
+  }
+
+  function clearOrderForm() {
+    var priceInput = document.getElementById('ex-input-price');
+    var qtyInput = document.getElementById('ex-input-qty');
+    if (priceInput) priceInput.value = '';
+    if (qtyInput) qtyInput.value = '';
+    updateTotalDisplay();
+  }
+
+  function initExchangeEvents() {
+    if (exchangeInitialized) return;
+    exchangeInitialized = true;
+
+    var tabBuy = document.getElementById('ex-tab-buy');
+    var tabSell = document.getElementById('ex-tab-sell');
+
+    if (tabBuy) {
+      tabBuy.addEventListener('click', function () {
+        exchangeMode = 'buy';
+        updateTabUI();
+        renderOrderList();
+      });
+    }
+
+    if (tabSell) {
+      tabSell.addEventListener('click', function () {
+        exchangeMode = 'sell';
+        updateTabUI();
+        renderOrderList();
+      });
+    }
+
+    var priceInput = document.getElementById('ex-input-price');
+    var qtyInput = document.getElementById('ex-input-qty');
+
+    if (priceInput) priceInput.addEventListener('input', updateTotalDisplay);
+    if (qtyInput) qtyInput.addEventListener('input', updateTotalDisplay);
+
+    var confirmBtn = document.getElementById('ex-confirm-btn');
+    if (confirmBtn) {
+      confirmBtn.addEventListener('click', function () {
+        var price = parseFloat(priceInput ? priceInput.value : '');
+        var qty = parseFloat(qtyInput ? qtyInput.value : '');
+
+        if (!priceInput || !qtyInput || !priceInput.value.trim() || !qtyInput.value.trim() || isNaN(price) || isNaN(qty) || price <= 0 || qty <= 0) {
+          alert(exT('ex_alert_required'));
+          return;
+        }
+
+        alert(exT('ex_alert_order'));
+        clearOrderForm();
+      });
+    }
+  }
+
+  function renderExchangePage() {
+    updateTabUI();
+    renderOrderList();
+    renderTradesList();
+    updateTotalDisplay();
+    initExchangeEvents();
+    applyExchangeI18n();
+  }
+
+  function restoreAppContentIfNeeded() {
+    if (!appContentEl || !APP_CONTENT_HTML) return;
+    if (!document.getElementById('home-page')) {
+      appContentEl.innerHTML = APP_CONTENT_HTML;
+      exchangeInitialized = false;
+      exchangeMode = 'buy';
+    }
+  }
+
+  function handleExchangeRoute() {
+    restoreAppContentIfNeeded();
+
+    var route = window.location.hash.replace(/^#/, '') || 'home';
+    var exchangePage = document.getElementById('exchange-page');
+
+    if (exchangePage) {
+      if (route === 'exchange') {
+        exchangePage.classList.remove('hidden');
+        renderExchangePage();
+      } else {
+        exchangePage.classList.add('hidden');
+      }
+    }
+  }
+
+  window.addEventListener('hashchange', handleExchangeRoute);
+
+  window.addEventListener('DOMContentLoaded', function () {
+    setTimeout(handleExchangeRoute, 0);
+  });
+
+  var langToggleBtn = document.getElementById('lang-toggle');
+  if (langToggleBtn) {
+    langToggleBtn.addEventListener('click', function () {
+      setTimeout(handleExchangeRoute, 0);
+    });
+  }
+})();

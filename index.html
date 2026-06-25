@@ -701,6 +701,58 @@
       </div>
 
     </div>
+
+    <!-- 兑换市场页 — 由路由 #exchange 显示 -->
+    <div id="exchange-page" class="exchange-container hidden">
+
+      <h1 class="exchange-title" data-i18n="ex_page_title">兑换市场</h1>
+
+      <!-- 买卖切换标签 -->
+      <div class="exchange-tabs">
+        <button type="button" id="ex-tab-buy" class="exchange-tab exchange-tab-active" data-i18n="ex_tab_buy">买入 CRLM</button>
+        <button type="button" id="ex-tab-sell" class="exchange-tab" data-i18n="ex_tab_sell">卖出 CRLM</button>
+      </div>
+
+      <!-- 挂单列表 -->
+      <div class="exchange-orderbook-card">
+        <div class="exchange-table-wrap">
+          <table class="exchange-table">
+            <thead>
+              <tr>
+                <th data-i18n="ex_col_price">价格（CRLM/USDT）</th>
+                <th data-i18n="ex_col_qty">数量（CRLM）</th>
+                <th data-i18n="ex_col_total">总价（USDT）</th>
+                <th data-i18n="ex_col_action">操作</th>
+              </tr>
+            </thead>
+            <tbody id="ex-order-list"></tbody>
+          </table>
+        </div>
+        <p class="exchange-no-more" data-i18n="ex_no_more">暂无更多挂单</p>
+      </div>
+
+      <!-- 下单区 -->
+      <div class="exchange-form-card">
+        <h2 class="exchange-card-title" data-i18n="ex_form_title">我要下单</h2>
+        <div class="exchange-form-row">
+          <input type="number" id="ex-input-price" class="exchange-input" data-placeholder="ex_ph_price" placeholder="价格" min="0" step="0.0001">
+        </div>
+        <div class="exchange-form-row">
+          <input type="number" id="ex-input-qty" class="exchange-input" data-placeholder="ex_ph_qty" placeholder="数量" min="0" step="1">
+        </div>
+        <div class="exchange-form-row">
+          <div id="ex-total-display" class="exchange-total-display">0.00 USDT</div>
+        </div>
+        <button type="button" id="ex-confirm-btn" class="exchange-confirm-btn" data-i18n="ex_btn_confirm">确认挂单</button>
+      </div>
+
+      <!-- 成交记录 -->
+      <div class="exchange-trades-card">
+        <h2 class="exchange-card-title" data-i18n="ex_trades_title">最新成交</h2>
+        <ul id="ex-trades-list" class="exchange-trades-list"></ul>
+      </div>
+
+    </div>
   </main>
 
   <script src="app.js"></script>
