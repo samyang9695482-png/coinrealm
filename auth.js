@@ -71,9 +71,15 @@
       return;
     }
 
+    // 立刻显示 Google 登录按钮
+    updateUI(null);
+
+    // 异步检查登录状态
     supabase.auth.getSession().then(function (result) {
       var session = result.data && result.data.session;
       updateUI(session ? session.user : null);
+    }).catch(function () {
+      // 即使出错，按钮也已经在上面显示出来了
     });
 
     supabase.auth.onAuthStateChange(function (event, session) {
