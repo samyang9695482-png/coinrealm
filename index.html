@@ -343,6 +343,95 @@
         </div>
       </footer>
     </div>
+
+    <!-- 任务详情页 — 由路由 #task-detail 显示 -->
+    <div id="task-detail-page" class="task-detail-container hidden">
+
+      <!-- 卡片1：发布者信息 -->
+      <div class="task-detail-card publisher-info-card">
+        <span id="td-official-badge" class="td-official-corner hidden" data-i18n="td_official_badge">官方认证</span>
+        <div class="publisher-info-left">
+          <div class="publisher-avatar"></div>
+          <div class="publisher-meta">
+            <span id="td-publisher-name" class="publisher-name">AlphaRadar</span>
+            <span id="td-publisher-level" class="publisher-level-badge">Lv.5 大师</span>
+          </div>
+        </div>
+        <div class="publisher-info-right">
+          <span id="td-completion-rate" class="publisher-stat">98% 完成率</span>
+          <span id="td-published-count" class="publisher-stat">已发布 23 个任务</span>
+        </div>
+      </div>
+
+      <!-- 卡片2：任务核心信息 -->
+      <div class="task-detail-card task-core-card">
+        <h1 id="td-task-title" class="task-detail-title">注册XX交易所，领取空投</h1>
+        <span id="td-task-type" class="td-type-label label-airdrop">空投</span>
+        <div id="td-reward-amount" class="task-detail-reward">500 CRLM</div>
+        <div class="task-detail-section">
+          <h3 class="task-detail-section-title" data-i18n="td_desc_title">任务描述</h3>
+          <div id="td-task-description" class="task-detail-desc"></div>
+        </div>
+        <div class="task-detail-section">
+          <h3 class="task-detail-section-title" data-i18n="td_req_title">任务要求</h3>
+          <ul id="td-task-requirements" class="task-requirements-list"></ul>
+        </div>
+      </div>
+
+      <!-- 卡片3：任务状态信息 -->
+      <div class="task-detail-card task-status-card">
+        <div class="status-row">
+          <span class="status-label" data-i18n="td_slots_label">剩余名额</span>
+          <span id="td-slots-text" class="status-value">15/20</span>
+        </div>
+        <div id="td-slots-progress" class="slots-progress-bar">
+          <div id="td-slots-progress-fill" class="slots-progress-fill"></div>
+        </div>
+        <div class="status-row">
+          <span class="status-label" data-i18n="td_deadline_label">截止时间</span>
+          <span id="td-deadline-text" class="status-value">3天后 (2025年1月15日)</span>
+        </div>
+        <div class="status-row">
+          <span class="status-label" data-i18n="td_staked_label">发布者已质押</span>
+          <span id="td-staked-text" class="status-value">已质押 600 CRLM（奖励500 + 押金100）</span>
+        </div>
+      </div>
+
+      <!-- 卡片4：推广置顶区（发布者本人可见，默认隐藏） -->
+      <div id="td-pin-card" class="task-detail-card pin-promo-card hidden">
+        <h3 class="task-detail-section-title" data-i18n="td_pin_title">推广此任务</h3>
+        <p id="td-pin-status" class="pin-status-text" data-i18n="td_pin_not_pinned">未置顶</p>
+        <div class="pin-package-group">
+          <button type="button" class="pin-package-btn" data-days="1" data-price="100">
+            <span data-i18n="td_pin_1d">1天</span> 100 CRLM
+          </button>
+          <button type="button" class="pin-package-btn" data-days="7" data-price="500">
+            <span data-i18n="td_pin_7d">7天</span> 500 CRLM
+          </button>
+          <button type="button" class="pin-package-btn" data-days="30" data-price="2000">
+            <span data-i18n="td_pin_30d">30天</span> 2000 CRLM
+          </button>
+        </div>
+        <p class="pin-disclaimer" data-i18n="td_pin_disclaimer">置顶后展示在首页用户置顶区。如任务被官方下架，置顶费不退。</p>
+      </div>
+
+      <!-- 卡片5：风险提示 -->
+      <div class="task-detail-card risk-warning-card">
+        <span id="td-high-risk-tag" class="td-high-risk-tag hidden" data-i18n="td_high_risk">⚠️ 高风险任务</span>
+        <h3 class="risk-warning-title" data-i18n="td_risk_title">⚠️ 风险提示</h3>
+        <p class="risk-warning-content" data-i18n="td_risk_content">CoinRealm 不对该任务的真实性做背书。请自行判断项目风险，切勿投入超出你承受能力的资金。如任务要求转账、提供私钥或助记词，请立即举报。</p>
+      </div>
+
+      <!-- 底部固定操作栏 -->
+      <div class="task-detail-action-bar">
+        <button type="button" id="td-btn-claim" class="td-action-btn td-btn-gold" data-i18n="td_btn_claim">领取任务</button>
+        <button type="button" id="td-btn-submit" class="td-action-btn td-btn-blue hidden" data-i18n="td_btn_submit">去提交</button>
+        <button type="button" id="td-btn-manage" class="td-action-btn td-btn-gray hidden" data-i18n="td_btn_manage">管理任务</button>
+        <button type="button" id="td-btn-level" class="td-action-btn td-btn-disabled hidden" disabled data-i18n="td_btn_level">等级不足（需Lv.1以上）</button>
+        <button type="button" id="td-btn-ended" class="td-action-btn td-btn-disabled hidden" disabled data-i18n="td_btn_ended">已结束</button>
+      </div>
+
+    </div>
   </main>
 
   <script src="app.js"></script>
