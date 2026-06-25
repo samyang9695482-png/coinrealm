@@ -933,3 +933,380 @@ window.addEventListener('hashchange', handleRoute);
     });
   }
 })();
+
+// ==========================================
+// 6. 发布任务页 (#create-task) — 任务卡 #004
+// ==========================================
+(function () {
+  'use strict';
+
+  var APP_CONTENT_HTML = '';
+  var appContentEl = document.getElementById('app-content');
+  if (appContentEl) {
+    APP_CONTENT_HTML = appContentEl.innerHTML;
+  }
+
+  var userLevel = 2;
+  var userBalance = 500;
+  var createTaskInitialized = false;
+
+  var createTaskTranslations = {
+    zh: {
+      ct_page_title: '发布任务',
+      ct_label_title: '任务标题',
+      ct_label_type: '任务类型',
+      ct_label_desc: '任务描述',
+      ct_label_req: '任务要求',
+      ct_label_reward_type: '奖励类型',
+      ct_label_reward_amount: '奖励金额',
+      ct_label_slots: '任务名额',
+      ct_label_deadline: '截止时间',
+      ct_label_proof: '凭证要求',
+      ct_ph_title: '请输入任务标题',
+      ct_ph_desc: '请详细描述任务内容和要求',
+      ct_ph_req: '请输入任务要求',
+      ct_ph_reward: '请输入奖励金额',
+      ct_ph_slots: '请输入名额（留空则不限）',
+      ct_type_other: '其他',
+      ct_add_req: '+ 添加要求',
+      ct_proof_text: '文字凭证',
+      ct_proof_screenshot: '截图凭证',
+      ct_stake_note: '仅 Lv.3 及以上用户可发布任务。',
+      ct_stake_hint: '发布此任务需质押 {amount} CRLM（奖励 + 押金），任务完成后押金退还。',
+      ct_stake_hint_usdt: '发布此任务需质押 {amount} USDT（奖励 + 押金），任务完成后押金退还。',
+      ct_btn_submit: '确认发布',
+      ct_btn_balance: '余额不足，请先兑换 CRLM',
+      ct_btn_level: '等级不足（需 Lv.3 以上）',
+      ct_agreement: '点击发布即表示同意 CoinRealm 发布规则',
+      ct_alert_required: '请填写所有必填字段',
+      ct_alert_success: '任务发布成功！',
+      tag_all: '全部',
+      tag_airdrop: '空投',
+      tag_register: '注册',
+      tag_trade: '交易',
+      tag_game: '游戏',
+      tag_content: '内容',
+      tag_test: '测试'
+    },
+    en: {
+      ct_page_title: 'Create Task',
+      ct_label_title: 'Task Title',
+      ct_label_type: 'Task Type',
+      ct_label_desc: 'Description',
+      ct_label_req: 'Requirements',
+      ct_label_reward_type: 'Reward Type',
+      ct_label_reward_amount: 'Reward Amount',
+      ct_label_slots: 'Task Slots',
+      ct_label_deadline: 'Deadline',
+      ct_label_proof: 'Proof Type',
+      ct_ph_title: 'Enter task title',
+      ct_ph_desc: 'Describe the task content and requirements in detail',
+      ct_ph_req: 'Enter a requirement',
+      ct_ph_reward: 'Enter reward amount',
+      ct_ph_slots: 'Enter slots (leave empty for unlimited)',
+      ct_type_other: 'Other',
+      ct_add_req: '+ Add Requirement',
+      ct_proof_text: 'Text Proof',
+      ct_proof_screenshot: 'Screenshot Proof',
+      ct_stake_note: 'Only Lv.3+ users can publish tasks.',
+      ct_stake_hint: 'Publishing requires staking {amount} CRLM (reward + deposit). Deposit refunded after completion.',
+      ct_stake_hint_usdt: 'Publishing requires staking {amount} USDT (reward + deposit). Deposit refunded after completion.',
+      ct_btn_submit: 'Confirm & Publish',
+      ct_btn_balance: 'Insufficient balance, please exchange CRLM first',
+      ct_btn_level: 'Level too low (Lv.3+ required)',
+      ct_agreement: 'By publishing, you agree to CoinRealm publishing rules',
+      ct_alert_required: 'Please fill in all required fields',
+      ct_alert_success: 'Task published successfully!',
+      tag_all: 'All',
+      tag_airdrop: 'Airdrop',
+      tag_register: 'Register',
+      tag_trade: 'Trade',
+      tag_game: 'Game',
+      tag_content: 'Content',
+      tag_test: 'Test'
+    }
+  };
+
+  function getLang() {
+    var saved = localStorage.getItem('coinrealm_lang');
+    return saved === 'en' ? 'en' : 'zh';
+  }
+
+  function ctT(key, vars) {
+    var dict = createTaskTranslations[getLang()];
+    var text = dict[key] || key;
+    if (vars) {
+      Object.keys(vars).forEach(function (k) {
+        text = text.replace('{' + k + '}', vars[k]);
+      });
+    }
+    return text;
+  }
+
+  function getDefaultDeadline() {
+    var date = new Date();
+    date.setDate(date.getDate() + 7);
+    return date.toISOString().split('T')[0];
+  }
+
+  function getRewardType() {
+    var checked = document.querySelector('input[name="ct-reward-type"]:checked');
+    return checked ? checked.value : 'CRLM';
+  }
+
+  function getRewardAmount() {
+    var input = document.getElementById('ct-reward-amount');
+    var val = parseFloat(input ? input.value : '');
+    return isNaN(val) || val < 0 ? 0 : val;
+  }
+
+  function calcStakeTotal(reward) {
+    var deposit = reward * 0.2;
+    return reward + deposit;
+  }
+
+  function updateStakeHint() {
+    var hintEl = document.getElementById('ct-stake-hint');
+    if (!hintEl) return;
+
+    var reward = getRewardAmount();
+    var total = reward > 0 ? calcStakeTotal(reward) : 0;
+    var amountStr = total % 1 === 0 ? String(total) : total.toFixed(2);
+    var rewardType = getRewardType();
+    var key = rewardType === 'USDT' ? 'ct_stake_hint_usdt' : 'ct_stake_hint';
+    hintEl.textContent = ctT(key, { amount: amountStr });
+  }
+
+  function updateSubmitButtonState() {
+    var btn = document.getElementById('ct-submit-btn');
+    if (!btn) return;
+
+    btn.classList.remove('ct-btn-normal', 'ct-btn-disabled');
+    btn.disabled = false;
+
+    if (userLevel < 3) {
+      btn.classList.add('ct-btn-disabled');
+      btn.disabled = true;
+      btn.textContent = ctT('ct_btn_level');
+      return;
+    }
+
+    var reward = getRewardAmount();
+    if (reward > userBalance) {
+      btn.classList.add('ct-btn-disabled');
+      btn.disabled = true;
+      btn.textContent = ctT('ct_btn_balance');
+      return;
+    }
+
+    btn.classList.add('ct-btn-normal');
+    btn.textContent = ctT('ct_btn_submit');
+  }
+
+  function applyCreateTaskI18n() {
+    document.querySelectorAll('#create-task-page [data-i18n]').forEach(function (el) {
+      var key = el.getAttribute('data-i18n');
+      if (createTaskTranslations[getLang()][key]) {
+        el.textContent = ctT(key);
+      }
+    });
+
+    document.querySelectorAll('#create-task-page [data-placeholder]').forEach(function (el) {
+      var key = el.getAttribute('data-placeholder');
+      if (createTaskTranslations[getLang()][key]) {
+        el.setAttribute('placeholder', ctT(key));
+      }
+    });
+
+    document.querySelectorAll('#create-task-page select option[data-i18n]').forEach(function (el) {
+      var key = el.getAttribute('data-i18n');
+      if (createTaskTranslations[getLang()][key]) {
+        el.textContent = ctT(key);
+      }
+    });
+
+    updateStakeHint();
+    updateSubmitButtonState();
+  }
+
+  function bindRequirementRow(row) {
+    var deleteBtn = row.querySelector('.create-task-req-delete');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', function () {
+        var list = document.getElementById('ct-requirements-list');
+        var rows = list ? list.querySelectorAll('.create-task-req-row') : [];
+        if (rows.length <= 1) return;
+        row.remove();
+      });
+    }
+  }
+
+  function addRequirementRow() {
+    var list = document.getElementById('ct-requirements-list');
+    if (!list) return;
+
+    var row = document.createElement('div');
+    row.className = 'create-task-req-row';
+    row.innerHTML =
+      '<input type="text" class="create-task-input create-task-req-input" data-placeholder="ct_ph_req" placeholder="' + ctT('ct_ph_req') + '">' +
+      '<button type="button" class="create-task-req-delete" aria-label="Delete">&times;</button>';
+    list.appendChild(row);
+    bindRequirementRow(row);
+  }
+
+  function initRequirementList() {
+    var list = document.getElementById('ct-requirements-list');
+    if (!list) return;
+
+    list.querySelectorAll('.create-task-req-row').forEach(bindRequirementRow);
+
+    var addBtn = document.getElementById('ct-add-req-btn');
+    if (addBtn) {
+      addBtn.onclick = addRequirementRow;
+    }
+  }
+
+  function resetCreateTaskForm() {
+    var title = document.getElementById('ct-task-title');
+    var type = document.getElementById('ct-task-type');
+    var desc = document.getElementById('ct-task-desc');
+    var reward = document.getElementById('ct-reward-amount');
+    var slots = document.getElementById('ct-task-slots');
+    var deadline = document.getElementById('ct-deadline');
+    var list = document.getElementById('ct-requirements-list');
+
+    if (title) title.value = '';
+    if (type) type.value = 'all';
+    if (desc) desc.value = '';
+    if (reward) reward.value = '';
+    if (slots) slots.value = '';
+    if (deadline) deadline.value = getDefaultDeadline();
+
+    if (list) {
+      list.innerHTML = '';
+      for (var i = 0; i < 3; i++) {
+        var row = document.createElement('div');
+        row.className = 'create-task-req-row';
+        row.innerHTML =
+          '<input type="text" class="create-task-input create-task-req-input" data-placeholder="ct_ph_req" placeholder="' + ctT('ct_ph_req') + '">' +
+          '<button type="button" class="create-task-req-delete" aria-label="Delete">&times;</button>';
+        list.appendChild(row);
+        bindRequirementRow(row);
+      }
+    }
+
+    var crlmRadio = document.querySelector('input[name="ct-reward-type"][value="CRLM"]');
+    var textProof = document.querySelector('input[name="ct-proof-type"][value="text"]');
+    if (crlmRadio) crlmRadio.checked = true;
+    if (textProof) textProof.checked = true;
+
+    updateStakeHint();
+    updateSubmitButtonState();
+    applyCreateTaskI18n();
+  }
+
+  function validateForm() {
+    var title = document.getElementById('ct-task-title');
+    var type = document.getElementById('ct-task-type');
+    var desc = document.getElementById('ct-task-desc');
+    var reward = document.getElementById('ct-reward-amount');
+    var deadline = document.getElementById('ct-deadline');
+    var reqInputs = document.querySelectorAll('#ct-requirements-list .create-task-req-input');
+
+    if (!title || !title.value.trim()) return false;
+    if (!type || !type.value) return false;
+    if (!desc || !desc.value.trim()) return false;
+    if (!reward || !reward.value.trim() || parseFloat(reward.value) <= 0) return false;
+    if (!deadline || !deadline.value) return false;
+
+    var hasReq = false;
+    reqInputs.forEach(function (input) {
+      if (input.value.trim()) hasReq = true;
+    });
+    if (!hasReq) return false;
+
+    return true;
+  }
+
+  function initCreateTaskEvents() {
+    if (createTaskInitialized) return;
+    createTaskInitialized = true;
+
+    var rewardInput = document.getElementById('ct-reward-amount');
+    if (rewardInput) {
+      rewardInput.addEventListener('input', function () {
+        updateStakeHint();
+        updateSubmitButtonState();
+      });
+    }
+
+    document.querySelectorAll('input[name="ct-reward-type"]').forEach(function (radio) {
+      radio.addEventListener('change', function () {
+        updateStakeHint();
+        updateSubmitButtonState();
+      });
+    });
+
+    var submitBtn = document.getElementById('ct-submit-btn');
+    if (submitBtn) {
+      submitBtn.addEventListener('click', function () {
+        if (submitBtn.disabled) return;
+        if (!validateForm()) {
+          alert(ctT('ct_alert_required'));
+          return;
+        }
+        alert(ctT('ct_alert_success'));
+        resetCreateTaskForm();
+      });
+    }
+
+    initRequirementList();
+  }
+
+  function renderCreateTaskPage() {
+    var deadline = document.getElementById('ct-deadline');
+    if (deadline && !deadline.value) {
+      deadline.value = getDefaultDeadline();
+    }
+
+    initCreateTaskEvents();
+    applyCreateTaskI18n();
+  }
+
+  function restoreAppContentIfNeeded() {
+    if (!appContentEl || !APP_CONTENT_HTML) return;
+    if (!document.getElementById('home-page')) {
+      appContentEl.innerHTML = APP_CONTENT_HTML;
+      createTaskInitialized = false;
+    }
+  }
+
+  function handleCreateTaskRoute() {
+    restoreAppContentIfNeeded();
+
+    var route = window.location.hash.replace(/^#/, '') || 'home';
+    var createTaskPage = document.getElementById('create-task-page');
+
+    if (createTaskPage) {
+      if (route === 'create-task') {
+        createTaskPage.classList.remove('hidden');
+        renderCreateTaskPage();
+      } else {
+        createTaskPage.classList.add('hidden');
+      }
+    }
+  }
+
+  window.addEventListener('hashchange', handleCreateTaskRoute);
+
+  window.addEventListener('DOMContentLoaded', function () {
+    setTimeout(handleCreateTaskRoute, 0);
+  });
+
+  var langToggleBtn = document.getElementById('lang-toggle');
+  if (langToggleBtn) {
+    langToggleBtn.addEventListener('click', function () {
+      setTimeout(handleCreateTaskRoute, 0);
+    });
+  }
+})();

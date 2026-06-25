@@ -432,6 +432,111 @@
       </div>
 
     </div>
+
+    <!-- 发布任务页 — 由路由 #create-task 显示 -->
+    <div id="create-task-page" class="create-task-container hidden">
+
+      <h1 class="create-task-title" data-i18n="ct_page_title">发布任务</h1>
+
+      <div class="create-task-form-card">
+        <div class="create-task-field">
+          <label class="create-task-label" data-i18n="ct_label_title">任务标题</label>
+          <input type="text" id="ct-task-title" class="create-task-input" data-placeholder="ct_ph_title" placeholder="请输入任务标题">
+        </div>
+
+        <div class="create-task-field">
+          <label class="create-task-label" data-i18n="ct_label_type">任务类型</label>
+          <select id="ct-task-type" class="create-task-input">
+            <option value="all" data-i18n="tag_all">全部</option>
+            <option value="airdrop" data-i18n="tag_airdrop">空投</option>
+            <option value="register" data-i18n="tag_register">注册</option>
+            <option value="trade" data-i18n="tag_trade">交易</option>
+            <option value="game" data-i18n="tag_game">游戏</option>
+            <option value="content" data-i18n="tag_content">内容</option>
+            <option value="test" data-i18n="tag_test">测试</option>
+            <option value="other" data-i18n="ct_type_other">其他</option>
+          </select>
+        </div>
+
+        <div class="create-task-field">
+          <label class="create-task-label" data-i18n="ct_label_desc">任务描述</label>
+          <textarea id="ct-task-desc" class="create-task-textarea" data-placeholder="ct_ph_desc" placeholder="请详细描述任务内容和要求"></textarea>
+        </div>
+
+        <div class="create-task-field">
+          <label class="create-task-label" data-i18n="ct_label_req">任务要求</label>
+          <div id="ct-requirements-list" class="create-task-req-list">
+            <div class="create-task-req-row">
+              <input type="text" class="create-task-input create-task-req-input" data-placeholder="ct_ph_req" placeholder="">
+              <button type="button" class="create-task-req-delete" aria-label="Delete">&times;</button>
+            </div>
+            <div class="create-task-req-row">
+              <input type="text" class="create-task-input create-task-req-input" data-placeholder="ct_ph_req" placeholder="">
+              <button type="button" class="create-task-req-delete" aria-label="Delete">&times;</button>
+            </div>
+            <div class="create-task-req-row">
+              <input type="text" class="create-task-input create-task-req-input" data-placeholder="ct_ph_req" placeholder="">
+              <button type="button" class="create-task-req-delete" aria-label="Delete">&times;</button>
+            </div>
+          </div>
+          <button type="button" id="ct-add-req-btn" class="create-task-add-req" data-i18n="ct_add_req">+ 添加要求</button>
+        </div>
+
+        <div class="create-task-field">
+          <label class="create-task-label" data-i18n="ct_label_reward_type">奖励类型</label>
+          <div class="create-task-radio-group">
+            <label class="create-task-radio-label">
+              <input type="radio" name="ct-reward-type" value="CRLM" checked>
+              <span>CRLM</span>
+            </label>
+            <label class="create-task-radio-label">
+              <input type="radio" name="ct-reward-type" value="USDT">
+              <span>USDT</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="create-task-field">
+          <label class="create-task-label" data-i18n="ct_label_reward_amount">奖励金额</label>
+          <input type="number" id="ct-reward-amount" class="create-task-input" data-placeholder="ct_ph_reward" placeholder="请输入奖励金额" min="0">
+        </div>
+
+        <div class="create-task-field">
+          <label class="create-task-label" data-i18n="ct_label_slots">任务名额</label>
+          <input type="number" id="ct-task-slots" class="create-task-input" data-placeholder="ct_ph_slots" placeholder="请输入名额（留空则不限）" min="1">
+        </div>
+
+        <div class="create-task-field">
+          <label class="create-task-label" data-i18n="ct_label_deadline">截止时间</label>
+          <input type="date" id="ct-deadline" class="create-task-input">
+        </div>
+
+        <div class="create-task-field">
+          <label class="create-task-label" data-i18n="ct_label_proof">凭证要求</label>
+          <div class="create-task-radio-group">
+            <label class="create-task-radio-label">
+              <input type="radio" name="ct-proof-type" value="text" checked>
+              <span data-i18n="ct_proof_text">文字凭证</span>
+            </label>
+            <label class="create-task-radio-label">
+              <input type="radio" name="ct-proof-type" value="screenshot">
+              <span data-i18n="ct_proof_screenshot">截图凭证</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="create-task-stake-card">
+        <p id="ct-stake-hint" class="create-task-stake-text"></p>
+        <p class="create-task-stake-note" data-i18n="ct_stake_note">仅 Lv.3 及以上用户可发布任务。</p>
+      </div>
+
+      <div class="create-task-action-bar">
+        <button type="button" id="ct-submit-btn" class="ct-submit-btn ct-btn-normal" data-i18n="ct_btn_submit">确认发布</button>
+        <p class="create-task-agreement" data-i18n="ct_agreement">点击发布即表示同意 CoinRealm 发布规则</p>
+      </div>
+
+    </div>
   </main>
 
   <script src="app.js"></script>
