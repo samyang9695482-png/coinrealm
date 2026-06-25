@@ -6,6 +6,51 @@
   <title>CoinRealm</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="stylesheet" href="style.css">
+  <style>
+    .auth-area {
+      display: flex;
+      align-items: center;
+    }
+    .auth-user-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .auth-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      object-fit: cover;
+    }
+    .auth-avatar-placeholder {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background-color: #ccc;
+      flex-shrink: 0;
+    }
+    .auth-user-name {
+      font-size: 0.875rem;
+      color: #ffffff;
+      max-width: 120px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .auth-signout-btn {
+      padding: 4px 8px;
+      font-size: 0.75rem;
+      color: #cccccc;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .auth-signout-btn:hover {
+      color: #ffffff;
+    }
+  </style>
 </head>
 <body>
   <!-- ==================== 顶部导航栏（保持不变） ==================== -->
@@ -16,7 +61,7 @@
         <button type="button" class="btn btn-secondary btn-lang" id="lang-toggle" aria-label="Switch language">
           <span id="lang-label">中文</span>
         </button>
-        <button type="button" class="btn btn-primary" id="connect-wallet" data-i18n="connectWallet">连接钱包</button>
+        <div id="auth-area" class="auth-area"></div>
       </div>
     </div>
   </header>

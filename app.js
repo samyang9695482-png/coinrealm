@@ -3726,3 +3726,127 @@ window.addEventListener('hashchange', handleRoute);
     });
   }
 })();
+
+// ==========================================
+// 16. 谷歌登录 (#auth) — 任务卡 #015
+// ==========================================
+(function () {
+  'use strict';
+
+  var currentUser = null;
+
+  var authTranslations = {
+    zh: {
+      googleSignIn: 'Google 登录',
+      signOut: '登出'
+    },
+    en: {
+      googleSignIn: 'Sign in with Google',
+      signOut: 'Sign out'
+    }
+  };
+
+  function getLang() {
+    var saved = localStorage.getItem('coinrealm_lang');
+    return saved === 'en' ? 'en' : 'zh';
+  }
+
+  function authT(key) {
+    var dict = authTranslations[getLang()];
+    return dict[key] || key;
+  }
+
+  function truncateDisplayName(name) {
+    if (!name) return '';
+    return name.length > 15 ? name.slice(0, 15) : name;
+  }
+
+  function bindGoogleSignIn() {
+    var btn = document.getElementById('google-signin-btn');
+    if (!btn || typeof supabase === 'undefined') return;
+
+    btn.addEventListener('click', function () {
+      supabase.auth.signInWithOAuth({ provider: 'google' });
+    });
+  }
+
+  function bindSignOut() {
+    var btn = document.getElementById('signout-btn');
+    if (!btn || typeof supabase === 'undefined') return;
+
+    btn.addEventListener('click', function () {
+      supabase.auth.signOut().then(function () {
+        updateAuthUI(null);
+      });
+    });
+  }
+
+  function updateAuthUI(user) {
+    currentUser = user;
+    var authArea = document.getElementById('auth-area');
+    if (!authArea) return;
+
+    if (user) {
+      var displayName = truncateDisplayName(
+        user.user_metadata && user.user_metadata.full_name
+          ? user.user_metadata.full_name
+          : user.email || ''
+      );
+      var avatarUrl = user.user_metadata && user.user_metadata.avatar_url;
+      var avatarHtml = avatarUrl
+        ? '<img class="auth-avatar" src="' + avatarUrl + '" alt="">'
+        : '<div class="auth-avatar-placeholder"></div>';
+
+      authArea.innerHTML =
+        '<div class="auth-user-wrap">' +
+          avatarHtml +
+          '<span class="auth-user-name" title="' + (user.email || '') + '">' + displayName + '</span>' +
+          '<button type="button" id="signout-btn" class="auth-signout-btn">' + authT('signOut') + '</button>' +
+        '</div>';
+
+      bindSignOut();
+    } else {
+      authArea.innerHTML =
+        '<button type="button" id="google-signin-btn" class="btn btn-primary">' + authT('googleSignIn') + '</button>';
+
+      bindGoogleSignIn();
+    }
+  }
+
+  function initAuth() {
+    if (typeof supabase === 'undefined') {
+      updateAuthUI(null);
+      return;
+    }
+
+    supabase.auth.getSession().then(function (result) {
+      var session = result.data && result.data.session;
+      updateAuthUI(session ? session.user : null);
+    });
+
+    supabase.auth.onAuthStateChange(function (event, session) {
+      updateAuthUI(session ? session.user : null);
+    });
+  }
+
+  function initAuthEvents() {
+    var langToggleBtn = document.getElementById('lang-toggle');
+    if (langToggleBtn) {
+      langToggleBtn.addEventListener('click', function () {
+        setTimeout(function () {
+          updateAuthUI(currentUser);
+        }, 0);
+      });
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () {
+      initAuth();
+      initAuthEvents();
+    });
+  } else {
+    initAuth();
+    initAuthEvents();
+  }
+})();
