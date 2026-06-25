@@ -4,6 +4,7 @@
 (function () {
   'use strict';
 
+  var supabase;
   var currentUser = null;
   var sbClient = null;
 
@@ -23,10 +24,7 @@
   }
 
   function resolveSupabaseClient() {
-    if (typeof supabase !== 'undefined' && supabase && supabase.auth) {
-      return supabase;
-    }
-    if (typeof window !== 'undefined' && window.supabase && window.supabase.auth) {
+    if (window.supabase && window.supabase.auth) {
       return window.supabase;
     }
     return null;
@@ -37,7 +35,7 @@
 
     function tick() {
       var client = resolveSupabaseClient();
-      console.log('supabase ready:', typeof supabase);
+      console.log('supabase ready:', typeof window.supabase);
 
       if (client) {
         sbClient = client;
@@ -81,9 +79,9 @@
 
       var signoutBtn = document.getElementById('signout-btn');
       if (signoutBtn) {
-        console.log('supabase ready:', typeof supabase);
+        console.log('supabase ready:', typeof window.supabase);
         signoutBtn.addEventListener('click', function () {
-          sbClient.auth.signOut().then(function () {
+          window.supabase.auth.signOut().then(function () {
             updateUI(null);
           });
         });
@@ -94,9 +92,9 @@
 
       var signinBtn = document.getElementById('google-signin-btn');
       if (signinBtn) {
-        console.log('supabase ready:', typeof supabase);
+        console.log('supabase ready:', typeof window.supabase);
         signinBtn.addEventListener('click', function () {
-          sbClient.auth.signInWithOAuth({ provider: 'google' });
+          window.supabase.auth.signInWithOAuth({ provider: 'google' });
         });
       }
     }
@@ -105,18 +103,21 @@
   // 启动
   function init() {
     waitForSupabase(function (client) {
-      if (!client) return;
+      if (!window.supabase) return;
+
+      supabase = window.supabase;
+      sbClient = window.supabase;
 
       updateUI(null);
 
-      client.auth.getSession().then(function (result) {
+      window.supabase.auth.getSession().then(function (result) {
         var session = result.data && result.data.session;
         updateUI(session ? session.user : null);
       }).catch(function () {
         updateUI(null);
       });
 
-      client.auth.onAuthStateChange(function (event, session) {
+      window.supabase.auth.onAuthStateChange(function (event, session) {
         updateUI(session ? session.user : null);
       });
     });

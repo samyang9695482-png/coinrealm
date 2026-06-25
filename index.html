@@ -53,9 +53,9 @@
   </style>
   <script>
     // 初始化 Supabase 客户端
-    const SUPABASE_URL = 'https://ocpuksssvnueknhfcfco.supabase.co';
-    const SUPABASE_ANON_KEY = 'sb_publishable_XXFWPmwswaH4ESVjcBSIfg_6X7h7S4a';
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    window.SUPABASE_URL = 'https://ocpuksssvnueknhfcfco.supabase.co';
+    window.SUPABASE_ANON_KEY = 'sb_publishable_XXFWPmwswaH4ESVjcBSIfg_6X7h7S4a';
+    window.supabase = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
   </script>
 </head>
 <body>
