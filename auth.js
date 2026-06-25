@@ -5,6 +5,7 @@
   'use strict';
 
   var currentUser = null;
+  var sbClient = null;
 
   var authText = {
     zh: { googleSignIn: 'Google 登录', signOut: '登出' },
@@ -19,6 +20,42 @@
   function t(key) {
     var dict = authText[getLang()];
     return dict[key] || key;
+  }
+
+  function resolveSupabaseClient() {
+    if (typeof supabase !== 'undefined' && supabase && supabase.auth) {
+      return supabase;
+    }
+    if (typeof window !== 'undefined' && window.supabase && window.supabase.auth) {
+      return window.supabase;
+    }
+    return null;
+  }
+
+  function waitForSupabase(callback) {
+    var attempts = 0;
+
+    function tick() {
+      var client = resolveSupabaseClient();
+      console.log('supabase ready:', typeof supabase);
+
+      if (client) {
+        sbClient = client;
+        callback(client);
+        return;
+      }
+
+      if (attempts >= 100) {
+        console.warn('Supabase 未加载，登录按钮无法使用');
+        callback(null);
+        return;
+      }
+
+      attempts += 1;
+      setTimeout(tick, 50);
+    }
+
+    tick();
   }
 
   // 更新导航栏 UI
@@ -43,9 +80,10 @@
         '</div>';
 
       var signoutBtn = document.getElementById('signout-btn');
-      if (signoutBtn && typeof supabase !== 'undefined') {
+      if (signoutBtn) {
+        console.log('supabase ready:', typeof supabase);
         signoutBtn.addEventListener('click', function () {
-          supabase.auth.signOut().then(function () {
+          sbClient.auth.signOut().then(function () {
             updateUI(null);
           });
         });
@@ -55,9 +93,10 @@
         '<button type="button" id="google-signin-btn" class="btn btn-primary">' + t('googleSignIn') + '</button>';
 
       var signinBtn = document.getElementById('google-signin-btn');
-      if (signinBtn && typeof supabase !== 'undefined') {
+      if (signinBtn) {
+        console.log('supabase ready:', typeof supabase);
         signinBtn.addEventListener('click', function () {
-          supabase.auth.signInWithOAuth({ provider: 'google' });
+          sbClient.auth.signInWithOAuth({ provider: 'google' });
         });
       }
     }
@@ -65,25 +104,21 @@
 
   // 启动
   function init() {
-    if (typeof supabase === 'undefined') {
-      console.warn('Supabase 未加载，登录按钮无法使用');
+    waitForSupabase(function (client) {
+      if (!client) return;
+
       updateUI(null);
-      return;
-    }
 
-    // 立刻显示 Google 登录按钮
-    updateUI(null);
+      client.auth.getSession().then(function (result) {
+        var session = result.data && result.data.session;
+        updateUI(session ? session.user : null);
+      }).catch(function () {
+        updateUI(null);
+      });
 
-    // 异步检查登录状态
-    supabase.auth.getSession().then(function (result) {
-      var session = result.data && result.data.session;
-      updateUI(session ? session.user : null);
-    }).catch(function () {
-      // 即使出错，按钮也已经在上面显示出来了
-    });
-
-    supabase.auth.onAuthStateChange(function (event, session) {
-      updateUI(session ? session.user : null);
+      client.auth.onAuthStateChange(function (event, session) {
+        updateUI(session ? session.user : null);
+      });
     });
   }
 
