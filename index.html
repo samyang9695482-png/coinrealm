@@ -884,6 +884,92 @@
       </div>
 
     </div>
+
+    <!-- 邀请专属页 — 由路由 #invite 显示 -->
+    <div id="invite-page" class="invite-container hidden">
+
+      <h1 class="invite-title" data-i18n="iv_page_title">邀请好友</h1>
+
+      <!-- 邀请数据总览 -->
+      <div class="invite-overview-card">
+        <div class="invite-code-row">
+          <span class="invite-code-label" data-i18n="iv_code_label">我的专属邀请码</span>
+          <div class="invite-code-wrap">
+            <span id="iv-invite-code" class="invite-code-value">CRLM888</span>
+            <button type="button" id="iv-copy-code-btn" class="invite-copy-btn" data-i18n="iv_btn_copy">复制</button>
+          </div>
+        </div>
+        <div class="invite-stats-row">
+          <div class="invite-stat-item">
+            <span id="iv-invite-count" class="invite-stat-num">23 人</span>
+            <span class="invite-stat-label" data-i18n="iv_stat_invites">累计邀请人数</span>
+          </div>
+          <div class="invite-stat-item">
+            <span id="iv-invite-reward" class="invite-stat-num invite-stat-gold">12,500 CRLM</span>
+            <span class="invite-stat-label" data-i18n="iv_stat_reward">累计获得邀请奖励</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 分享链接区 -->
+      <div class="invite-share-card">
+        <h2 class="invite-card-title" data-i18n="iv_share_title">分享你的专属链接</h2>
+        <div class="invite-link-row">
+          <input type="text" id="iv-invite-link" class="invite-link-input" readonly value="https://coinrealm.pages.dev?ref=CRLM888">
+          <button type="button" id="iv-copy-link-btn" class="invite-copy-link-btn" data-i18n="iv_btn_copy_link">复制链接</button>
+        </div>
+        <div class="invite-share-btns">
+          <button type="button" class="invite-share-btn invite-share-twitter" data-share="twitter">𝕏 Twitter</button>
+          <button type="button" class="invite-share-btn invite-share-telegram" data-share="telegram">✈️ Telegram</button>
+          <button type="button" class="invite-share-btn invite-share-discord" data-share="discord">👾 Discord</button>
+        </div>
+      </div>
+
+      <!-- 分红加成进度条 -->
+      <div class="invite-progress-card">
+        <h2 class="invite-card-title" data-i18n="iv_progress_title">分红加成进度</h2>
+        <p id="iv-current-bonus" class="invite-current-bonus">当前：1.5x 加成</p>
+        <div class="invite-progress-bar-wrap">
+          <div id="iv-progress-fill" class="invite-progress-fill"></div>
+        </div>
+        <p id="iv-next-level-text" class="invite-next-level">距下一等级 2.0x 加成还需邀请 27 人</p>
+        <div class="invite-progress-nodes">
+          <span class="invite-node" data-i18n="iv_node_1">1x（5人）</span>
+          <span class="invite-node" data-i18n="iv_node_15">1.5x（20人）</span>
+          <span class="invite-node" data-i18n="iv_node_2">2x（50人）</span>
+        </div>
+      </div>
+
+      <!-- 我邀请的好友列表 -->
+      <div class="invite-friends-card">
+        <div class="invite-friends-header">
+          <h2 class="invite-card-title" data-i18n="iv_friends_title">我邀请的好友</h2>
+          <span id="iv-friends-count" class="invite-friends-count">共 5 人</span>
+        </div>
+        <div class="invite-sort-tabs">
+          <button type="button" id="iv-sort-time" class="invite-sort-tab invite-sort-active" data-i18n="iv_sort_time">时间</button>
+          <button type="button" id="iv-sort-contribution" class="invite-sort-tab" data-i18n="iv_sort_contribution">贡献</button>
+        </div>
+        <ul id="iv-friends-list" class="invite-friends-list"></ul>
+      </div>
+
+      <!-- 邀请规则说明 -->
+      <div class="invite-rules-card">
+        <button type="button" id="iv-rules-toggle" class="invite-rules-header">
+          <span data-i18n="iv_rules_title">邀请规则</span>
+          <span id="iv-rules-arrow" class="invite-rules-arrow">▼</span>
+        </button>
+        <div id="iv-rules-content" class="invite-rules-content">
+          <p data-i18n="iv_rule_1">锁仓式推荐奖励：好友完成任务你获得 20%，分 12 个月解锁</p>
+          <p data-i18n="iv_rule_2">分红加成规则：持币量 + 有效邀请人数的阶梯加成</p>
+          <p data-i18n="iv_rule_3">有效好友定义：被邀请人必须完成至少 1 个任务，才计入有效邀请</p>
+        </div>
+      </div>
+
+      <!-- 生成海报 -->
+      <button type="button" id="iv-poster-btn" class="invite-poster-btn" data-i18n="iv_btn_poster">生成专属海报</button>
+
+    </div>
   </main>
 
   <script src="app.js"></script>

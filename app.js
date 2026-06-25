@@ -3354,3 +3354,375 @@ window.addEventListener('hashchange', handleRoute);
     });
   }
 })();
+
+// ==========================================
+// 15. 邀请专属页 (#invite) — 任务卡 #013
+// ==========================================
+(function () {
+  'use strict';
+
+  var APP_CONTENT_HTML = '';
+  var appContentEl = document.getElementById('app-content');
+  if (appContentEl) {
+    APP_CONTENT_HTML = appContentEl.innerHTML;
+  }
+
+  var inviteInitialized = false;
+  var friendsSortBy = 'time';
+  var rulesExpanded = false;
+
+  var sampleInviteData = {
+    inviteCode: 'CRLM888',
+    inviteLink: 'https://coinrealm.pages.dev?ref=CRLM888',
+    inviteCount: 23,
+    totalReward: 12500,
+    currentBonus: 1.5,
+    nextBonus: 2.0,
+    nextBonusThreshold: 50,
+    friends: [
+      { username: 'LinkerDAO', registeredAt: '2025-01-10', reward: 350 },
+      { username: 'CryptoAce', registeredAt: '2025-01-08', reward: 520 },
+      { username: 'WhaleSwap', registeredAt: '2025-01-05', reward: 280 },
+      { username: 'GameFi_Hub', registeredAt: '2025-01-03', reward: 410 },
+      { username: 'AlphaRadar', registeredAt: '2024-12-28', reward: 190 }
+    ]
+  };
+
+  var inviteTranslations = {
+    zh: {
+      iv_page_title: '邀请好友',
+      iv_code_label: '我的专属邀请码',
+      iv_btn_copy: '复制',
+      iv_stat_invites: '累计邀请人数',
+      iv_stat_reward: '累计获得邀请奖励',
+      iv_invite_count: '{count} 人',
+      iv_total_reward: '{amount} CRLM',
+      iv_share_title: '分享你的专属链接',
+      iv_btn_copy_link: '复制链接',
+      iv_progress_title: '分红加成进度',
+      iv_current_bonus: '当前：{bonus}x 加成',
+      iv_next_level: '距下一等级 {bonus}x 加成还需邀请 {count} 人',
+      iv_node_1: '1x（5人）',
+      iv_node_15: '1.5x（20人）',
+      iv_node_2: '2x（50人）',
+      iv_friends_title: '我邀请的好友',
+      iv_friends_count: '共 {count} 人',
+      iv_sort_time: '时间',
+      iv_sort_contribution: '贡献',
+      iv_rules_title: '邀请规则',
+      iv_rule_1: '锁仓式推荐奖励：好友完成任务你获得 20%，分 12 个月解锁',
+      iv_rule_2: '分红加成规则：持币量 + 有效邀请人数的阶梯加成',
+      iv_rule_3: '有效好友定义：被邀请人必须完成至少 1 个任务，才计入有效邀请',
+      iv_btn_poster: '生成专属海报',
+      iv_reward_amount: '+{amount} CRLM',
+      iv_alert_copied: '已复制！',
+      iv_alert_share: '已复制链接，即将跳转...',
+      iv_alert_poster: '海报生成功能即将上线！'
+    },
+    en: {
+      iv_page_title: 'Invite Friends',
+      iv_code_label: 'My Invite Code',
+      iv_btn_copy: 'Copy',
+      iv_stat_invites: 'Total Invites',
+      iv_stat_reward: 'Total Invite Rewards',
+      iv_invite_count: '{count}',
+      iv_total_reward: '{amount} CRLM',
+      iv_share_title: 'Share Your Invite Link',
+      iv_btn_copy_link: 'Copy Link',
+      iv_progress_title: 'Dividend Bonus Progress',
+      iv_current_bonus: 'Current: {bonus}x bonus',
+      iv_next_level: '{count} more invites to reach {bonus}x bonus',
+      iv_node_1: '1x (5)',
+      iv_node_15: '1.5x (20)',
+      iv_node_2: '2x (50)',
+      iv_friends_title: 'My Invited Friends',
+      iv_friends_count: '{count} total',
+      iv_sort_time: 'Time',
+      iv_sort_contribution: 'Contribution',
+      iv_rules_title: 'Invite Rules',
+      iv_rule_1: 'Locked referral rewards: earn 20% when friends complete tasks, unlocked over 12 months',
+      iv_rule_2: 'Dividend bonus: tiered bonus based on holdings + valid invites',
+      iv_rule_3: 'Valid friend: invitee must complete at least 1 task to count',
+      iv_btn_poster: 'Generate Poster',
+      iv_reward_amount: '+{amount} CRLM',
+      iv_alert_copied: 'Copied!',
+      iv_alert_share: 'Link copied, redirecting...',
+      iv_alert_poster: 'Poster generation coming soon!'
+    }
+  };
+
+  function getLang() {
+    var saved = localStorage.getItem('coinrealm_lang');
+    return saved === 'en' ? 'en' : 'zh';
+  }
+
+  function ivT(key, vars) {
+    var dict = inviteTranslations[getLang()];
+    var text = dict[key] || key;
+    if (vars) {
+      Object.keys(vars).forEach(function (k) {
+        text = text.replace('{' + k + '}', vars[k]);
+      });
+    }
+    return text;
+  }
+
+  function formatNumber(num) {
+    return String(num).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).catch(function () {
+        fallbackCopy(text);
+      });
+    }
+    fallbackCopy(text);
+    return Promise.resolve();
+  }
+
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+    } catch (e) { /* ignore */ }
+    document.body.removeChild(ta);
+  }
+
+  function applyInviteI18n() {
+    document.querySelectorAll('#invite-page [data-i18n]').forEach(function (el) {
+      var key = el.getAttribute('data-i18n');
+      if (inviteTranslations[getLang()][key]) {
+        el.textContent = ivT(key);
+      }
+    });
+  }
+
+  function renderOverview() {
+    var data = sampleInviteData;
+
+    var codeEl = document.getElementById('iv-invite-code');
+    if (codeEl) codeEl.textContent = data.inviteCode;
+
+    var countEl = document.getElementById('iv-invite-count');
+    if (countEl) {
+      countEl.textContent = ivT('iv_invite_count', { count: data.inviteCount });
+    }
+
+    var rewardEl = document.getElementById('iv-invite-reward');
+    if (rewardEl) {
+      rewardEl.textContent = ivT('iv_total_reward', { amount: formatNumber(data.totalReward) });
+    }
+
+    var linkEl = document.getElementById('iv-invite-link');
+    if (linkEl) linkEl.value = data.inviteLink;
+  }
+
+  function renderProgress() {
+    var data = sampleInviteData;
+    var pct = Math.min(100, (data.inviteCount / data.nextBonusThreshold) * 100);
+    var remaining = data.nextBonusThreshold - data.inviteCount;
+
+    var currentEl = document.getElementById('iv-current-bonus');
+    if (currentEl) {
+      currentEl.textContent = ivT('iv_current_bonus', { bonus: data.currentBonus });
+    }
+
+    var fillEl = document.getElementById('iv-progress-fill');
+    if (fillEl) fillEl.style.width = pct + '%';
+
+    var nextEl = document.getElementById('iv-next-level-text');
+    if (nextEl) {
+      nextEl.textContent = ivT('iv_next_level', {
+        bonus: data.nextBonus,
+        count: remaining
+      });
+    }
+  }
+
+  function getSortedFriends() {
+    var friends = sampleInviteData.friends.slice();
+    if (friendsSortBy === 'contribution') {
+      friends.sort(function (a, b) { return b.reward - a.reward; });
+    } else {
+      friends.sort(function (a, b) {
+        return new Date(b.registeredAt) - new Date(a.registeredAt);
+      });
+    }
+    return friends;
+  }
+
+  function renderFriendsList() {
+    var listEl = document.getElementById('iv-friends-list');
+    var countEl = document.getElementById('iv-friends-count');
+    if (!listEl) return;
+
+    var friends = getSortedFriends();
+
+    if (countEl) {
+      countEl.textContent = ivT('iv_friends_count', { count: friends.length });
+    }
+
+    listEl.innerHTML = friends.map(function (friend) {
+      return (
+        '<li class="invite-friend-item">' +
+          '<div class="iv-friend-avatar"></div>' +
+          '<span class="iv-friend-name">' + friend.username + '</span>' +
+          '<span class="iv-friend-date">' + friend.registeredAt + '</span>' +
+          '<span class="iv-friend-reward">' + ivT('iv_reward_amount', { amount: formatNumber(friend.reward) }) + '</span>' +
+        '</li>'
+      );
+    }).join('');
+  }
+
+  function updateSortTabsUI() {
+    var timeTab = document.getElementById('iv-sort-time');
+    var contribTab = document.getElementById('iv-sort-contribution');
+
+    if (timeTab) {
+      if (friendsSortBy === 'time') {
+        timeTab.classList.add('invite-sort-active');
+      } else {
+        timeTab.classList.remove('invite-sort-active');
+      }
+    }
+
+    if (contribTab) {
+      if (friendsSortBy === 'contribution') {
+        contribTab.classList.add('invite-sort-active');
+      } else {
+        contribTab.classList.remove('invite-sort-active');
+      }
+    }
+  }
+
+  function updateRulesUI() {
+    var card = document.querySelector('.invite-rules-card');
+    if (card) {
+      if (rulesExpanded) {
+        card.classList.add('expanded');
+      } else {
+        card.classList.remove('expanded');
+      }
+    }
+  }
+
+  function initInviteEvents() {
+    if (inviteInitialized) return;
+    inviteInitialized = true;
+
+    var copyCodeBtn = document.getElementById('iv-copy-code-btn');
+    if (copyCodeBtn) {
+      copyCodeBtn.addEventListener('click', function () {
+        copyText(sampleInviteData.inviteCode).then(function () {
+          alert(ivT('iv_alert_copied'));
+        });
+      });
+    }
+
+    var copyLinkBtn = document.getElementById('iv-copy-link-btn');
+    if (copyLinkBtn) {
+      copyLinkBtn.addEventListener('click', function () {
+        copyText(sampleInviteData.inviteLink).then(function () {
+          alert(ivT('iv_alert_copied'));
+        });
+      });
+    }
+
+    document.querySelectorAll('.invite-share-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        copyText(sampleInviteData.inviteLink).then(function () {
+          alert(ivT('iv_alert_share'));
+        });
+      });
+    });
+
+    var sortTime = document.getElementById('iv-sort-time');
+    var sortContrib = document.getElementById('iv-sort-contribution');
+
+    if (sortTime) {
+      sortTime.addEventListener('click', function () {
+        friendsSortBy = 'time';
+        updateSortTabsUI();
+        renderFriendsList();
+      });
+    }
+
+    if (sortContrib) {
+      sortContrib.addEventListener('click', function () {
+        friendsSortBy = 'contribution';
+        updateSortTabsUI();
+        renderFriendsList();
+      });
+    }
+
+    var rulesToggle = document.getElementById('iv-rules-toggle');
+    if (rulesToggle) {
+      rulesToggle.addEventListener('click', function () {
+        rulesExpanded = !rulesExpanded;
+        updateRulesUI();
+      });
+    }
+
+    var posterBtn = document.getElementById('iv-poster-btn');
+    if (posterBtn) {
+      posterBtn.addEventListener('click', function () {
+        alert(ivT('iv_alert_poster'));
+      });
+    }
+  }
+
+  function renderInvitePage() {
+    renderOverview();
+    renderProgress();
+    updateSortTabsUI();
+    renderFriendsList();
+    updateRulesUI();
+    initInviteEvents();
+    applyInviteI18n();
+  }
+
+  function restoreAppContentIfNeeded() {
+    if (!appContentEl || !APP_CONTENT_HTML) return;
+    if (!document.getElementById('home-page')) {
+      appContentEl.innerHTML = APP_CONTENT_HTML;
+      inviteInitialized = false;
+      friendsSortBy = 'time';
+      rulesExpanded = false;
+    }
+  }
+
+  function handleInviteRoute() {
+    restoreAppContentIfNeeded();
+
+    var route = window.location.hash.replace(/^#/, '') || 'home';
+    var invitePage = document.getElementById('invite-page');
+
+    if (invitePage) {
+      if (route === 'invite') {
+        invitePage.classList.remove('hidden');
+        renderInvitePage();
+      } else {
+        invitePage.classList.add('hidden');
+      }
+    }
+  }
+
+  window.addEventListener('hashchange', handleInviteRoute);
+
+  window.addEventListener('DOMContentLoaded', function () {
+    setTimeout(handleInviteRoute, 0);
+  });
+
+  var langToggleBtn = document.getElementById('lang-toggle');
+  if (langToggleBtn) {
+    langToggleBtn.addEventListener('click', function () {
+      setTimeout(handleInviteRoute, 0);
+    });
+  }
+})();
