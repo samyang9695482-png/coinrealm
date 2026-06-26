@@ -199,23 +199,17 @@
 
 
   function renderPage(route) {
-
     if (!appContent) return;
-
-
+    // 真实页面已在 #app-content 内实现，禁止用占位内容覆盖（否则会销毁 #task-grid 等节点）
+    if (document.getElementById('home-page')) return;
 
     var page = getPageContent(route);
 
     appContent.innerHTML =
-
       '<div class="card page-placeholder">' +
-
         '<h1>' + page.title + '</h1>' +
-
         '<p>' + page.message + '</p>' +
-
       '</div>';
-
   }
 
 
@@ -295,19 +289,7 @@
 
 
   function initRouter() {
-
-    function handleHashChange() {
-
-      navigate(getRouteFromHash());
-
-    }
-
-
-
-    window.addEventListener('hashchange', handleHashChange);
-
-    handleHashChange();
-
+    // 路由由 auth.js 与各页面模块处理；此处不再监听 hashchange，避免与 fetchTasks 渲染冲突
   }
 
 
@@ -407,6 +389,7 @@ const translations = {
 let currentLang = localStorage.getItem('coinrealm_lang') || 'zh';
 let allTasks = [];
 let homeEventsBound = false;
+let fetchTasksSeq = 0;
 
 function escapeHtml(str) {
     if (str == null) return '';
@@ -569,7 +552,17 @@ function applyFiltersAndSort() {
     applyLanguageStrings();
 }
 
+function goToHomeAndRefreshTasks() {
+    if (typeof window.coinrealmNavigateToRoute === 'function') {
+        window.coinrealmNavigateToRoute('home');
+        return;
+    }
+    window.location.hash = 'home';
+    if (typeof handleRoute === 'function') handleRoute();
+}
+
 function fetchTasks() {
+    const seq = ++fetchTasksSeq;
     const skeletonScreen = document.getElementById('skeleton-screen');
     const taskGrid = document.getElementById('task-grid');
     const emptyState = document.getElementById('empty-state');
@@ -594,6 +587,7 @@ function fetchTasks() {
         .select('*')
         .order('created_at', { ascending: false })
         .then(function (result) {
+            if (seq !== fetchTasksSeq) return;
             if (skeletonScreen) skeletonScreen.classList.add('hidden');
 
             if (result.error || !result.data || result.data.length === 0) {
@@ -608,6 +602,7 @@ function fetchTasks() {
             applyFiltersAndSort();
         })
         .catch(function (err) {
+            if (seq !== fetchTasksSeq) return;
             if (skeletonScreen) skeletonScreen.classList.add('hidden');
             allTasks = [];
             if (taskGrid) taskGrid.classList.add('hidden');
@@ -1486,7 +1481,7 @@ window.addEventListener('hashchange', handleRoute);
 
         alert('任务发布成功！');
         resetCreateTaskForm();
-        window.location.hash = 'home';
+        goToHomeAndRefreshTasks();
       } catch (error) {
         console.error('发布任务失败', error);
         alert('发布失败：' + (error && error.message ? error.message : String(error)));
@@ -1570,7 +1565,7 @@ window.addEventListener('hashchange', handleRoute);
             }
             alert('任务发布成功！');
             resetCreateTaskForm();
-            window.location.hash = 'home';
+            goToHomeAndRefreshTasks();
         });
     }
     initRequirementList();

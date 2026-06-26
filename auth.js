@@ -537,6 +537,9 @@
     init();
   }
 
+  window.coinrealmNavigateToRoute = navigateToRoute;
+  window.coinrealmApplyRoute = applyAuthRoute;
+
   // 外部 hash 变化时，若页面被占位内容覆盖则恢复并跳转
   window.addEventListener('hashchange', function () {
     setTimeout(function () {
