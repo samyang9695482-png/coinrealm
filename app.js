@@ -1420,20 +1420,36 @@ window.addEventListener('hashchange', handleRoute);
     return requirements;
   }
 
-  function handleCreateTaskSubmit() {
-    if (!window.supabase) {
-      alert(ctT('ct_alert_fail') + 'Supabase unavailable');
-      return;
-    }
+  function bindSubmitButton() {
+    var submitBtn = document.getElementById('ct-submit-btn');
+    if (!submitBtn) return;
 
-    window.supabase.auth.getSession()
-      .then(function (sessionResult) {
+    // 克隆按钮以清除旧监听器（DOM 被恢复后需重新绑定）
+    var freshBtn = submitBtn.cloneNode(true);
+    submitBtn.parentNode.replaceChild(freshBtn, submitBtn);
+    updateSubmitButtonState();
+
+    freshBtn.addEventListener('click', async function () {
+      if (freshBtn.disabled) return;
+
+      if (!validateForm()) {
+        alert(ctT('ct_alert_required'));
+        return;
+      }
+
+      if (!window.supabase) {
+        alert(ctT('ct_alert_fail') + 'Supabase unavailable');
+        return;
+      }
+
+      try {
+        var sessionResult = await window.supabase.auth.getSession();
         if (sessionResult.error) throw sessionResult.error;
 
         var session = sessionResult.data && sessionResult.data.session;
         if (!session || !session.user || !session.user.id) {
-          alert(ctT('ct_alert_login'));
-          return null;
+          alert('请先登录后再发布任务');
+          return;
         }
 
         var userId = session.user.id;
@@ -1449,7 +1465,7 @@ window.addEventListener('hashchange', handleRoute);
         var deadline = document.getElementById('ct-deadline').value;
         var proofType = getProofType();
 
-        return window.supabase
+        var insertResult = await window.supabase
           .from('tasks')
           .insert({
             publisher_id: userId,
@@ -1464,18 +1480,18 @@ window.addEventListener('hashchange', handleRoute);
             proof_type: proofType,
             is_official: false
           })
-          .select()
-          .then(function (insertResult) {
-            if (insertResult.error) throw insertResult.error;
-            alert(ctT('ct_alert_success'));
-            resetCreateTaskForm();
-            window.location.hash = 'home';
-          });
-      })
-      .catch(function (error) {
+          .select();
+
+        if (insertResult.error) throw insertResult.error;
+
+        alert('任务发布成功！');
+        resetCreateTaskForm();
+        window.location.hash = 'home';
+      } catch (error) {
         console.error('发布任务失败', error);
-        alert(ctT('ct_alert_fail') + (error && error.message ? error.message : String(error)));
-      });
+        alert('发布失败：' + (error && error.message ? error.message : String(error)));
+      }
+    });
   }
 
   function initCreateTaskEvents() {
@@ -1497,18 +1513,6 @@ window.addEventListener('hashchange', handleRoute);
       });
     });
 
-    var submitBtn = document.getElementById('ct-submit-btn');
-    if (submitBtn) {
-      submitBtn.addEventListener('click', function () {
-        if (submitBtn.disabled) return;
-        if (!validateForm()) {
-          alert(ctT('ct_alert_required'));
-          return;
-        }
-        handleCreateTaskSubmit();
-      });
-    }
-
     initRequirementList();
   }
 
@@ -1519,6 +1523,7 @@ window.addEventListener('hashchange', handleRoute);
     }
 
     initCreateTaskEvents();
+    bindSubmitButton();
     applyCreateTaskI18n();
   }
 
