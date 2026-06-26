@@ -145,19 +145,16 @@
     return parts[0] || 'user';
   }
 
-  // 从钱包地址生成 username（取前 10 位）
-  function usernameFromWallet(address) {
-    if (!address) return 'wallet';
-    return address.slice(0, 10);
-  }
-
-  // 谷歌登录：按 email 查找/创建 users 记录，返回用户 id
-  function upsertUserByEmail(email) {
+  // 谷歌登录：按 Auth UID 查找/创建 users 记录（id 必须与 auth.uid() 一致）
+  function upsertGoogleUser(authUser) {
     var now = new Date().toISOString();
+    var userId = authUser.id;
+    var email = authUser.email || null;
+
     return window.supabase
       .from('users')
       .select('id')
-      .eq('email', email)
+      .eq('id', userId)
       .maybeSingle()
       .then(function (result) {
         if (result.error) throw result.error;
@@ -165,54 +162,17 @@
           return window.supabase
             .from('users')
             .update({ updated_at: now })
-            .eq('id', result.data.id)
+            .eq('id', userId)
             .select('id')
             .single();
         }
         return window.supabase
           .from('users')
           .insert({
+            id: userId,
             email: email,
             wallet_address: null,
             username: usernameFromEmail(email),
-            level: 0,
-            reputation_score: 100,
-            crlm_balance: 0,
-            usdt_balance: 0
-          })
-          .select('id')
-          .single();
-      })
-      .then(function (result) {
-        if (result.error) throw result.error;
-        return result.data.id;
-      });
-  }
-
-  // 钱包登录：按 wallet_address 查找/创建 users 记录，返回用户 id
-  function upsertUserByWallet(address) {
-    var now = new Date().toISOString();
-    return window.supabase
-      .from('users')
-      .select('id')
-      .eq('wallet_address', address)
-      .maybeSingle()
-      .then(function (result) {
-        if (result.error) throw result.error;
-        if (result.data) {
-          return window.supabase
-            .from('users')
-            .update({ updated_at: now })
-            .eq('id', result.data.id)
-            .select('id')
-            .single();
-        }
-        return window.supabase
-          .from('users')
-          .insert({
-            email: null,
-            wallet_address: address,
-            username: usernameFromWallet(address),
             level: 0,
             reputation_score: 100,
             crlm_balance: 0,
@@ -231,25 +191,26 @@
   function syncUserToSupabase() {
     if (!window.supabase || !isLoggedIn()) return;
 
-    var googlePromise = currentUser && currentUser.email
-      ? upsertUserByEmail(currentUser.email)
-      : Promise.resolve(null);
+    // 钱包登录无 Supabase Auth 会话，暂时跳过同步
+    if (!currentUser) return;
 
-    googlePromise
-      .then(function (googleId) {
-        if (googleId) {
-          sessionStorage.setItem('coinrealm_user_id', googleId);
-        }
-        if (!walletAddress) return null;
-        return upsertUserByWallet(walletAddress).then(function (walletId) {
-          if (walletId && !googleId) {
-            sessionStorage.setItem('coinrealm_user_id', walletId);
-          }
-          return walletId;
-        });
+    window.supabase.auth.getSession()
+      .then(function (sessionResult) {
+        if (sessionResult.error) throw sessionResult.error;
+        var session = sessionResult.data && sessionResult.data.session;
+        var user = session && session.user;
+        if (!user || !user.id) return null;
+        console.log('开始同步用户，user.id:', user.id);
+        return upsertGoogleUser(user);
       })
-      .catch(function (err) {
-        console.warn('用户同步失败', err);
+      .then(function (userId) {
+        if (userId) {
+          sessionStorage.setItem('coinrealm_user_id', userId);
+        }
+      })
+      .catch(function (error) {
+        console.warn('用户同步失败', error);
+        console.error('同步用户失败', error);
       });
   }
 
