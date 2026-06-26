@@ -138,6 +138,128 @@
     tick();
   }
 
+  // 从邮箱生成 username（取 @ 前前缀）
+  function usernameFromEmail(email) {
+    if (!email) return 'user';
+    var parts = email.split('@');
+    return parts[0] || 'user';
+  }
+
+  // 从钱包地址生成 username（取前 10 位）
+  function usernameFromWallet(address) {
+    if (!address) return 'wallet';
+    return address.slice(0, 10);
+  }
+
+  // 谷歌登录：按 email 查找/创建 users 记录，返回用户 id
+  function upsertUserByEmail(email) {
+    var now = new Date().toISOString();
+    return window.supabase
+      .from('users')
+      .select('id')
+      .eq('email', email)
+      .maybeSingle()
+      .then(function (result) {
+        if (result.error) throw result.error;
+        if (result.data) {
+          return window.supabase
+            .from('users')
+            .update({ updated_at: now })
+            .eq('id', result.data.id)
+            .select('id')
+            .single();
+        }
+        return window.supabase
+          .from('users')
+          .insert({
+            email: email,
+            wallet_address: null,
+            username: usernameFromEmail(email),
+            level: 0,
+            reputation_score: 100,
+            crlm_balance: 0,
+            usdt_balance: 0
+          })
+          .select('id')
+          .single();
+      })
+      .then(function (result) {
+        if (result.error) throw result.error;
+        return result.data.id;
+      });
+  }
+
+  // 钱包登录：按 wallet_address 查找/创建 users 记录，返回用户 id
+  function upsertUserByWallet(address) {
+    var now = new Date().toISOString();
+    return window.supabase
+      .from('users')
+      .select('id')
+      .eq('wallet_address', address)
+      .maybeSingle()
+      .then(function (result) {
+        if (result.error) throw result.error;
+        if (result.data) {
+          return window.supabase
+            .from('users')
+            .update({ updated_at: now })
+            .eq('id', result.data.id)
+            .select('id')
+            .single();
+        }
+        return window.supabase
+          .from('users')
+          .insert({
+            email: null,
+            wallet_address: address,
+            username: usernameFromWallet(address),
+            level: 0,
+            reputation_score: 100,
+            crlm_balance: 0,
+            usdt_balance: 0
+          })
+          .select('id')
+          .single();
+      })
+      .then(function (result) {
+        if (result.error) throw result.error;
+        return result.data.id;
+      });
+  }
+
+  // 登录成功后异步同步用户到 public.users 表（不阻塞 UI）
+  function syncUserToSupabase() {
+    if (!window.supabase || !isLoggedIn()) return;
+
+    var googlePromise = currentUser && currentUser.email
+      ? upsertUserByEmail(currentUser.email)
+      : Promise.resolve(null);
+
+    googlePromise
+      .then(function (googleId) {
+        if (googleId) {
+          sessionStorage.setItem('coinrealm_user_id', googleId);
+        }
+        if (!walletAddress) return null;
+        return upsertUserByWallet(walletAddress).then(function (walletId) {
+          if (walletId && !googleId) {
+            sessionStorage.setItem('coinrealm_user_id', walletId);
+          }
+          return walletId;
+        });
+      })
+      .catch(function (err) {
+        console.warn('用户同步失败', err);
+      });
+  }
+
+  // 延迟触发用户同步，避免阻塞导航栏渲染
+  function scheduleUserSync() {
+    setTimeout(function () {
+      syncUserToSupabase();
+    }, 0);
+  }
+
   // 将完整钱包地址截断为 0x1234...abcd 格式，便于导航栏展示
   function truncateWalletAddress(address) {
     if (!address || address.length < 10) return address || '';
@@ -171,6 +293,7 @@
         }).then(function () {
           walletAddress = address;
           renderAuthArea();
+          scheduleUserSync();
         });
       })
       .catch(function (err) {
@@ -288,6 +411,7 @@
   // 退出全部登录状态（谷歌 + 钱包）
   function signOutAll() {
     walletAddress = null;
+    sessionStorage.removeItem('coinrealm_user_id');
     if (currentUser && window.supabase) {
       window.supabase.auth.signOut().then(function () {
         updateUI(null);
@@ -406,6 +530,11 @@
   function updateUI(user) {
     currentUser = user;
     renderAuthArea();
+    if (isLoggedIn()) {
+      scheduleUserSync();
+    } else {
+      sessionStorage.removeItem('coinrealm_user_id');
+    }
   }
 
   // 启动
