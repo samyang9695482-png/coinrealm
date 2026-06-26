@@ -1154,6 +1154,8 @@ window.addEventListener('hashchange', handleRoute);
       ct_agreement: '点击发布即表示同意 CoinRealm 发布规则',
       ct_alert_required: '请填写所有必填字段',
       ct_alert_success: '任务发布成功！',
+      ct_alert_login: '请先登录后再发布任务',
+      ct_alert_fail: '发布失败：',
       tag_all: '全部',
       tag_airdrop: '空投',
       tag_register: '注册',
@@ -1191,6 +1193,8 @@ window.addEventListener('hashchange', handleRoute);
       ct_agreement: 'By publishing, you agree to CoinRealm publishing rules',
       ct_alert_required: 'Please fill in all required fields',
       ct_alert_success: 'Task published successfully!',
+      ct_alert_login: 'Please log in before publishing a task',
+      ct_alert_fail: 'Publish failed: ',
       tag_all: 'All',
       tag_airdrop: 'Airdrop',
       tag_register: 'Register',
@@ -1402,6 +1406,78 @@ window.addEventListener('hashchange', handleRoute);
     return true;
   }
 
+  function getProofType() {
+    var checked = document.querySelector('input[name="ct-proof-type"]:checked');
+    return checked ? checked.value : 'text';
+  }
+
+  function collectRequirements() {
+    var requirements = [];
+    document.querySelectorAll('#ct-requirements-list .create-task-req-input').forEach(function (input) {
+      var val = input.value.trim();
+      if (val) requirements.push(val);
+    });
+    return requirements;
+  }
+
+  function handleCreateTaskSubmit() {
+    if (!window.supabase) {
+      alert(ctT('ct_alert_fail') + 'Supabase unavailable');
+      return;
+    }
+
+    window.supabase.auth.getSession()
+      .then(function (sessionResult) {
+        if (sessionResult.error) throw sessionResult.error;
+
+        var session = sessionResult.data && sessionResult.data.session;
+        if (!session || !session.user || !session.user.id) {
+          alert(ctT('ct_alert_login'));
+          return null;
+        }
+
+        var userId = session.user.id;
+        var title = document.getElementById('ct-task-title').value.trim();
+        var type = document.getElementById('ct-task-type').value;
+        var description = document.getElementById('ct-task-desc').value.trim();
+        var requirements = collectRequirements();
+        var rewardType = getRewardType();
+        var rewardAmount = parseFloat(document.getElementById('ct-reward-amount').value);
+        var slotsVal = document.getElementById('ct-task-slots').value.trim();
+        var maxParticipants = slotsVal ? parseInt(slotsVal, 10) : null;
+        if (maxParticipants !== null && isNaN(maxParticipants)) maxParticipants = null;
+        var deadline = document.getElementById('ct-deadline').value;
+        var proofType = getProofType();
+
+        return window.supabase
+          .from('tasks')
+          .insert({
+            publisher_id: userId,
+            title: title,
+            type: type,
+            description: description,
+            requirements: requirements,
+            reward_type: rewardType,
+            reward_amount: rewardAmount,
+            max_participants: maxParticipants,
+            deadline: deadline,
+            proof_type: proofType,
+            is_official: false
+          })
+          .select()
+          .then(function (insertResult) {
+            if (insertResult.error) throw insertResult.error;
+            alert(ctT('ct_alert_success'));
+            resetCreateTaskForm();
+            window.location.hash = 'home';
+          });
+      })
+      .catch(function (error) {
+        console.error('发布任务失败', error);
+        alert(ctT('ct_alert_fail') + (error && error.message ? error.message : String(error)));
+      });
+  }
+
   function initCreateTaskEvents() {
     if (createTaskInitialized) return;
     createTaskInitialized = true;
@@ -1429,8 +1505,7 @@ window.addEventListener('hashchange', handleRoute);
           alert(ctT('ct_alert_required'));
           return;
         }
-        alert(ctT('ct_alert_success'));
-        resetCreateTaskForm();
+        handleCreateTaskSubmit();
       });
     }
 
