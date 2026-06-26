@@ -1497,22 +1497,82 @@ window.addEventListener('hashchange', handleRoute);
   function initCreateTaskEvents() {
     if (createTaskInitialized) return;
     createTaskInitialized = true;
-
     var rewardInput = document.getElementById('ct-reward-amount');
     if (rewardInput) {
-      rewardInput.addEventListener('input', function () {
-        updateStakeHint();
-        updateSubmitButtonState();
-      });
+        rewardInput.addEventListener('input', function () {
+            updateStakeHint();
+            updateSubmitButtonState();
+        });
     }
-
     document.querySelectorAll('input[name="ct-reward-type"]').forEach(function (radio) {
-      radio.addEventListener('change', function () {
-        updateStakeHint();
-        updateSubmitButtonState();
-      });
+        radio.addEventListener('change', function () {
+            updateStakeHint();
+            updateSubmitButtonState();
+        });
     });
+    // 修复：重新绑定提交按钮的点击事件
+    var submitBtn = document.getElementById('ct-submit-btn');
+    if (submitBtn) {
+        var newSubmitBtn = submitBtn.cloneNode(true);
+        submitBtn.parentNode.replaceChild(newSubmitBtn, submitBtn);
 
+        newSubmitBtn.addEventListener('click', async function () {
+            if (newSubmitBtn.disabled) return;
+            if (!validateForm()) {
+                alert(ctT('ct_alert_required'));
+                return;
+            }
+            var sessionResponse = await window.supabase.auth.getSession();
+            var sessionData = sessionResponse.data;
+            var sessionError = sessionResponse.error;
+            if (sessionError || !sessionData.session) {
+                alert('请先登录后再发布任务');
+                return;
+            }
+            var userId = sessionData.session.user.id;
+            var title = document.getElementById('ct-task-title').value.trim();
+            var type = document.getElementById('ct-task-type').value;
+            var desc = document.getElementById('ct-task-desc').value.trim();
+            var rewardType = document.querySelector('input[name="ct-reward-type"]:checked').value;
+            var rewardAmount = parseFloat(document.getElementById('ct-reward-amount').value);
+            var slots = parseInt(document.getElementById('ct-task-slots').value) || null;
+            var deadline = document.getElementById('ct-deadline').value;
+            var proofType = document.querySelector('input[name="ct-proof-type"]:checked').value;
+            var reqInputs = document.querySelectorAll('#ct-requirements-list .create-task-req-input');
+            var requirements = [];
+            reqInputs.forEach(function (input) {
+                if (input.value.trim()) {
+                    requirements.push(input.value.trim());
+                }
+            });
+            var insertResult = await window.supabase
+                .from('tasks')
+                .insert({
+                    publisher_id: userId,
+                    title: title,
+                    type: type,
+                    description: desc,
+                    requirements: requirements,
+                    reward_type: rewardType,
+                    reward_amount: rewardAmount,
+                    max_participants: slots,
+                    deadline: deadline,
+                    proof_type: proofType,
+                    is_official: false
+                })
+                .select();
+            var data = insertResult.data;
+            var error = insertResult.error;
+            if (error) {
+                alert('发布失败：' + error.message);
+                console.error('发布任务失败', error);
+                return;
+            }
+            alert('任务发布成功！');
+            resetCreateTaskForm();
+            window.location.hash = 'home';
+        });
+    }
     initRequirementList();
   }
 
