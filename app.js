@@ -1120,7 +1120,7 @@ window.addEventListener('hashchange', handleRoute);
     APP_CONTENT_HTML = appContentEl.innerHTML;
   }
 
-  var userLevel = 2;
+  var userLevel = 0;
   var userBalance = 500;
   var createTaskInitialized = false;
 
@@ -1576,15 +1576,36 @@ window.addEventListener('hashchange', handleRoute);
     initRequirementList();
   }
 
-  function renderCreateTaskPage() {
+  async function renderCreateTaskPage() {
     var deadline = document.getElementById('ct-deadline');
     if (deadline && !deadline.value) {
       deadline.value = getDefaultDeadline();
     }
 
+    userLevel = 0;
+    if (window.supabase) {
+      try {
+        var sessionResponse = await window.supabase.auth.getSession();
+        if (!sessionResponse.error && sessionResponse.data && sessionResponse.data.session) {
+          var userId = sessionResponse.data.session.user.id;
+          var userResponse = await window.supabase
+            .from('users')
+            .select('level')
+            .eq('id', userId)
+            .maybeSingle();
+          if (!userResponse.error && userResponse.data && userResponse.data.level != null) {
+            userLevel = userResponse.data.level;
+          }
+        }
+      } catch (e) {
+        userLevel = 0;
+      }
+    }
+
     initCreateTaskEvents();
     bindSubmitButton();
     applyCreateTaskI18n();
+    updateSubmitButtonState();
   }
 
   function restoreAppContentIfNeeded() {
