@@ -591,20 +591,18 @@ function buildTaskCardHtml(task) {
 function handleClaimTask(btn) {
     var taskId = btn.getAttribute('data-task-id');
     if (!taskId) return;
-    window.location.hash = 'task-detail?id=' + encodeURIComponent(taskId);
+    var targetHash = 'task-detail?id=' + encodeURIComponent(taskId);
+    if (window.location.hash.replace(/^#/, '') === targetHash) {
+        if (typeof window.coinrealmApplyRoute === 'function') {
+            window.coinrealmApplyRoute('task-detail');
+        }
+        return;
+    }
+    window.location.hash = targetHash;
 }
 
 function bindClaimButtons() {
-    var taskGrid = document.getElementById('task-grid');
-    if (!taskGrid) return;
-
-    taskGrid.querySelectorAll('.claim-btn').forEach(function (btn) {
-        btn.addEventListener('click', function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            handleClaimTask(btn);
-        });
-    });
+    // 事件已在 initHomePageLogic 中通过委托绑定
 }
 
 function renderTaskCards(tasks) {
@@ -755,6 +753,18 @@ function initHomePageLogic() {
         if (sortDropdown) {
             sortDropdown.addEventListener('change', () => {
                 applyFiltersAndSort();
+            });
+        }
+
+        // D2. 任务卡片「领取」按钮（事件委托，避免重复渲染后失效）
+        const taskGrid = document.getElementById('task-grid');
+        if (taskGrid) {
+            taskGrid.addEventListener('click', function (e) {
+                var btn = e.target.closest('.claim-btn');
+                if (!btn || !taskGrid.contains(btn)) return;
+                e.preventDefault();
+                e.stopPropagation();
+                handleClaimTask(btn);
             });
         }
 

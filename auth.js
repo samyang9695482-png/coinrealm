@@ -21,11 +21,21 @@
     home: 'home-page',
     profile: 'profile-page',
     'create-task': 'create-task-page',
+    'task-detail': 'task-detail-page',
+    'submit-task': 'submit-task-page',
     dividends: 'dividends-page',
     exchange: 'exchange-page',
     leaderboard: 'leaderboard-page',
-    invite: 'invite-page'
+    invite: 'invite-page',
+    'broadcast-history': 'broadcast-history-page',
+    publisher: 'publisher-page',
+    review: 'review-page'
   };
+
+  function getRouteBaseName(routeOrHash) {
+    var route = String(routeOrHash || '').replace(/^#/, '') || 'home';
+    return route.split('?')[0] || 'home';
+  }
 
   var allPageIds = [
     'home-page',
@@ -305,12 +315,15 @@
 
   // 显示目标路由对应页面，隐藏其余页面
   function showPageForRoute(route) {
+    var baseRoute = getRouteBaseName(route);
+    var targetId = routePageMap[baseRoute];
+    if (!targetId) return;
+
     allPageIds.forEach(function (id) {
       var page = document.getElementById(id);
       if (page) page.classList.add('hidden');
     });
 
-    var targetId = routePageMap[route] || 'home-page';
     var target = document.getElementById(targetId);
     if (target) target.classList.remove('hidden');
   }
@@ -320,13 +333,15 @@
     var el = document.getElementById('app-content');
     if (!el || !authAppContentHtml) return;
 
+    var baseRoute = getRouteBaseName(route);
+
     if (!document.getElementById('home-page')) {
       el.innerHTML = authAppContentHtml;
     }
 
-    showPageForRoute(route);
+    showPageForRoute(baseRoute);
 
-    if (route === 'home') {
+    if (baseRoute === 'home') {
       if (typeof handleRoute === 'function') handleRoute();
       return;
     }
@@ -336,7 +351,7 @@
     setTimeout(function () {
       if (!document.getElementById('home-page')) {
         el.innerHTML = authAppContentHtml;
-        showPageForRoute(route);
+        showPageForRoute(baseRoute);
       }
     }, 0);
   }
@@ -543,14 +558,14 @@
   // 外部 hash 变化时，若页面被占位内容覆盖则恢复并跳转
   window.addEventListener('hashchange', function () {
     setTimeout(function () {
-      var route = window.location.hash.replace(/^#/, '') || 'home';
+      var baseRoute = getRouteBaseName(window.location.hash);
       if (!document.getElementById('home-page') && authAppContentHtml) {
-        applyAuthRoute(route);
+        applyAuthRoute(baseRoute);
         return;
       }
       if (document.getElementById('home-page')) {
-        showPageForRoute(route);
-        if (route === 'home' && typeof handleRoute === 'function') handleRoute();
+        showPageForRoute(baseRoute);
+        if (baseRoute === 'home' && typeof handleRoute === 'function') handleRoute();
       }
     }, 0);
   });
