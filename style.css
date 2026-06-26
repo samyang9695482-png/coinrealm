@@ -3452,3 +3452,83 @@ img {
         margin-left: 48px;
     }
 }
+
+/* ==========================================
+   认证区域 — 登录后下拉菜单
+   ========================================== */
+.auth-user-wrap {
+    position: relative;
+}
+
+.auth-user-trigger {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.auth-dropdown-arrow {
+    font-size: 0.625rem;
+    color: #cccccc;
+    line-height: 1;
+    user-select: none;
+}
+
+.auth-dropdown {
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 180px;
+    background: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    overflow: hidden;
+}
+
+.auth-user-wrap:hover .auth-dropdown {
+    display: block;
+}
+
+.auth-dropdown.visible {
+    display: block;
+}
+
+@media (max-width: 768px) {
+    .auth-user-wrap:hover .auth-dropdown:not(.visible) {
+        display: none;
+    }
+}
+
+.auth-dropdown-item {
+    display: block;
+    width: 100%;
+    padding: 12px 16px;
+    font-size: 0.875rem;
+    color: #1a1a2e;
+    text-decoration: none;
+    text-align: left;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+.auth-dropdown-item:hover {
+    background: #f5f5f5;
+}
+
+.auth-dropdown-divider {
+    height: 1px;
+    background: #eee;
+}
+
+.auth-dropdown-signout {
+    color: #ff4d4f;
+}
+
+.auth-dropdown-signout:hover {
+    background: #fff1f0;
+}
