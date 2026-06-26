@@ -405,6 +405,216 @@ const translations = {
 
 // 当前全局语言变量声明（假设项目中已存在该状态控制）
 let currentLang = localStorage.getItem('coinrealm_lang') || 'zh';
+let allTasks = [];
+let homeEventsBound = false;
+
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function getTaskField(task, keys, fallback) {
+    for (let i = 0; i < keys.length; i++) {
+        if (task[keys[i]] != null && task[keys[i]] !== '') return task[keys[i]];
+    }
+    return fallback;
+}
+
+function getTaskCategory(task) {
+    const type = getTaskField(task, ['task_type', 'type', 'category'], 'other');
+    if (task.is_official && type === 'official') return 'official';
+    return type;
+}
+
+function getTypeLabelKey(task) {
+    const type = getTaskField(task, ['task_type', 'type', 'category'], 'other');
+    const map = {
+        official: 'tag_official',
+        airdrop: 'tag_airdrop',
+        register: 'tag_register',
+        trade: 'tag_trade',
+        game: 'tag_game',
+        content: 'tag_content',
+        test: 'tag_test'
+    };
+    return map[type] || 'tag_all';
+}
+
+function formatRewardAmount(amount) {
+    const n = Number(amount) || 0;
+    return n.toLocaleString('en-US') + ' CRLM';
+}
+
+function calcDaysLeft(deadline) {
+    if (!deadline) return 0;
+    const end = new Date(deadline);
+    if (Number.isNaN(end.getTime())) return 0;
+    const diff = Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    return Math.max(0, diff);
+}
+
+function sortTasks(tasks, sortValue) {
+    const list = tasks.slice();
+    switch (sortValue) {
+        case 'highest-value':
+        case 'most-rewards':
+            list.sort((a, b) => {
+                const ra = Number(getTaskField(a, ['reward_amount', 'reward'], 0));
+                const rb = Number(getTaskField(b, ['reward_amount', 'reward'], 0));
+                return rb - ra;
+            });
+            break;
+        case 'ending-soon':
+            list.sort((a, b) => {
+                const da = new Date(getTaskField(a, ['deadline', 'end_date', 'ends_at'], 0)).getTime() || Infinity;
+                const db = new Date(getTaskField(b, ['deadline', 'end_date', 'ends_at'], 0)).getTime() || Infinity;
+                return da - db;
+            });
+            break;
+        case 'latest':
+        default:
+            list.sort((a, b) => {
+                const ca = new Date(getTaskField(a, ['created_at'], 0)).getTime() || 0;
+                const cb = new Date(getTaskField(b, ['created_at'], 0)).getTime() || 0;
+                return cb - ca;
+            });
+            break;
+    }
+    return list;
+}
+
+function buildTaskCardHtml(task) {
+    const category = getTaskCategory(task);
+    const typeLabelKey = getTypeLabelKey(task);
+    const username = escapeHtml(getTaskField(task, ['publisher_username', 'publisher_name', 'username'], 'Unknown'));
+    const level = escapeHtml(getTaskField(task, ['publisher_level', 'level'], 1));
+    const reward = formatRewardAmount(getTaskField(task, ['reward_amount', 'reward'], 0));
+    const slotsLeft = escapeHtml(getTaskField(task, ['slots_left', 'slots_remaining', 'remaining_slots'], 0));
+    const slotsTotal = escapeHtml(getTaskField(task, ['slots_total', 'total_slots'], 0));
+    const daysLeft = calcDaysLeft(getTaskField(task, ['deadline', 'end_date', 'ends_at'], null));
+    const isOfficial = !!task.is_official;
+    const isPromo = !!task.is_promo;
+
+    let badgeHtml = '';
+    if (isOfficial) {
+        badgeHtml = '<span class="badge official-badge" data-i18n="badge_official">官方</span>';
+    } else if (isPromo) {
+        badgeHtml = '<span class="badge promo-badge" data-i18n="badge_promo">推广</span>';
+    }
+
+    return (
+        '<div class="task-card" data-category="' + escapeHtml(category) + '">' +
+            '<div class="card-top">' +
+                '<div class="author-info">' +
+                    '<div class="css-avatar"></div>' +
+                    '<div class="meta-text">' +
+                        '<span class="username">' + username + '</span>' +
+                        '<span class="level-badge">Lv.' + level + '</span>' +
+                    '</div>' +
+                '</div>' +
+                badgeHtml +
+            '</div>' +
+            '<div class="reward-amount">' + reward + '</div>' +
+            '<div class="card-bottom">' +
+                '<div class="meta-tags">' +
+                    '<span class="type-label label-' + escapeHtml(category) + '" data-i18n="' + typeLabelKey + '"></span>' +
+                    '<span class="info-text"><span data-i18n="text_slots">剩余名额</span> ' + slotsLeft + '/' + slotsTotal + '</span>' +
+                    '<span class="info-text">' + daysLeft + ' <span data-i18n="text_days">天后</span></span>' +
+                '</div>' +
+                '<button class="claim-btn" data-i18n="btn_claim">领取</button>' +
+            '</div>' +
+        '</div>'
+    );
+}
+
+function renderTaskCards(tasks) {
+    const taskGrid = document.getElementById('task-grid');
+    if (!taskGrid) return;
+    taskGrid.innerHTML = tasks.map(buildTaskCardHtml).join('');
+}
+
+function applyFiltersAndSort() {
+    const taskGrid = document.getElementById('task-grid');
+    const emptyState = document.getElementById('empty-state');
+    if (!taskGrid || !emptyState) return;
+
+    const activeBtn = document.querySelector('#filter-tags .tag-btn.active');
+    const selectedCategory = activeBtn ? activeBtn.getAttribute('data-type') : 'all';
+    const sortDropdown = document.getElementById('sort-dropdown');
+    const sortValue = sortDropdown ? sortDropdown.value : 'latest';
+
+    let filtered = allTasks.slice();
+    if (selectedCategory !== 'all') {
+        filtered = filtered.filter(function (task) {
+            return getTaskCategory(task) === selectedCategory;
+        });
+    }
+
+    filtered = sortTasks(filtered, sortValue);
+
+    if (filtered.length === 0) {
+        taskGrid.innerHTML = '';
+        taskGrid.classList.add('hidden');
+        emptyState.classList.remove('hidden');
+        return;
+    }
+
+    emptyState.classList.add('hidden');
+    renderTaskCards(filtered);
+    taskGrid.classList.remove('hidden');
+    applyLanguageStrings();
+}
+
+function fetchTasks() {
+    const skeletonScreen = document.getElementById('skeleton-screen');
+    const taskGrid = document.getElementById('task-grid');
+    const emptyState = document.getElementById('empty-state');
+
+    if (skeletonScreen) skeletonScreen.classList.remove('hidden');
+    if (taskGrid) {
+        taskGrid.classList.add('hidden');
+        taskGrid.innerHTML = '';
+    }
+    if (emptyState) emptyState.classList.add('hidden');
+
+    if (!window.supabase) {
+        if (skeletonScreen) skeletonScreen.classList.add('hidden');
+        allTasks = [];
+        if (taskGrid) taskGrid.classList.add('hidden');
+        if (emptyState) emptyState.classList.remove('hidden');
+        return;
+    }
+
+    window.supabase
+        .from('tasks')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .then(function (result) {
+            if (skeletonScreen) skeletonScreen.classList.add('hidden');
+
+            if (result.error || !result.data || result.data.length === 0) {
+                allTasks = [];
+                if (taskGrid) taskGrid.classList.add('hidden');
+                if (emptyState) emptyState.classList.remove('hidden');
+                if (result.error) console.warn('加载任务失败:', result.error);
+                return;
+            }
+
+            allTasks = result.data;
+            applyFiltersAndSort();
+        })
+        .catch(function (err) {
+            if (skeletonScreen) skeletonScreen.classList.add('hidden');
+            allTasks = [];
+            if (taskGrid) taskGrid.classList.add('hidden');
+            if (emptyState) emptyState.classList.remove('hidden');
+            console.warn('加载任务失败:', err);
+        });
+}
 
 // ==========================================
 // 2. 首页核心业务逻辑与动态渲染切换
@@ -428,85 +638,49 @@ function initHomePageLogic() {
         });
     }
 
-    // B. 骨架屏定时控制切入逻辑
-    const skeletonScreen = document.getElementById('skeleton-screen');
-    const taskGrid = document.getElementById('task-grid');
-    
-    if (skeletonScreen && taskGrid) {
-        skeletonScreen.classList.remove('hidden');
-        taskGrid.classList.add('hidden');
-        
-        setTimeout(() => {
-            skeletonScreen.classList.add('hidden');
-            taskGrid.classList.remove('hidden');
-            // 数据展现后刷新一次当前界面的语言文本
-            applyLanguageStrings();
-        }, 2000);
-    }
+    // B. 骨架屏 → 从 Supabase 拉取任务数据
+    fetchTasks();
 
-    // C. 类型筛选标签切换交互逻辑
-    const tagButtons = document.querySelectorAll('#filter-tags .tag-btn');
-    const taskCards = document.querySelectorAll('#task-grid .task-card');
-    const emptyState = document.getElementById('empty-state');
+    if (!homeEventsBound) {
+        homeEventsBound = true;
 
-    tagButtons.forEach(button => {
-        button.addEventListener('click', () => {
-            tagButtons.forEach(btn => btn.classList.remove('active'));
-            button.classList.add('active');
+        // C. 类型筛选标签切换交互逻辑
+        const tagButtons = document.querySelectorAll('#filter-tags .tag-btn');
 
-            const selectedCategory = button.getAttribute('data-type');
-            let visibleCount = 0;
+        tagButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                tagButtons.forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
+                applyFiltersAndSort();
+            });
+        });
 
-            taskCards.forEach(card => {
-                const cardCategory = card.getAttribute('data-category');
-                if (selectedCategory === 'all' || cardCategory === selectedCategory) {
-                    card.classList.remove('hidden');
-                    visibleCount++;
+        // D. 排序下拉交互
+        const sortDropdown = document.getElementById('sort-dropdown');
+        if (sortDropdown) {
+            sortDropdown.addEventListener('change', () => {
+                applyFiltersAndSort();
+            });
+        }
+
+        // E. 回到顶部按钮逻辑
+        const backToTopBtn = document.getElementById('back-to-top-btn');
+        if (backToTopBtn) {
+            window.addEventListener('scroll', () => {
+                if (window.scrollY > 500) {
+                    backToTopBtn.classList.remove('hidden');
                 } else {
-                    card.classList.add('hidden');
+                    backToTopBtn.classList.add('hidden');
                 }
             });
 
-            // 联动无数据时的空状态组件状态
-            if (visibleCount === 0) {
-                emptyState.classList.remove('hidden');
-                taskGrid.classList.add('hidden');
-            } else {
-                emptyState.classList.add('hidden');
-                // 仅在骨架屏倒计时结束后才展现网格
-                if(skeletonScreen.classList.contains('hidden')) {
-                    taskGrid.classList.remove('hidden');
-                }
-            }
-        });
-    });
-
-    // D. 排序下拉交互绑定 (由于是静态卡片，在此做占位交互展示结构)
-    const sortDropdown = document.getElementById('sort-dropdown');
-    if (sortDropdown) {
-        sortDropdown.addEventListener('change', (e) => {
-            console.log(`Sorting criteria changed to: ${e.target.value}`);
-            // 真实项目中这里将重新对 DOM 数组排序或发起新数据请求
-        });
-    }
-
-    // E. 回到顶部按钮逻辑
-    const backToTopBtn = document.getElementById('back-to-top-btn');
-    if (backToTopBtn) {
-        window.addEventListener('scroll', () => {
-            if (window.scrollY > 500) {
-                backToTopBtn.classList.remove('hidden');
-            } else {
-                backToTopBtn.classList.add('hidden');
-            }
-        });
-
-        backToTopBtn.addEventListener('click', () => {
-            window.scrollTo({
-                top: 0,
-                behavior: 'smooth'
+            backToTopBtn.addEventListener('click', () => {
+                window.scrollTo({
+                    top: 0,
+                    behavior: 'smooth'
+                });
             });
-        });
+        }
     }
 }
 
