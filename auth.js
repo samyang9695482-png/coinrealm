@@ -9,6 +9,7 @@
   var sbClient = null;
   var walletAddress = null;
   var documentClickBound = false;
+  var hideTimer = null;
 
   var authText = {
     zh: {
@@ -187,8 +188,10 @@
     );
   }
 
-  // 关闭下拉菜单（移动端 .visible 状态）
+  // 关闭下拉菜单
   function closeDropdown() {
+    clearTimeout(hideTimer);
+    hideTimer = null;
     var dropdown = document.querySelector('.auth-dropdown');
     if (dropdown) dropdown.classList.remove('visible');
   }
@@ -214,8 +217,32 @@
     updateUI(null);
   }
 
-  // 绑定下拉菜单交互：箭头切换、菜单跳转、点击外部关闭
+  // 绑定下拉菜单交互：悬停/点击显示、菜单跳转、点击外部关闭
   function bindDropdownEvents() {
+    var wrap = document.querySelector('.auth-user-wrap');
+    var dropdown = document.querySelector('.auth-dropdown');
+
+    if (wrap && dropdown) {
+      wrap.addEventListener('mouseenter', function () {
+        clearTimeout(hideTimer);
+        dropdown.classList.add('visible');
+      });
+
+      wrap.addEventListener('mouseleave', function () {
+        hideTimer = setTimeout(function () {
+          dropdown.classList.remove('visible');
+        }, 200);
+      });
+
+      dropdown.addEventListener('mouseenter', function () {
+        clearTimeout(hideTimer);
+      });
+
+      dropdown.addEventListener('mouseleave', function () {
+        dropdown.classList.remove('visible');
+      });
+    }
+
     var arrow = document.querySelector('.auth-dropdown-arrow');
     if (arrow) {
       arrow.addEventListener('click', function (e) {

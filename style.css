@@ -3487,18 +3487,8 @@ img {
     overflow: hidden;
 }
 
-.auth-user-wrap:hover .auth-dropdown {
-    display: block;
-}
-
 .auth-dropdown.visible {
     display: block;
-}
-
-@media (max-width: 768px) {
-    .auth-user-wrap:hover .auth-dropdown:not(.visible) {
-        display: none;
-    }
 }
 
 .auth-dropdown-item {
