@@ -11,6 +11,37 @@
   var documentClickBound = false;
   var hideTimer = null;
 
+  // 在 app.js 执行前缓存 #app-content 完整 HTML，供菜单跳转时恢复真实页面
+  var authAppContentHtml = (function () {
+    var el = document.getElementById('app-content');
+    return el ? el.innerHTML : '';
+  })();
+
+  var routePageMap = {
+    home: 'home-page',
+    profile: 'profile-page',
+    'create-task': 'create-task-page',
+    dividends: 'dividends-page',
+    exchange: 'exchange-page',
+    leaderboard: 'leaderboard-page',
+    invite: 'invite-page'
+  };
+
+  var allPageIds = [
+    'home-page',
+    'task-detail-page',
+    'create-task-page',
+    'submit-task-page',
+    'profile-page',
+    'dividends-page',
+    'exchange-page',
+    'leaderboard-page',
+    'broadcast-history-page',
+    'publisher-page',
+    'review-page',
+    'invite-page'
+  ];
+
   var authText = {
     zh: {
       googleSignIn: 'Google 登录',
@@ -188,6 +219,57 @@
     );
   }
 
+  // 显示目标路由对应页面，隐藏其余页面
+  function showPageForRoute(route) {
+    allPageIds.forEach(function (id) {
+      var page = document.getElementById(id);
+      if (page) page.classList.add('hidden');
+    });
+
+    var targetId = routePageMap[route] || 'home-page';
+    var target = document.getElementById(targetId);
+    if (target) target.classList.remove('hidden');
+  }
+
+  // 恢复完整页面结构并切换到指定路由（绕过占位路由对 innerHTML 的覆盖）
+  function applyAuthRoute(route) {
+    var el = document.getElementById('app-content');
+    if (!el || !authAppContentHtml) return;
+
+    if (!document.getElementById('home-page')) {
+      el.innerHTML = authAppContentHtml;
+    }
+
+    showPageForRoute(route);
+
+    if (route === 'home') {
+      if (typeof handleRoute === 'function') handleRoute();
+      return;
+    }
+
+    // 触发各页面模块的 hashchange 处理器以执行 render，再恢复被占位路由覆盖的内容
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    setTimeout(function () {
+      if (!document.getElementById('home-page')) {
+        el.innerHTML = authAppContentHtml;
+        showPageForRoute(route);
+      }
+    }, 0);
+  }
+
+  // 菜单项路由跳转：更新 hash 并切换页面
+  function navigateToRoute(route) {
+    closeDropdown();
+
+    if (history.replaceState) {
+      history.replaceState(null, '', '#' + route);
+    } else {
+      window.location.hash = route;
+    }
+
+    applyAuthRoute(route);
+  }
+
   // 关闭下拉菜单
   function closeDropdown() {
     clearTimeout(hideTimer);
@@ -252,8 +334,10 @@
     }
 
     document.querySelectorAll('.auth-dropdown-item[data-route]').forEach(function (item) {
-      item.addEventListener('click', function () {
-        closeDropdown();
+      item.addEventListener('click', function (e) {
+        e.preventDefault();
+        var route = item.getAttribute('data-route');
+        if (route) navigateToRoute(route);
       });
     });
 
@@ -362,4 +446,19 @@
   } else {
     init();
   }
+
+  // 外部 hash 变化时，若页面被占位内容覆盖则恢复并跳转
+  window.addEventListener('hashchange', function () {
+    setTimeout(function () {
+      var route = window.location.hash.replace(/^#/, '') || 'home';
+      if (!document.getElementById('home-page') && authAppContentHtml) {
+        applyAuthRoute(route);
+        return;
+      }
+      if (document.getElementById('home-page')) {
+        showPageForRoute(route);
+        if (route === 'home' && typeof handleRoute === 'function') handleRoute();
+      }
+    }, 0);
+  });
 })();
