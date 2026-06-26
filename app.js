@@ -413,6 +413,75 @@ function getTaskCategory(task) {
     return type;
 }
 
+function displayNameFromEmail(email) {
+    if (!email) return '';
+    var parts = String(email).split('@');
+    return parts[0] || '';
+}
+
+function resolvePublisherFields(task) {
+    var publisher = task.publisher;
+    var username = getTaskField(task, ['publisher_username', 'publisher_name'], '');
+    var level = getTaskField(task, ['publisher_level'], null);
+
+    if (publisher && typeof publisher === 'object') {
+        if (!username) username = publisher.username || displayNameFromEmail(publisher.email) || '';
+        if (level == null || level === '') level = publisher.level;
+    }
+
+    if (!username) username = getTaskField(task, ['username'], 'Unknown');
+    if (level == null || level === '') level = 1;
+
+    return { username: username, level: level };
+}
+
+function enrichTasksWithPublishers(tasks) {
+    if (!window.supabase || !tasks || !tasks.length) {
+        return Promise.resolve(tasks || []);
+    }
+
+    var publisherIds = tasks
+        .map(function (task) { return task.publisher_id; })
+        .filter(function (id) { return !!id; });
+    var uniqueIds = publisherIds.filter(function (id, index) {
+        return publisherIds.indexOf(id) === index;
+    });
+
+    if (!uniqueIds.length) {
+        return Promise.resolve(tasks);
+    }
+
+    return window.supabase
+        .from('users')
+        .select('id, username, level, email')
+        .in('id', uniqueIds)
+        .then(function (userResult) {
+            if (userResult.error || !userResult.data) {
+                if (userResult.error) console.warn('加载发布者信息失败:', userResult.error);
+                return tasks;
+            }
+
+            var userMap = {};
+            userResult.data.forEach(function (user) {
+                userMap[user.id] = user;
+            });
+
+            return tasks.map(function (task) {
+                var publisher = userMap[task.publisher_id];
+                if (!publisher) return task;
+                return Object.assign({}, task, {
+                    publisher: publisher,
+                    publisher_username: publisher.username || displayNameFromEmail(publisher.email),
+                    publisher_level: publisher.level
+                });
+            });
+        })
+        .catch(function (err) {
+            console.warn('加载发布者信息失败:', err);
+            return tasks;
+        });
+}
+
 function getTypeLabelKey(task) {
     const type = getTaskField(task, ['task_type', 'type', 'category'], 'other');
     const map = {
@@ -473,11 +542,15 @@ function sortTasks(tasks, sortValue) {
 function buildTaskCardHtml(task) {
     const category = getTaskCategory(task);
     const typeLabelKey = getTypeLabelKey(task);
-    const username = escapeHtml(getTaskField(task, ['publisher_username', 'publisher_name', 'username'], 'Unknown'));
-    const level = escapeHtml(getTaskField(task, ['publisher_level', 'level'], 1));
+    const publisher = resolvePublisherFields(task);
+    const username = escapeHtml(publisher.username);
+    const level = escapeHtml(publisher.level);
+    const title = escapeHtml(getTaskField(task, ['title', 'task_title'], ''));
     const reward = formatRewardAmount(getTaskField(task, ['reward_amount', 'reward'], 0));
-    const slotsLeft = escapeHtml(getTaskField(task, ['slots_left', 'slots_remaining', 'remaining_slots'], 0));
-    const slotsTotal = escapeHtml(getTaskField(task, ['slots_total', 'total_slots'], 0));
+    const slotsTotalRaw = getTaskField(task, ['slots_total', 'total_slots', 'max_participants'], 0);
+    const slotsLeftRaw = getTaskField(task, ['slots_left', 'slots_remaining', 'remaining_slots'], null);
+    const slotsLeft = escapeHtml(slotsLeftRaw != null && slotsLeftRaw !== '' ? slotsLeftRaw : slotsTotalRaw);
+    const slotsTotal = escapeHtml(slotsTotalRaw);
     const daysLeft = calcDaysLeft(getTaskField(task, ['deadline', 'end_date', 'ends_at'], null));
     const isOfficial = !!task.is_official;
     const isPromo = !!task.is_promo;
@@ -501,6 +574,7 @@ function buildTaskCardHtml(task) {
                 '</div>' +
                 badgeHtml +
             '</div>' +
+            (title ? '<div class="task-card-title">' + title + '</div>' : '') +
             '<div class="reward-amount">' + reward + '</div>' +
             '<div class="card-bottom">' +
                 '<div class="meta-tags">' +
@@ -598,7 +672,13 @@ function fetchTasks() {
                 return;
             }
 
-            allTasks = result.data;
+            return enrichTasksWithPublishers(result.data);
+        })
+        .then(function (tasks) {
+            if (seq !== fetchTasksSeq) return;
+            if (!tasks) return;
+
+            allTasks = tasks;
             applyFiltersAndSort();
         })
         .catch(function (err) {
@@ -1924,20 +2004,6 @@ window.addEventListener('hashchange', handleRoute);
 
   var profileInitialized = false;
 
-  var sampleUser = {
-    username: 'AlphaRadar',
-    level: 5,
-    levelLabelKey: 'pf_level_master',
-    completionRate: 98,
-    crlmBalance: 12500,
-    usdtValue: 1250,
-    stats: {
-      inProgress: 3,
-      completed: 28,
-      totalEarnings: 15600
-    }
-  };
-
   var profileTranslations = {
     zh: {
       pf_btn_withdraw: '提币',
@@ -1995,6 +2061,44 @@ window.addEventListener('hashchange', handleRoute);
     return String(num).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   }
 
+  function displayNameFromEmail(email) {
+    if (!email) return 'user';
+    var parts = String(email).split('@');
+    return parts[0] || 'user';
+  }
+
+  function getProfileLevelLabel(level) {
+    var n = Number(level) || 0;
+    if (n >= 5) return pfT('pf_level_master');
+    return '';
+  }
+
+  async function loadUserProfile() {
+    var sessionResult = await window.supabase.auth.getSession();
+    var session = sessionResult.data && sessionResult.data.session;
+
+    if (!session || !session.user || !session.user.id) {
+      alert('请先登录');
+      window.location.hash = 'home';
+      return null;
+    }
+
+    var userId = session.user.id;
+    var userResult = await window.supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (userResult.error || !userResult.data) {
+      console.error('获取用户数据失败:', userResult.error);
+      alert('获取用户数据失败');
+      return null;
+    }
+
+    return userResult.data;
+  }
+
   function applyProfileI18n() {
     document.querySelectorAll('#profile-page [data-i18n]').forEach(function (el) {
       var key = el.getAttribute('data-i18n');
@@ -2004,43 +2108,50 @@ window.addEventListener('hashchange', handleRoute);
     });
   }
 
-  function renderProfilePage() {
-    var user = sampleUser;
+  async function renderProfilePage() {
+    var user = await loadUserProfile();
+    if (!user) return;
+
+    var displayUsername = user.username || displayNameFromEmail(user.email);
+    var crlmBalance = Number(user.crlm_balance) || 0;
+    var usdtBalance = Number(user.usdt_balance) || 0;
+    var reputationScore = user.reputation_score != null ? user.reputation_score : 0;
+    var levelNum = user.level != null ? user.level : 0;
 
     var usernameEl = document.getElementById('pf-username');
-    if (usernameEl) usernameEl.textContent = user.username;
+    if (usernameEl) usernameEl.textContent = displayUsername;
 
     var levelBadge = document.getElementById('pf-level-badge');
     if (levelBadge) {
-      levelBadge.textContent = pfT('pf_level_badge', {
-        level: user.level,
-        label: pfT(user.levelLabelKey)
-      });
+      var levelLabel = getProfileLevelLabel(levelNum);
+      levelBadge.textContent = levelLabel
+        ? pfT('pf_level_badge', { level: levelNum, label: levelLabel })
+        : 'Lv.' + levelNum;
     }
 
     var reputationEl = document.getElementById('pf-reputation');
     if (reputationEl) {
-      reputationEl.textContent = pfT('pf_completion_rate', { rate: user.completionRate });
+      reputationEl.textContent = pfT('pf_completion_rate', { rate: reputationScore });
     }
 
     var crlmEl = document.getElementById('pf-crlm-balance');
     if (crlmEl) {
-      crlmEl.textContent = formatNumber(user.crlmBalance) + ' CRLM';
+      crlmEl.textContent = formatNumber(crlmBalance) + ' CRLM';
     }
 
     var usdtEl = document.getElementById('pf-usdt-value');
     if (usdtEl) {
-      usdtEl.textContent = pfT('pf_usdt_approx', { amount: formatNumber(user.usdtValue) });
+      usdtEl.textContent = pfT('pf_usdt_approx', { amount: formatNumber(usdtBalance) });
     }
 
     var progressEl = document.getElementById('pf-stat-progress');
-    if (progressEl) progressEl.textContent = user.stats.inProgress;
+    if (progressEl) progressEl.textContent = '0';
 
     var completedEl = document.getElementById('pf-stat-completed');
-    if (completedEl) completedEl.textContent = user.stats.completed;
+    if (completedEl) completedEl.textContent = '0';
 
     var earningsEl = document.getElementById('pf-stat-earnings');
-    if (earningsEl) earningsEl.textContent = formatNumber(user.stats.totalEarnings);
+    if (earningsEl) earningsEl.textContent = formatNumber(crlmBalance);
 
     applyProfileI18n();
   }
