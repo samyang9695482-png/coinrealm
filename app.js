@@ -563,7 +563,7 @@ function buildTaskCardHtml(task) {
     }
 
     return (
-        '<div class="task-card" data-category="' + escapeHtml(category) + '">' +
+        '<div class="task-card" data-category="' + escapeHtml(category) + '" data-task-id="' + escapeHtml(getTaskField(task, ['id'], '')) + '">' +
             '<div class="card-top">' +
                 '<div class="author-info">' +
                     '<div class="css-avatar"></div>' +
@@ -582,16 +582,126 @@ function buildTaskCardHtml(task) {
                     '<span class="info-text"><span data-i18n="text_slots">剩余名额</span> ' + slotsLeft + '/' + slotsTotal + '</span>' +
                     '<span class="info-text">' + daysLeft + ' <span data-i18n="text_days">天后</span></span>' +
                 '</div>' +
-                '<button class="claim-btn" data-i18n="btn_claim">领取</button>' +
+                '<button type="button" class="claim-btn" data-task-id="' + escapeHtml(getTaskField(task, ['id'], '')) + '" data-i18n="btn_claim">领取</button>' +
             '</div>' +
         '</div>'
     );
+}
+
+async function handleClaimTask(btn) {
+    if (!window.supabase) {
+        alert('Supabase 不可用');
+        return;
+    }
+
+    var taskId = btn.getAttribute('data-task-id');
+    if (!taskId) return;
+
+    if (btn.disabled) return;
+    btn.disabled = true;
+
+    try {
+        var sessionResult = await window.supabase.auth.getSession();
+        var session = sessionResult.data && sessionResult.data.session;
+
+        if (!session || !session.user || !session.user.id) {
+            alert('请先登录后再领取任务');
+            return;
+        }
+
+        var userId = session.user.id;
+
+        var existingResult = await window.supabase
+            .from('submissions')
+            .select('id')
+            .eq('task_id', taskId)
+            .eq('user_id', userId)
+            .maybeSingle();
+
+        if (existingResult.error) {
+            alert('查询失败：' + existingResult.error.message);
+            return;
+        }
+
+        if (existingResult.data) {
+            alert('您已经领取过该任务');
+            return;
+        }
+
+        var taskResult = await window.supabase
+            .from('tasks')
+            .select('current_participants, max_participants')
+            .eq('id', taskId)
+            .single();
+
+        if (taskResult.error || !taskResult.data) {
+            alert('获取任务信息失败');
+            return;
+        }
+
+        var task = taskResult.data;
+        var current = Number(task.current_participants) || 0;
+        var max = task.max_participants != null ? Number(task.max_participants) : null;
+
+        if (max != null && current >= max) {
+            alert('任务名额已满');
+            return;
+        }
+
+        var insertResult = await window.supabase
+            .from('submissions')
+            .insert({
+                task_id: taskId,
+                user_id: userId,
+                status: 'pending'
+            });
+
+        if (insertResult.error) {
+            alert('领取失败：' + insertResult.error.message);
+            return;
+        }
+
+        var nextCount = current + 1;
+        var updateResult = await window.supabase
+            .from('tasks')
+            .update({ current_participants: nextCount })
+            .eq('id', taskId);
+
+        if (updateResult.error) {
+            alert('更新任务名额失败：' + updateResult.error.message);
+            return;
+        }
+
+        if (max != null && nextCount > max) {
+            alert('任务名额已满');
+            return;
+        }
+
+        alert('领取成功！');
+        window.location.hash = 'submit-task';
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+function bindClaimButtons() {
+    var taskGrid = document.getElementById('task-grid');
+    if (!taskGrid) return;
+
+    taskGrid.querySelectorAll('.claim-btn').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            handleClaimTask(btn);
+        });
+    });
 }
 
 function renderTaskCards(tasks) {
     const taskGrid = document.getElementById('task-grid');
     if (!taskGrid) return;
     taskGrid.innerHTML = tasks.map(buildTaskCardHtml).join('');
+    bindClaimButtons();
 }
 
 function applyFiltersAndSort() {
