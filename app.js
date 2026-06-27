@@ -742,7 +742,11 @@ function goToHomeAndRefreshTasks() {
         return;
     }
     window.location.hash = 'home';
-    if (typeof handleRoute === 'function') handleRoute();
+    if (typeof window.coinrealmApplyRoute === 'function') {
+        window.coinrealmApplyRoute('home');
+    } else if (typeof handleRoute === 'function') {
+        handleRoute();
+    }
 }
 
 function fetchTasks() {
@@ -907,27 +911,27 @@ function applyLanguageStrings() {
 // ==========================================
 // 4. 路由系统挂载衔接机制 (请根据具体路由实现进行补充)
 // ==========================================
-// 示例：当触发 hashchange 切换进入 #home 路由时调用
-function handleRoute() {
-    const hash = window.location.hash || '#home';
-    if (hash === '#home') {
-        // 在此注入或展现 index.html 节点结构后，执行以下核心初始化
-        initHomePageLogic();
-        applyLanguageStrings();
-    }
+function getRouteBaseFromHash() {
+    return (window.location.hash.replace(/^#/, '') || 'home').split('?')[0] || 'home';
 }
 
-// 语言切换控制对外桥接函数示例
-function switchLanguage(lang) {
-    currentLang = lang;
-    localStorage.setItem('coinrealm_lang', lang);
+function handleRoute() {
+    if (getRouteBaseFromHash() !== 'home') return;
+    initHomePageLogic();
     applyLanguageStrings();
 }
 
-// 页面加载完毕后默认触发一次
-window.addEventListener('DOMContentLoaded', () => {
+function applyInitialRoute() {
+    var baseRoute = getRouteBaseFromHash();
+    if (typeof window.coinrealmApplyRoute === 'function') {
+        window.coinrealmApplyRoute(baseRoute);
+        return;
+    }
     handleRoute();
-});
+}
+
+// 页面加载完毕后默认触发一次
+window.addEventListener('DOMContentLoaded', applyInitialRoute);
 window.addEventListener('hashchange', handleRoute);
 
 // ==========================================
@@ -1575,10 +1579,10 @@ window.addEventListener('hashchange', handleRoute);
     var homePage = document.getElementById('home-page');
     var taskDetailPage = document.getElementById('task-detail-page');
 
-    if (homePage) homePage.classList.add('hidden');
     if (taskDetailPage) taskDetailPage.classList.add('hidden');
 
     if (route === 'task-detail') {
+      if (homePage) homePage.classList.add('hidden');
       if (taskDetailPage) {
         taskDetailPage.classList.remove('hidden');
         renderTaskDetailPage();
