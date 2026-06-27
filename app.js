@@ -391,6 +391,37 @@ let allTasks = [];
 let homeEventsBound = false;
 let fetchTasksSeq = 0;
 
+async function getUserInfo() {
+    if (!window.supabase) return null;
+
+    var sessionResult = await window.supabase.auth.getSession();
+    if (sessionResult.data && sessionResult.data.session) {
+        var userId = sessionResult.data.session.user.id;
+        var sessionUserResult = await window.supabase
+            .from('users')
+            .select('*')
+            .eq('id', userId)
+            .single();
+        if (!sessionUserResult.error && sessionUserResult.data) {
+            return sessionUserResult.data;
+        }
+    }
+
+    var walletAddress = localStorage.getItem('coinrealm_wallet');
+    if (walletAddress) {
+        var walletUserResult = await window.supabase
+            .from('users')
+            .select('*')
+            .eq('wallet_address', walletAddress)
+            .single();
+        if (!walletUserResult.error && walletUserResult.data) {
+            return walletUserResult.data;
+        }
+    }
+
+    return null;
+}
+
 function escapeHtml(str) {
     if (str == null) return '';
     return String(str)
@@ -588,9 +619,70 @@ function buildTaskCardHtml(task) {
     );
 }
 
-function handleClaimTask(btn) {
+async function handleClaimTask(btn) {
     var taskId = btn.getAttribute('data-task-id');
     if (!taskId) return;
+
+    if (!window.supabase) {
+        alert('请先登录');
+        return;
+    }
+
+    var user = await getUserInfo();
+    if (!user || !user.id) {
+        alert('请先登录');
+        return;
+    }
+
+    var existingSubResult = await window.supabase
+        .from('submissions')
+        .select('id')
+        .eq('task_id', taskId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+    if (!existingSubResult.error && !existingSubResult.data) {
+        var taskResult = await window.supabase
+            .from('tasks')
+            .select('*')
+            .eq('id', taskId)
+            .single();
+
+        if (taskResult.error || !taskResult.data) {
+            alert('任务不存在');
+            return;
+        }
+
+        var task = taskResult.data;
+        var max = task.max_participants != null ? Number(task.max_participants) : null;
+        var current = Number(task.current_participants) || 0;
+
+        if (max != null && current >= max) {
+            alert('任务已满');
+            return;
+        }
+
+        var insertResult = await window.supabase
+            .from('submissions')
+            .insert({
+                task_id: taskId,
+                user_id: user.id,
+                status: 'pending'
+            })
+            .select()
+            .single();
+
+        if (insertResult.error) {
+            alert('领取失败：' + insertResult.error.message);
+            return;
+        }
+
+        await window.supabase
+            .from('tasks')
+            .update({ current_participants: current + 1 })
+            .eq('id', taskId);
+    }
+
     var targetHash = 'task-detail?id=' + encodeURIComponent(taskId);
     if (window.location.hash.replace(/^#/, '') === targetHash) {
         if (typeof window.coinrealmApplyRoute === 'function') {
@@ -1051,15 +1143,20 @@ window.addEventListener('hashchange', handleRoute);
     if (!window.supabase || !currentTaskRecord) return;
 
     var taskId = currentTaskRecord.id;
-    var sessionResult = await window.supabase.auth.getSession();
-    var session = sessionResult.data && sessionResult.data.session;
+    var userInfo = await getUserInfo();
 
-    if (!session || !session.user || !session.user.id) {
+    if (!userInfo || !userInfo.id) {
       alert(tdT('td_alert_login'));
       return;
     }
 
-    var userId = session.user.id;
+    var userId = userInfo.id;
+    var userLevel = userInfo.level != null ? Number(userInfo.level) : 0;
+
+    if (userLevel < 1) {
+      alert(tdT('td_btn_level'));
+      return;
+    }
 
     if (currentSubmissionRecord) {
       alert(tdT('td_alert_already_claimed'));
@@ -1169,10 +1266,9 @@ window.addEventListener('hashchange', handleRoute);
       }
     }
 
-    var sessionResult = await window.supabase.auth.getSession();
-    var session = sessionResult.data && sessionResult.data.session;
-    if (session && session.user && session.user.id) {
-      currentUserId = session.user.id;
+    var userInfo = await getUserInfo();
+    if (userInfo && userInfo.id) {
+      currentUserId = userInfo.id;
       var subResult = await window.supabase
         .from('submissions')
         .select('id, task_id, user_id, status, description, submitted_at')
@@ -1996,23 +2092,9 @@ window.addEventListener('hashchange', handleRoute);
     }
 
     userLevel = 0;
-    if (window.supabase) {
-      try {
-        var sessionResponse = await window.supabase.auth.getSession();
-        if (!sessionResponse.error && sessionResponse.data && sessionResponse.data.session) {
-          var userId = sessionResponse.data.session.user.id;
-          var userResponse = await window.supabase
-            .from('users')
-            .select('level')
-            .eq('id', userId)
-            .maybeSingle();
-          if (!userResponse.error && userResponse.data && userResponse.data.level != null) {
-            userLevel = userResponse.data.level;
-          }
-        }
-      } catch (e) {
-        userLevel = 0;
-      }
+    var userInfo = await getUserInfo();
+    if (userInfo && userInfo.level != null) {
+      userLevel = userInfo.level;
     }
 
     initCreateTaskEvents();
@@ -2690,29 +2772,20 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   async function loadUserProfile() {
-    var sessionResult = await window.supabase.auth.getSession();
-    var session = sessionResult.data && sessionResult.data.session;
-
-    if (!session || !session.user || !session.user.id) {
+    if (!window.supabase) {
       alert('请先登录');
       window.location.hash = 'home';
       return null;
     }
 
-    var userId = session.user.id;
-    var userResult = await window.supabase
-      .from('users')
-      .select('*')
-      .eq('id', userId)
-      .single();
-
-    if (userResult.error || !userResult.data) {
-      console.error('获取用户数据失败:', userResult.error);
-      alert('获取用户数据失败');
+    var user = await getUserInfo();
+    if (!user) {
+      alert('请先登录');
+      window.location.hash = 'home';
       return null;
     }
 
-    return userResult.data;
+    return user;
   }
 
   function applyProfileI18n() {
