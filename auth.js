@@ -237,6 +237,92 @@
     return address.slice(0, 6) + '...' + address.slice(-4);
   }
 
+  function clearWalletStorage() {
+    localStorage.removeItem('coinrealm_wallet');
+    localStorage.removeItem('coinrealm_user_id');
+  }
+
+  // 钱包登录：查找/创建 public.users 记录并写入 localStorage
+  function syncWalletUser(address) {
+    if (!window.supabase || !address) {
+      return Promise.reject(new Error('Supabase unavailable'));
+    }
+
+    return window.supabase
+      .from('users')
+      .select('id')
+      .eq('wallet_address', address)
+      .maybeSingle()
+      .then(function (result) {
+        if (result.error) throw result.error;
+
+        if (result.data && result.data.id) {
+          return window.supabase
+            .from('users')
+            .update({ updated_at: new Date().toISOString() })
+            .eq('wallet_address', address)
+            .select('id')
+            .single()
+            .then(function (updateResult) {
+              if (updateResult.error) throw updateResult.error;
+              return updateResult.data.id;
+            });
+        }
+
+        return window.supabase
+          .from('users')
+          .insert({
+            wallet_address: address,
+            username: address.slice(0, 10),
+            level: 0
+          })
+          .select('id')
+          .single()
+          .then(function (insertResult) {
+            if (insertResult.error) throw insertResult.error;
+            return insertResult.data.id;
+          });
+      })
+      .then(function (userId) {
+        if (userId) {
+          localStorage.setItem('coinrealm_user_id', userId);
+        }
+        return userId;
+      });
+  }
+
+  // 页面加载时从 localStorage 恢复钱包登录态
+  function restoreWalletSession(callback) {
+    var savedWallet = localStorage.getItem('coinrealm_wallet');
+    if (!savedWallet || !window.supabase) {
+      callback();
+      return;
+    }
+
+    window.supabase
+      .from('users')
+      .select('id')
+      .eq('wallet_address', savedWallet)
+      .maybeSingle()
+      .then(function (result) {
+        if (result.error || !result.data || !result.data.id) {
+          clearWalletStorage();
+          walletAddress = null;
+          callback();
+          return;
+        }
+
+        walletAddress = savedWallet;
+        localStorage.setItem('coinrealm_user_id', result.data.id);
+        callback();
+      })
+      .catch(function () {
+        clearWalletStorage();
+        walletAddress = null;
+        callback();
+      });
+  }
+
   // 生成供用户签名的随机验证消息（含钱包地址与时间戳）
   function buildWalletSignMessage(address) {
     return (
@@ -263,12 +349,17 @@
           params: [message, address]
         }).then(function () {
           walletAddress = address;
+          localStorage.setItem('coinrealm_wallet', address);
+          return syncWalletUser(address);
+        }).then(function () {
           renderAuthArea();
-          scheduleUserSync();
         });
       })
       .catch(function (err) {
         console.warn('钱包连接失败', err);
+        walletAddress = null;
+        clearWalletStorage();
+        renderAuthArea();
       });
   }
 
@@ -387,6 +478,7 @@
   // 退出全部登录状态（谷歌 + 钱包）
   function signOutAll() {
     walletAddress = null;
+    clearWalletStorage();
     sessionStorage.removeItem('coinrealm_user_id');
     if (currentUser && window.supabase) {
       window.supabase.auth.signOut().then(function () {
@@ -506,9 +598,9 @@
   function updateUI(user) {
     currentUser = user;
     renderAuthArea();
-    if (isLoggedIn()) {
+    if (currentUser) {
       scheduleUserSync();
-    } else {
+    } else if (!walletAddress) {
       sessionStorage.removeItem('coinrealm_user_id');
     }
   }
@@ -523,15 +615,27 @@
 
       renderAuthArea();
 
-      window.supabase.auth.getSession().then(function (result) {
-        var session = result.data && result.data.session;
-        updateUI(session ? session.user : null);
-      }).catch(function () {
-        updateUI(null);
-      });
+      restoreWalletSession(function () {
+        window.supabase.auth.getSession().then(function (result) {
+          var session = result.data && result.data.session;
+          if (session && session.user) {
+            updateUI(session.user);
+          } else if (walletAddress) {
+            renderAuthArea();
+          } else {
+            updateUI(null);
+          }
+        }).catch(function () {
+          if (walletAddress) {
+            renderAuthArea();
+          } else {
+            updateUI(null);
+          }
+        });
 
-      window.supabase.auth.onAuthStateChange(function (event, session) {
-        updateUI(session ? session.user : null);
+        window.supabase.auth.onAuthStateChange(function (event, session) {
+          updateUI(session ? session.user : null);
+        });
       });
     });
   }
