@@ -1008,6 +1008,9 @@ window.addEventListener('hashchange', handleRoute);
 
   function saveSubmissionContext(task, submission) {
     if (!task || !submission) return;
+    sessionStorage.setItem('currentTaskId', task.id);
+    sessionStorage.setItem('currentTaskTitle', task.title || '');
+    sessionStorage.setItem('currentTaskReward', String(task.reward_amount != null ? task.reward_amount : 0));
     sessionStorage.setItem(SUBMISSION_STORAGE_KEY, JSON.stringify({
       taskId: task.id,
       submissionId: submission.id,
@@ -2073,6 +2076,10 @@ window.addEventListener('hashchange', handleRoute);
   var uploadedFiles = [];
   var submitTaskInitialized = false;
   var activeSubmitContext = null;
+  var currentSubmissionRecord = null;
+
+  var submitPageEl = document.getElementById('submit-task-page');
+  var SUBMIT_PAGE_HTML = submitPageEl ? submitPageEl.innerHTML : '';
 
   var submitTaskTranslations = {
     zh: {
@@ -2086,11 +2093,13 @@ window.addEventListener('hashchange', handleRoute);
       st_waiting_sub: '预计 48 小时内完成审核',
       st_btn_submit: '提交审核',
       st_btn_submitted: '已提交',
+      st_btn_back_home: '返回首页',
+      st_reject_title: '驳回理由：',
       st_alert_desc: '请填写任务完成描述',
+      st_alert_login: '请先登录',
       st_alert_max_files: '最多上传 3 张截图',
       st_alert_no_task: '请先在任务详情页领取任务',
-      st_alert_submit_fail: '提交失败：',
-      st_alert_upload_fail: '截图上传失败：'
+      st_alert_submit_fail: '提交失败：'
     },
     en: {
       st_title_submit: 'Submit Proof',
@@ -2103,11 +2112,13 @@ window.addEventListener('hashchange', handleRoute);
       st_waiting_sub: 'Review expected within 48 hours',
       st_btn_submit: 'Submit for Review',
       st_btn_submitted: 'Submitted',
+      st_btn_back_home: 'Back to Home',
+      st_reject_title: 'Rejection reason:',
       st_alert_desc: 'Please fill in the task completion description',
+      st_alert_login: 'Please sign in first',
       st_alert_max_files: 'Maximum 3 screenshots allowed',
       st_alert_no_task: 'Please claim the task on the task detail page first',
-      st_alert_submit_fail: 'Submit failed: ',
-      st_alert_upload_fail: 'Screenshot upload failed: '
+      st_alert_submit_fail: 'Submit failed: '
     }
   };
 
@@ -2150,39 +2161,84 @@ window.addEventListener('hashchange', handleRoute);
     return hash.split('?')[0] || 'home';
   }
 
+  function ensureSubmitPageStructure() {
+    var page = document.getElementById('submit-task-page');
+    if (!page || !SUBMIT_PAGE_HTML) return;
+    if (!document.getElementById('st-description') || !document.querySelector('#st-waiting-section .st-waiting-icon')) {
+      page.innerHTML = SUBMIT_PAGE_HTML;
+      submitTaskInitialized = false;
+    }
+  }
+
   function loadSubmitContext() {
+    var taskId = sessionStorage.getItem('currentTaskId');
+    var title = sessionStorage.getItem('currentTaskTitle');
+    var reward = sessionStorage.getItem('currentTaskReward');
+
+    if (taskId) {
+      return {
+        taskId: taskId,
+        title: title || '',
+        reward: reward != null ? reward : '0'
+      };
+    }
+
     var raw = sessionStorage.getItem(SUBMISSION_STORAGE_KEY);
     if (!raw) return null;
     try {
-      return JSON.parse(raw);
+      var legacy = JSON.parse(raw);
+      if (legacy && legacy.taskId) {
+        return {
+          taskId: legacy.taskId,
+          title: legacy.title || '',
+          reward: legacy.reward != null ? String(legacy.reward) : '0'
+        };
+      }
     } catch (e) {
       return null;
     }
+    return null;
   }
 
-  function formatRewardDisplay(reward, unit) {
+  function formatRewardDisplay(reward) {
     var n = Number(reward) || 0;
-    return n.toLocaleString('en-US') + ' ' + (unit || 'CRLM');
+    return n.toLocaleString('en-US') + ' CRLM';
   }
 
-  async function uploadScreenshotFiles(files, userId, taskId) {
-    var urls = [];
-    for (var i = 0; i < files.length; i++) {
-      var file = files[i];
-      var safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      var path = userId + '/' + taskId + '/' + Date.now() + '_' + i + '_' + safeName;
-      var uploadResult = await window.supabase.storage.from('submissions').upload(path, file, {
-        upsert: false
-      });
-      if (uploadResult.error) {
-        throw uploadResult.error;
-      }
-      var publicResult = window.supabase.storage.from('submissions').getPublicUrl(path);
-      if (publicResult.data && publicResult.data.publicUrl) {
-        urls.push(publicResult.data.publicUrl);
+  function getRejectionReason(submission) {
+    if (!submission) return '';
+    return submission.rejection_reason || submission.reject_reason || submission.review_note || '';
+  }
+
+  function isSubmissionWaitingReview(submission) {
+    if (!submission) return false;
+    if (submission.status === 'submitted' || submission.status === 'approved') return true;
+    if (submission.status === 'pending' && submission.submitted_at) return true;
+    return false;
+  }
+
+  async function resolveSubmitUserId() {
+    if (window.supabase) {
+      var sessionResult = await window.supabase.auth.getSession();
+      var session = sessionResult.data && sessionResult.data.session;
+      if (session && session.user && session.user.id) {
+        return session.user.id;
       }
     }
-    return urls;
+
+    var wallet = localStorage.getItem('coinrealm_wallet');
+    if (wallet && window.supabase) {
+      var userResult = await window.supabase
+        .from('users')
+        .select('id')
+        .eq('wallet_address', wallet)
+        .maybeSingle();
+      if (!userResult.error && userResult.data && userResult.data.id) {
+        return userResult.data.id;
+      }
+    }
+
+    return null;
   }
 
   function handleFilesSelected(fileList) {
@@ -2228,13 +2284,28 @@ window.addEventListener('hashchange', handleRoute);
     var pageTitle = document.getElementById('st-page-title');
     var formSection = document.getElementById('st-form-section');
     var waitingSection = document.getElementById('st-waiting-section');
+    var summaryCard = document.querySelector('#submit-task-page .submit-task-summary-card');
     var submitBtn = document.getElementById('st-submit-btn');
+    var actionBar = document.querySelector('#submit-task-page .submit-task-action-bar');
+
+    if (submitState === 'no_task') {
+      if (pageTitle) pageTitle.textContent = stT('st_title_submit');
+      if (summaryCard) summaryCard.classList.add('hidden');
+      if (formSection) formSection.classList.add('hidden');
+      if (waitingSection) waitingSection.classList.remove('hidden');
+      if (actionBar) actionBar.classList.add('hidden');
+      return;
+    }
+
+    if (summaryCard) summaryCard.classList.remove('hidden');
+    if (actionBar) actionBar.classList.remove('hidden');
 
     if (submitState === 'waiting') {
       if (pageTitle) pageTitle.textContent = stT('st_title_waiting');
       if (formSection) formSection.classList.add('hidden');
       if (waitingSection) waitingSection.classList.remove('hidden');
       if (submitBtn) {
+        submitBtn.classList.remove('hidden');
         submitBtn.textContent = stT('st_btn_submitted');
         submitBtn.classList.remove('st-btn-gold');
         submitBtn.classList.add('st-btn-disabled');
@@ -2245,12 +2316,51 @@ window.addEventListener('hashchange', handleRoute);
       if (formSection) formSection.classList.remove('hidden');
       if (waitingSection) waitingSection.classList.add('hidden');
       if (submitBtn) {
+        submitBtn.classList.remove('hidden');
         submitBtn.textContent = stT('st_btn_submit');
         submitBtn.classList.remove('st-btn-disabled');
         submitBtn.classList.add('st-btn-gold');
         submitBtn.disabled = false;
       }
     }
+  }
+
+  function showNoTaskEmptyState() {
+    submitState = 'no_task';
+    var waitingSection = document.getElementById('st-waiting-section');
+    if (waitingSection) {
+      waitingSection.innerHTML =
+        '<p class="st-waiting-text">' + stT('st_alert_no_task') + '</p>' +
+        '<button type="button" id="st-back-home-btn" class="st-action-btn st-btn-gold">' + stT('st_btn_back_home') + '</button>';
+      var backBtn = document.getElementById('st-back-home-btn');
+      if (backBtn) {
+        backBtn.addEventListener('click', function () {
+          window.location.hash = 'home';
+        });
+      }
+    }
+    updatePageStateUI();
+  }
+
+  function renderRejectionBanner(submission) {
+    var existing = document.getElementById('st-rejection-banner');
+    if (existing) existing.remove();
+
+    var reason = getRejectionReason(submission);
+    if (!reason) return;
+
+    var formSection = document.getElementById('st-form-section');
+    if (!formSection) return;
+
+    var banner = document.createElement('div');
+    banner.id = 'st-rejection-banner';
+    banner.className = 'submit-task-field';
+    banner.innerHTML =
+      '<p style="color:#ff4d4f;margin-bottom:12px;line-height:1.5;">' +
+      '<strong>' + stT('st_reject_title') + '</strong> ' +
+      escapeHtml(reason) +
+      '</p>';
+    formSection.insertBefore(banner, formSection.firstChild);
   }
 
   function renderSummaryCard() {
@@ -2260,41 +2370,59 @@ window.addEventListener('hashchange', handleRoute);
     if (!activeSubmitContext) return;
 
     if (titleEl) titleEl.textContent = activeSubmitContext.title || '';
-    if (rewardEl) {
-      rewardEl.textContent = formatRewardDisplay(activeSubmitContext.reward, activeSubmitContext.rewardUnit);
-    }
+    if (rewardEl) rewardEl.textContent = formatRewardDisplay(activeSubmitContext.reward);
   }
 
   async function syncSubmitPageState() {
+    ensureSubmitPageStructure();
+
     activeSubmitContext = loadSubmitContext();
-    if (!activeSubmitContext || !activeSubmitContext.submissionId) {
-      alert(stT('st_alert_no_task'));
-      window.location.hash = 'home';
-      return false;
+    currentSubmissionRecord = null;
+
+    if (!activeSubmitContext || !activeSubmitContext.taskId) {
+      showNoTaskEmptyState();
+      return true;
     }
 
-    if (!window.supabase) return false;
+    if (!window.supabase) {
+      showNoTaskEmptyState();
+      return true;
+    }
+
+    var userId = await resolveSubmitUserId();
+    if (!userId) {
+      showNoTaskEmptyState();
+      return true;
+    }
 
     var submissionResult = await window.supabase
       .from('submissions')
-      .select('*')
-      .eq('id', activeSubmitContext.submissionId)
-      .single();
+      .select('id, task_id, user_id, status, description, submitted_at, rejection_reason, reject_reason, review_note, screenshot_urls')
+      .eq('task_id', activeSubmitContext.taskId)
+      .eq('user_id', userId)
+      .maybeSingle();
 
-    if (submissionResult.error || !submissionResult.data) {
-      alert(stT('st_alert_no_task'));
-      window.location.hash = 'home';
+    if (submissionResult.error) {
+      alert(stT('st_alert_submit_fail') + submissionResult.error.message);
       return false;
     }
 
-    var submission = submissionResult.data;
-    if (submission.status === 'submitted' || submission.status === 'approved') {
+    if (!submissionResult.data) {
+      showNoTaskEmptyState();
+      return true;
+    }
+
+    currentSubmissionRecord = submissionResult.data;
+    activeSubmitContext.submissionId = submissionResult.data.id;
+
+    if (isSubmissionWaitingReview(submissionResult.data)) {
       submitState = 'waiting';
-    } else if (submission.status === 'rejected') {
-      submitState = 'form';
+    } else if (submissionResult.data.status === 'rejected') {
+      submitState = 'rejected';
     } else {
       submitState = 'form';
     }
+
     return true;
   }
 
@@ -2338,69 +2466,80 @@ window.addEventListener('hashchange', handleRoute);
     var submitBtn = document.getElementById('st-submit-btn');
     if (submitBtn) {
       submitBtn.addEventListener('click', async function () {
-        if (submitState === 'waiting') return;
-        if (!activeSubmitContext || !activeSubmitContext.submissionId) {
-          alert(stT('st_alert_no_task'));
-          return;
-        }
+        if (submitState === 'waiting' || submitState === 'no_task') return;
 
         var descEl = document.getElementById('st-description');
-        var noteEl = document.getElementById('st-extra-note');
         var desc = descEl ? descEl.value.trim() : '';
         if (!desc) {
           alert(stT('st_alert_desc'));
           return;
         }
 
-        var note = noteEl ? noteEl.value.trim() : '';
-        var fullDescription = note ? desc + '\n\n' + note : desc;
+        if (!window.supabase) {
+          alert(stT('st_alert_login'));
+          return;
+        }
 
-        if (!window.supabase) return;
+        if (!activeSubmitContext || !activeSubmitContext.taskId) {
+          showNoTaskEmptyState();
+          return;
+        }
 
-        var sessionResult = await window.supabase.auth.getSession();
-        var session = sessionResult.data && sessionResult.data.session;
-        if (!session || !session.user || !session.user.id) {
-          alert(getLang() === 'zh' ? '请先登录' : 'Please sign in first');
+        var userId = await resolveSubmitUserId();
+        if (!userId) {
+          alert(stT('st_alert_login'));
           return;
         }
 
         submitBtn.disabled = true;
 
         try {
-          var screenshotUrls = [];
-          if (uploadedFiles.length) {
-            try {
-              screenshotUrls = await uploadScreenshotFiles(
-                uploadedFiles,
-                session.user.id,
-                activeSubmitContext.taskId
-              );
-            } catch (uploadErr) {
-              alert(stT('st_alert_upload_fail') + (uploadErr.message || String(uploadErr)));
-              return;
-            }
+          var lookupResult = await window.supabase
+            .from('submissions')
+            .select('id')
+            .eq('task_id', activeSubmitContext.taskId)
+            .eq('user_id', userId)
+            .maybeSingle();
+
+          if (lookupResult.error || !lookupResult.data) {
+            alert(stT('st_alert_no_task'));
+            return;
           }
+
+          var screenshotNames = uploadedFiles.map(function (file) {
+            return file.name;
+          });
 
           var updateResult = await window.supabase
             .from('submissions')
             .update({
-              description: fullDescription,
-              screenshot_urls: screenshotUrls,
-              status: 'submitted',
+              description: desc,
+              screenshot_urls: screenshotNames,
+              status: 'pending',
               submitted_at: new Date().toISOString()
             })
-            .eq('id', activeSubmitContext.submissionId)
-            .eq('user_id', session.user.id);
+            .eq('id', lookupResult.data.id)
+            .eq('user_id', userId);
 
           if (updateResult.error) {
             alert(stT('st_alert_submit_fail') + updateResult.error.message);
             return;
           }
 
+          currentSubmissionRecord = Object.assign({}, currentSubmissionRecord || {}, {
+            id: lookupResult.data.id,
+            status: 'pending',
+            submitted_at: new Date().toISOString(),
+            description: desc
+          });
+
           submitState = 'waiting';
           updatePageStateUI();
+          applySubmitTaskI18n();
         } finally {
-          submitBtn.disabled = submitState === 'waiting';
+          if (submitBtn) {
+            submitBtn.disabled = submitState === 'waiting';
+          }
         }
       });
     }
@@ -2410,7 +2549,17 @@ window.addEventListener('hashchange', handleRoute);
     var ok = await syncSubmitPageState();
     if (!ok) return;
 
+    if (submitState === 'no_task') {
+      applySubmitTaskI18n();
+      return;
+    }
+
     renderSummaryCard();
+
+    if (submitState === 'rejected') {
+      renderRejectionBanner(currentSubmissionRecord);
+    }
+
     initSubmitTaskEvents();
     applySubmitTaskI18n();
   }
@@ -2423,6 +2572,7 @@ window.addEventListener('hashchange', handleRoute);
       submitState = 'form';
       uploadedFiles = [];
       activeSubmitContext = null;
+      currentSubmissionRecord = null;
     }
   }
 
