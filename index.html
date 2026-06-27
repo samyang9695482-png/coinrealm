@@ -246,8 +246,24 @@
 
       <!-- 8. 右下角悬浮按钮群 -->
       <div class="floating-actions">
-        <button class="float-btn post-task-btn" title="发布任务">+</button>
+        <button type="button" id="daily-checkin-btn" class="float-btn checkin-btn" title="每日签到">签</button>
+        <button type="button" class="float-btn post-task-btn" title="发布任务">+</button>
         <button id="back-to-top-btn" class="float-btn back-to-top hidden" title="回到顶部">↑</button>
+      </div>
+
+      <!-- 签到成功弹窗 -->
+      <div id="checkin-modal" class="checkin-modal hidden" aria-hidden="true">
+        <div class="checkin-modal-overlay"></div>
+        <div class="checkin-modal-card">
+          <div class="checkin-coin-fall" aria-hidden="true">🪙</div>
+          <h3 class="checkin-modal-title" data-i18n="checkin_success_title">签到成功</h3>
+          <p class="checkin-reward-line">
+            <span data-i18n="checkin_reward_label">获得奖励</span>
+            <strong id="checkin-reward-value" class="checkin-reward-value">0 CRLM</strong>
+          </p>
+          <p id="checkin-streak-line" class="checkin-streak-line"></p>
+          <button type="button" id="checkin-modal-close" class="checkin-modal-close" data-i18n="checkin_close">太棒了</button>
+        </div>
       </div>
 
       <!-- 9. 底部页脚 -->

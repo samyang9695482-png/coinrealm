@@ -361,7 +361,15 @@ const translations = {
         text_slots: "剩余名额",
         text_days: "天后",
         btn_claim: "领取",
-        empty_text: "没有找到相关任务，换个筛选试试？"
+        empty_text: "没有找到相关任务，换个筛选试试？",
+        checkin_success_title: "签到成功",
+        checkin_reward_label: "获得奖励",
+        checkin_streak: "已连续签到 {days} 天",
+        checkin_streak_bonus: "连续7天加成，奖励已翻倍！",
+        checkin_close: "太棒了",
+        checkin_already: "今日已签到，已连续签到 {days} 天",
+        checkin_login_required: "请先登录后再签到",
+        checkin_fail: "签到失败："
     },
     en: {
         ads_banner: "Advertising Space (Web3 Ads)",
@@ -386,7 +394,15 @@ const translations = {
         text_slots: "Slots left",
         text_days: "days left",
         btn_claim: "Claim",
-        empty_text: "No tasks found. Try changing your filters?"
+        empty_text: "No tasks found. Try changing your filters?",
+        checkin_success_title: "Check-in Successful",
+        checkin_reward_label: "Reward earned",
+        checkin_streak: "Streak: {days} days",
+        checkin_streak_bonus: "7+ day streak — reward doubled!",
+        checkin_close: "Awesome",
+        checkin_already: "Already checked in today. Streak: {days} days",
+        checkin_login_required: "Please sign in before checking in",
+        checkin_fail: "Check-in failed: "
     }
 };
 
@@ -694,6 +710,182 @@ function renderTaskCards(tasks) {
     bindClaimButtons();
 }
 
+var checkinInProgress = false;
+
+function getLocalDateString(dayOffset) {
+    var d = new Date();
+    if (dayOffset) {
+        d.setDate(d.getDate() + dayOffset);
+    }
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+}
+
+function formatCheckinText(key, vars) {
+    var langData = translations[currentLang] || translations.zh;
+    var text = langData[key] || translations.zh[key] || '';
+    if (vars) {
+        Object.keys(vars).forEach(function (k) {
+            text = text.replace('{' + k + '}', String(vars[k]));
+        });
+    }
+    return text;
+}
+
+function showCheckinSuccessModal(rewardAmount, consecutiveDays) {
+    var modal = document.getElementById('checkin-modal');
+    var rewardEl = document.getElementById('checkin-reward-value');
+    var streakEl = document.getElementById('checkin-streak-line');
+    if (!modal || !rewardEl || !streakEl) return;
+
+    rewardEl.textContent = rewardAmount.toLocaleString() + ' CRLM';
+    var streakText = formatCheckinText('checkin_streak', { days: consecutiveDays });
+    if (consecutiveDays >= 7) {
+        streakText += ' · ' + formatCheckinText('checkin_streak_bonus');
+    }
+    streakEl.textContent = streakText;
+
+    rewardEl.style.animation = 'none';
+    void rewardEl.offsetWidth;
+    rewardEl.style.animation = '';
+
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    applyLanguageStrings();
+}
+
+function hideCheckinModal() {
+    var modal = document.getElementById('checkin-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+async function handleDailyCheckin() {
+    if (checkinInProgress) return;
+
+    if (!window.supabase) {
+        alert(formatCheckinText('checkin_login_required'));
+        return;
+    }
+
+    var userId = await getCurrentUserId();
+    if (!userId) {
+        alert(formatCheckinText('checkin_login_required'));
+        return;
+    }
+
+    checkinInProgress = true;
+
+    try {
+        var today = getLocalDateString(0);
+        var todayResult = await window.supabase
+            .from('checkins')
+            .select('*')
+            .eq('user_id', userId)
+            .gte('checkin_date', today);
+
+        if (todayResult.error) {
+            alert(formatCheckinText('checkin_fail') + todayResult.error.message);
+            return;
+        }
+
+        var todayRecords = (todayResult.data || []).filter(function (row) {
+            return String(row.checkin_date).slice(0, 10) === today;
+        });
+
+        if (todayRecords.length) {
+            var existingStreak = todayRecords[0].consecutive_days || 1;
+            alert(formatCheckinText('checkin_already', { days: existingStreak }));
+            return;
+        }
+
+        var baseReward = Math.floor(Math.random() * 401) + 100;
+        var yesterday = getLocalDateString(-1);
+        var yesterdayResult = await window.supabase
+            .from('checkins')
+            .select('consecutive_days')
+            .eq('user_id', userId)
+            .eq('checkin_date', yesterday)
+            .maybeSingle();
+
+        var consecutiveDays = 1;
+        if (!yesterdayResult.error && yesterdayResult.data && yesterdayResult.data.consecutive_days) {
+            consecutiveDays = Number(yesterdayResult.data.consecutive_days) + 1;
+        }
+
+        var finalReward = baseReward;
+        if (consecutiveDays >= 7) {
+            finalReward = baseReward * 2;
+        }
+
+        var userResult = await window.supabase
+            .from('users')
+            .select('crlm_balance')
+            .eq('id', userId)
+            .single();
+
+        if (userResult.error || !userResult.data) {
+            alert(formatCheckinText('checkin_fail') + (userResult.error ? userResult.error.message : '无法读取用户余额'));
+            return;
+        }
+
+        var newBalance = (Number(userResult.data.crlm_balance) || 0) + finalReward;
+
+        var insertResult = await window.supabase.from('checkins').insert({
+            user_id: userId,
+            checkin_date: today,
+            reward_amount: finalReward,
+            consecutive_days: consecutiveDays
+        });
+
+        if (insertResult.error) {
+            alert(formatCheckinText('checkin_fail') + insertResult.error.message);
+            return;
+        }
+
+        var updateResult = await window.supabase
+            .from('users')
+            .update({ crlm_balance: newBalance })
+            .eq('id', userId);
+
+        if (updateResult.error) {
+            alert(formatCheckinText('checkin_fail') + updateResult.error.message);
+            return;
+        }
+
+        showCheckinSuccessModal(finalReward, consecutiveDays);
+    } finally {
+        checkinInProgress = false;
+    }
+}
+
+function bindCheckinEvents() {
+    var checkinBtn = document.getElementById('daily-checkin-btn');
+    if (checkinBtn && !checkinBtn.dataset.bound) {
+        checkinBtn.dataset.bound = 'true';
+        checkinBtn.addEventListener('click', function () {
+            handleDailyCheckin();
+        });
+    }
+
+    var modal = document.getElementById('checkin-modal');
+    var closeBtn = document.getElementById('checkin-modal-close');
+    if (closeBtn && !closeBtn.dataset.bound) {
+        closeBtn.dataset.bound = 'true';
+        closeBtn.addEventListener('click', hideCheckinModal);
+    }
+    if (modal && !modal.dataset.bound) {
+        modal.dataset.bound = 'true';
+        var overlay = modal.querySelector('.checkin-modal-overlay');
+        if (overlay) {
+            overlay.addEventListener('click', hideCheckinModal);
+        }
+    }
+}
+
 function applyFiltersAndSort() {
     const taskGrid = document.getElementById('task-grid');
     const emptyState = document.getElementById('empty-state');
@@ -872,6 +1064,8 @@ function initHomePageLogic() {
                 });
             });
         }
+
+        bindCheckinEvents();
     }
 }
 
