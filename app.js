@@ -2229,7 +2229,7 @@ window.addEventListener('hashchange', handleRoute);
 
   function getRejectionReason(submission) {
     if (!submission) return '';
-    return submission.rejection_reason || submission.reject_reason || submission.review_note || '';
+    return submission.review_comment || '';
   }
 
   function isSubmissionWaitingReview(submission) {
@@ -2397,7 +2397,7 @@ window.addEventListener('hashchange', handleRoute);
 
     var submissionResult = await window.supabase
       .from('submissions')
-      .select('id, task_id, user_id, status, description, submitted_at, rejection_reason, reject_reason, review_note, screenshot_urls')
+      .select('id, task_id, user_id, status, description, submitted_at, review_comment, screenshot_urls')
       .eq('task_id', activeSubmitContext.taskId)
       .eq('user_id', userId)
       .maybeSingle();
