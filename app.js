@@ -883,7 +883,7 @@ window.addEventListener('hashchange', handleRoute);
       td_btn_login: '请先登录',
       td_btn_waiting: '已提交，等待审核',
       td_btn_approved: '已通过',
-      td_btn_rejected: '已驳回，重新提交',
+      td_btn_rejected: '重新提交',
       td_btn_level: '等级不足（需Lv.1以上）',
       td_btn_ended: '已结束',
       td_completion_rate: '{rate}% 完成率',
@@ -931,7 +931,7 @@ window.addEventListener('hashchange', handleRoute);
       td_btn_login: 'Please sign in first',
       td_btn_waiting: 'Submitted, pending review',
       td_btn_approved: 'Approved',
-      td_btn_rejected: 'Rejected, resubmit',
+      td_btn_rejected: 'Resubmit',
       td_btn_level: 'Level Too Low (Lv.1+ required)',
       td_btn_ended: 'Ended',
       td_completion_rate: '{rate}% completion rate',
@@ -1030,11 +1030,12 @@ window.addEventListener('hashchange', handleRoute);
     if (!submission) return 'can_claim';
 
     var status = submission.status;
-    var hasSubmitted = !!(submission.submitted_at || (submission.description && String(submission.description).trim()));
 
+    if (status === 'submitted') return 'waiting_review';
+    if (status === 'pending') return 'go_submit';
     if (status === 'approved') return 'approved';
     if (status === 'rejected') return 'rejected_resubmit';
-    if (hasSubmitted) return 'waiting_review';
+
     return 'go_submit';
   }
 
@@ -1171,7 +1172,7 @@ window.addEventListener('hashchange', handleRoute);
       currentUserId = session.user.id;
       var subResult = await window.supabase
         .from('submissions')
-        .select('*')
+        .select('id, task_id, user_id, status, description, submitted_at')
         .eq('task_id', taskId)
         .eq('user_id', currentUserId)
         .maybeSingle();
@@ -2287,11 +2288,12 @@ window.addEventListener('hashchange', handleRoute);
     }
 
     var submission = submissionResult.data;
-    var hasSubmitted = !!(submission.submitted_at || (submission.description && String(submission.description).trim()));
-    if (submission.status === 'rejected') {
+    if (submission.status === 'submitted' || submission.status === 'approved') {
+      submitState = 'waiting';
+    } else if (submission.status === 'rejected') {
       submitState = 'form';
     } else {
-      submitState = hasSubmitted ? 'waiting' : 'form';
+      submitState = 'form';
     }
     return true;
   }
@@ -2384,7 +2386,7 @@ window.addEventListener('hashchange', handleRoute);
             .update({
               description: fullDescription,
               screenshot_urls: screenshotUrls,
-              status: 'pending',
+              status: 'submitted',
               submitted_at: new Date().toISOString()
             })
             .eq('id', activeSubmitContext.submissionId)
