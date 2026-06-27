@@ -4092,51 +4092,21 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   var reviewInitialized = false;
-  var currentTaskKey = 'task1';
+  var publisherTasks = [];
+  var currentSubmissions = [];
+  var selectedTaskId = null;
   var pendingRejectId = null;
-
-  function cloneSubmissions(items) {
-    return items.map(function (item) {
-      return {
-        id: item.id,
-        username: item.username,
-        time: item.time,
-        type: item.type,
-        text: item.text,
-        screenshotCount: item.screenshotCount,
-        status: item.status || 'pending'
-      };
-    });
-  }
-
-  var reviewTasksData = {
-    task1: cloneSubmissions([
-      { id: 't1-s1', username: 'LinkerDAO', time: '2025-01-15 14:30', type: 'text', text: '我已完成XX交易所注册并完成KYC验证，注册邮箱为test@example.com，UID为8839201，请审核通过。', status: 'pending' },
-      { id: 't1-s2', username: 'CryptoAce', time: '2025-01-15 13:10', type: 'screenshot', screenshotCount: 2, status: 'pending' },
-      { id: 't1-s3', username: 'WhaleSwap', time: '2025-01-15 11:45', type: 'text', text: '已完成注册并绑定钱包地址0x88f2...abc9，附注册成功截图说明。', status: 'pending' }
-    ]),
-    task2: cloneSubmissions([
-      { id: 't2-s1', username: 'GameFi_Hub', time: '2025-01-14 20:15', type: 'screenshot', screenshotCount: 3, status: 'pending' },
-      { id: 't2-s2', username: 'AlphaRadar', time: '2025-01-14 18:40', type: 'text', text: '已试玩Web3游戏达到10级，游戏内昵称PlayerOne，耗时约2小时完成。', status: 'pending' },
-      { id: 't2-s3', username: 'NodeRunner', time: '2025-01-14 16:22', type: 'text', text: '完成新手教程并通关第一章，UID 55231，请审核。', status: 'pending' }
-    ]),
-    task3: cloneSubmissions([
-      { id: 't3-s1', username: 'ShareMaster', time: '2025-01-13 09:30', type: 'screenshot', screenshotCount: 1, status: 'pending' },
-      { id: 't3-s2', username: 'ReferPro', time: '2025-01-13 08:50', type: 'text', text: '已转发指定推文并保留24小时，推文链接https://x.com/example/status/123', status: 'pending' },
-      { id: 't3-s3', username: 'GrowthHacker', time: '2025-01-13 07:15', type: 'screenshot', screenshotCount: 2, status: 'pending' }
-    ])
-  };
+  var reviewLoading = false;
 
   var reviewTranslations = {
     zh: {
       rv_page_title: '审核管理',
       rv_select_label: '选择要审核的任务',
-      rv_task_1: '注册XX交易所',
-      rv_task_2: '试玩Web3游戏',
-      rv_task_3: '转发推文任务',
       rv_list_title: '待审核提交',
       rv_pending_count: '共 {count} 条',
       rv_empty_text: '所有提交已审核完毕',
+      rv_no_tasks: '您还没有发布过任务',
+      rv_no_submissions: '暂无提交',
       rv_reject_title: '驳回理由',
       rv_reject_ph: '请填写驳回理由...',
       rv_reject_confirm: '确认驳回',
@@ -4145,17 +4115,21 @@ window.addEventListener('hashchange', handleRoute);
       rv_btn_reject: '驳回',
       rv_status_approved: '已通过',
       rv_status_rejected: '已驳回',
-      rv_screenshot_summary: '📷 查看截图（{count}张）'
+      rv_status_submitted: '待审核',
+      rv_status_claimed: '待提交凭证',
+      rv_screenshot_summary: '📷 查看截图（{count}张）',
+      rv_alert_login: '请先登录',
+      rv_alert_reject_reason: '请填写驳回理由',
+      rv_alert_action_fail: '操作失败：'
     },
     en: {
       rv_page_title: 'Review Management',
       rv_select_label: 'Select task to review',
-      rv_task_1: 'Register on XX Exchange',
-      rv_task_2: 'Try Web3 Game',
-      rv_task_3: 'Retweet Task',
-      rv_list_title: 'Pending Submissions',
+      rv_list_title: 'Submissions',
       rv_pending_count: '{count} total',
       rv_empty_text: 'All submissions have been reviewed',
+      rv_no_tasks: 'You have not published any tasks yet',
+      rv_no_submissions: 'No submissions yet',
       rv_reject_title: 'Rejection Reason',
       rv_reject_ph: 'Please enter rejection reason...',
       rv_reject_confirm: 'Confirm Reject',
@@ -4164,7 +4138,12 @@ window.addEventListener('hashchange', handleRoute);
       rv_btn_reject: 'Reject',
       rv_status_approved: 'Approved',
       rv_status_rejected: 'Rejected',
-      rv_screenshot_summary: '📷 View screenshots ({count})'
+      rv_status_submitted: 'Pending review',
+      rv_status_claimed: 'Awaiting proof',
+      rv_screenshot_summary: '📷 View screenshots ({count})',
+      rv_alert_login: 'Please sign in first',
+      rv_alert_reject_reason: 'Please enter a rejection reason',
+      rv_alert_action_fail: 'Action failed: '
     }
   };
 
@@ -4185,11 +4164,62 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   function getCurrentSubmissions() {
-    return reviewTasksData[currentTaskKey] || [];
+    return currentSubmissions;
   }
 
-  function getPendingCount() {
-    return getCurrentSubmissions().filter(function (s) { return s.status === 'pending'; }).length;
+  function isReviewable(submission) {
+    if (!submission) return false;
+    if (submission.status === 'submitted') return true;
+    if (submission.status === 'pending' && submission.submitted_at) return true;
+    return false;
+  }
+
+  function getReviewableCount() {
+    return getCurrentSubmissions().filter(isReviewable).length;
+  }
+
+  function formatSubmissionTime(value) {
+    if (!value) return '-';
+    var date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    var lang = getLang();
+    if (lang === 'zh') {
+      return date.getFullYear() + '-' +
+        String(date.getMonth() + 1).padStart(2, '0') + '-' +
+        String(date.getDate()).padStart(2, '0') + ' ' +
+        String(date.getHours()).padStart(2, '0') + ':' +
+        String(date.getMinutes()).padStart(2, '0');
+    }
+    return date.toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
+
+  function getScreenshotCount(submission) {
+    var urls = submission.screenshot_urls;
+    if (Array.isArray(urls)) return urls.length;
+    if (typeof urls === 'string' && urls.trim()) {
+      try {
+        var parsed = JSON.parse(urls);
+        if (Array.isArray(parsed)) return parsed.length;
+      } catch (e) {
+        return 1;
+      }
+    }
+    return 0;
+  }
+
+  function getStatusLabel(submission) {
+    if (submission.status === 'approved') return rvT('rv_status_approved');
+    if (submission.status === 'rejected') return rvT('rv_status_rejected');
+    if (submission.status === 'submitted') return rvT('rv_status_submitted');
+    if (submission.status === 'claimed') return rvT('rv_status_claimed');
+    if (submission.status === 'pending' && submission.submitted_at) return rvT('rv_status_submitted');
+    return submission.status || '-';
   }
 
   function truncateText(text, maxLen) {
@@ -4198,37 +4228,51 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   function getSummaryText(submission) {
-    if (submission.type === 'screenshot') {
-      return rvT('rv_screenshot_summary', { count: submission.screenshotCount || 0 });
+    var screenshotCount = getScreenshotCount(submission);
+    if (screenshotCount > 0 && !submission.description) {
+      return rvT('rv_screenshot_summary', { count: screenshotCount });
     }
-    return truncateText(submission.text, 50);
+    if (screenshotCount > 0 && submission.description) {
+      return truncateText(submission.description, 50) + ' · ' +
+        rvT('rv_screenshot_summary', { count: screenshotCount });
+    }
+    return truncateText(submission.description || '', 50) || '-';
   }
 
   function renderSubmissionItem(submission) {
     var actionsHtml = '';
     var summaryHtml = '';
+    var statusLabel = getStatusLabel(submission);
 
     if (submission.status === 'approved') {
-      summaryHtml = '<span class="rv-status-approved">' + rvT('rv_status_approved') + '</span>';
+      summaryHtml = '<span class="rv-status-approved">' + escapeHtml(statusLabel) + '</span>';
     } else if (submission.status === 'rejected') {
-      summaryHtml = '<span class="rv-status-rejected">' + rvT('rv_status_rejected') + '</span>';
+      summaryHtml =
+        '<span class="rv-status-rejected">' + escapeHtml(statusLabel) + '</span>' +
+        (submission.review_comment
+          ? '<p class="rv-submit-summary">' + escapeHtml(truncateText(submission.review_comment, 50)) + '</p>'
+          : '');
     } else {
-      summaryHtml = '<p class="rv-submit-summary">' + getSummaryText(submission) + '</p>';
-      actionsHtml =
-        '<div class="rv-actions">' +
-          '<button type="button" class="rv-btn-approve" data-id="' + submission.id + '">' + rvT('rv_btn_approve') + '</button>' +
-          '<button type="button" class="rv-btn-reject" data-id="' + submission.id + '">' + rvT('rv_btn_reject') + '</button>' +
-        '</div>';
+      summaryHtml =
+        '<p class="rv-submit-summary">' + escapeHtml(getSummaryText(submission)) + '</p>' +
+        '<p class="rv-submit-summary">' + escapeHtml(statusLabel) + '</p>';
+      if (isReviewable(submission)) {
+        actionsHtml =
+          '<div class="rv-actions">' +
+            '<button type="button" class="rv-btn-approve" data-id="' + escapeHtml(submission.id) + '">' + rvT('rv_btn_approve') + '</button>' +
+            '<button type="button" class="rv-btn-reject" data-id="' + escapeHtml(submission.id) + '">' + rvT('rv_btn_reject') + '</button>' +
+          '</div>';
+      }
     }
 
     return (
-      '<li class="review-submission-item" data-id="' + submission.id + '">' +
+      '<li class="review-submission-item" data-id="' + escapeHtml(submission.id) + '">' +
         '<div class="rv-user-block">' +
           '<div class="rv-avatar"></div>' +
-          '<span class="rv-username">' + submission.username + '</span>' +
+          '<span class="rv-username">' + escapeHtml(submission.username || 'Unknown') + '</span>' +
         '</div>' +
         '<div class="rv-content-block">' +
-          '<p class="rv-submit-time">' + submission.time + '</p>' +
+          '<p class="rv-submit-time">' + escapeHtml(formatSubmissionTime(submission.submitted_at || submission.created_at)) + '</p>' +
           summaryHtml +
         '</div>' +
         actionsHtml +
@@ -4236,23 +4280,222 @@ window.addEventListener('hashchange', handleRoute);
     );
   }
 
+  function showReviewEmptyMessage(messageKey) {
+    var listEl = document.getElementById('rv-submission-list');
+    var emptyEl = document.getElementById('rv-empty-state');
+    var countEl = document.getElementById('rv-pending-count');
+
+    if (countEl) countEl.textContent = rvT('rv_pending_count', { count: 0 });
+    if (listEl) {
+      listEl.innerHTML = '';
+      listEl.classList.add('hidden');
+    }
+    if (emptyEl) {
+      emptyEl.innerHTML = '<p>' + escapeHtml(rvT(messageKey)) + '</p>';
+      emptyEl.classList.remove('hidden');
+    }
+  }
+
+  function setTaskSelectDisabled(disabled) {
+    var taskSelect = document.getElementById('rv-task-select');
+    if (taskSelect) taskSelect.disabled = !!disabled;
+  }
+
+  function renderTaskSelectOptions() {
+    var taskSelect = document.getElementById('rv-task-select');
+    if (!taskSelect) return;
+
+    taskSelect.innerHTML = '';
+    publisherTasks.forEach(function (task) {
+      var option = document.createElement('option');
+      option.value = task.id;
+      option.textContent = task.title || task.id;
+      taskSelect.appendChild(option);
+    });
+
+    if (publisherTasks.length) {
+      if (!selectedTaskId || !publisherTasks.some(function (task) { return task.id === selectedTaskId; })) {
+        selectedTaskId = publisherTasks[0].id;
+      }
+      taskSelect.value = selectedTaskId;
+      setTaskSelectDisabled(false);
+    } else {
+      selectedTaskId = null;
+      setTaskSelectDisabled(true);
+    }
+  }
+
+  async function enrichSubmissionsWithUsers(submissions) {
+    if (!submissions.length || !window.supabase) return submissions;
+
+    var userIds = submissions
+      .map(function (item) { return item.user_id; })
+      .filter(function (id) { return !!id; });
+    var uniqueIds = userIds.filter(function (id, index) {
+      return userIds.indexOf(id) === index;
+    });
+
+    if (!uniqueIds.length) {
+      return submissions.map(function (item) {
+        item.username = 'Unknown';
+        return item;
+      });
+    }
+
+    var usersResult = await window.supabase
+      .from('users')
+      .select('id, username, email')
+      .in('id', uniqueIds);
+
+    var userMap = {};
+    if (!usersResult.error && usersResult.data) {
+      usersResult.data.forEach(function (user) {
+        userMap[user.id] = user.username || displayNameFromEmail(user.email) || 'Unknown';
+      });
+    }
+
+    return submissions.map(function (item) {
+      item.username = userMap[item.user_id] || 'Unknown';
+      return item;
+    });
+  }
+
+  async function loadSubmissionsForSelectedTask() {
+    if (!selectedTaskId || !window.supabase) {
+      currentSubmissions = [];
+      showReviewEmptyMessage('rv_no_submissions');
+      return;
+    }
+
+    var submissionsResult = await window.supabase
+      .from('submissions')
+      .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment, screenshot_urls, created_at')
+      .eq('task_id', selectedTaskId)
+      .order('submitted_at', { ascending: false });
+
+    if (submissionsResult.error) {
+      alert(rvT('rv_alert_action_fail') + submissionsResult.error.message);
+      currentSubmissions = [];
+      showReviewEmptyMessage('rv_no_submissions');
+      return;
+    }
+
+    currentSubmissions = await enrichSubmissionsWithUsers(submissionsResult.data || []);
+    renderSubmissionList();
+  }
+
+  async function loadPublisherTasks() {
+    publisherTasks = [];
+    currentSubmissions = [];
+    selectedTaskId = null;
+
+    if (!window.supabase) {
+      showReviewEmptyMessage('rv_no_tasks');
+      renderTaskSelectOptions();
+      return;
+    }
+
+    var userId = await getCurrentUserId();
+    if (!userId) {
+      showReviewEmptyMessage('rv_no_tasks');
+      renderTaskSelectOptions();
+      return;
+    }
+
+    var tasksResult = await window.supabase
+      .from('tasks')
+      .select('*')
+      .eq('publisher_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (tasksResult.error) {
+      alert(rvT('rv_alert_action_fail') + tasksResult.error.message);
+      showReviewEmptyMessage('rv_no_tasks');
+      renderTaskSelectOptions();
+      return;
+    }
+
+    publisherTasks = tasksResult.data || [];
+    renderTaskSelectOptions();
+
+    if (!publisherTasks.length) {
+      showReviewEmptyMessage('rv_no_tasks');
+      return;
+    }
+
+    await loadSubmissionsForSelectedTask();
+  }
+
+  async function approveSubmission(submissionId) {
+    if (!window.supabase || !submissionId) return false;
+
+    var userId = await getCurrentUserId();
+    if (!userId) {
+      alert(rvT('rv_alert_login'));
+      return false;
+    }
+
+    var updateResult = await window.supabase
+      .from('submissions')
+      .update({
+        status: 'approved',
+        reviewed_at: new Date().toISOString()
+      })
+      .eq('id', submissionId);
+
+    if (updateResult.error) {
+      alert(rvT('rv_alert_action_fail') + updateResult.error.message);
+      return false;
+    }
+
+    return true;
+  }
+
+  async function rejectSubmission(submissionId, reason) {
+    if (!window.supabase || !submissionId) return false;
+
+    var userId = await getCurrentUserId();
+    if (!userId) {
+      alert(rvT('rv_alert_login'));
+      return false;
+    }
+
+    var updateResult = await window.supabase
+      .from('submissions')
+      .update({
+        status: 'rejected',
+        review_comment: reason,
+        reviewed_at: new Date().toISOString()
+      })
+      .eq('id', submissionId);
+
+    if (updateResult.error) {
+      alert(rvT('rv_alert_action_fail') + updateResult.error.message);
+      return false;
+    }
+
+    return true;
+  }
+
   function renderSubmissionList() {
     var listEl = document.getElementById('rv-submission-list');
     var emptyEl = document.getElementById('rv-empty-state');
     var countEl = document.getElementById('rv-pending-count');
     var submissions = getCurrentSubmissions();
-    var pendingCount = getPendingCount();
 
     if (countEl) {
-      countEl.textContent = rvT('rv_pending_count', { count: pendingCount });
+      countEl.textContent = rvT('rv_pending_count', { count: submissions.length });
     }
 
     if (!listEl || !emptyEl) return;
 
-    if (pendingCount === 0) {
-      listEl.innerHTML = '';
-      listEl.classList.add('hidden');
-      emptyEl.classList.remove('hidden');
+    if (!publisherTasks.length) {
+      showReviewEmptyMessage('rv_no_tasks');
+      return;
+    }
+
+    if (!submissions.length) {
+      showReviewEmptyMessage('rv_no_submissions');
       return;
     }
 
@@ -4261,12 +4504,14 @@ window.addEventListener('hashchange', handleRoute);
     listEl.innerHTML = submissions.map(renderSubmissionItem).join('');
 
     listEl.querySelectorAll('.rv-btn-approve').forEach(function (btn) {
-      btn.addEventListener('click', function () {
+      btn.addEventListener('click', async function () {
         var id = btn.getAttribute('data-id');
-        var submission = getCurrentSubmissions().find(function (s) { return s.id === id; });
-        if (submission) {
-          submission.status = 'approved';
-          renderSubmissionList();
+        btn.disabled = true;
+        var ok = await approveSubmission(id);
+        if (ok) {
+          await loadSubmissionsForSelectedTask();
+        } else {
+          btn.disabled = false;
         }
       });
     });
@@ -4321,24 +4566,32 @@ window.addEventListener('hashchange', handleRoute);
 
     var taskSelect = document.getElementById('rv-task-select');
     if (taskSelect) {
-      taskSelect.addEventListener('change', function () {
-        currentTaskKey = taskSelect.value;
+      taskSelect.addEventListener('change', async function () {
+        selectedTaskId = taskSelect.value || null;
         closeRejectModal();
-        renderSubmissionList();
+        await loadSubmissionsForSelectedTask();
         applyReviewI18n();
       });
     }
 
     var confirmBtn = document.getElementById('rv-reject-confirm');
     if (confirmBtn) {
-      confirmBtn.addEventListener('click', function () {
+      confirmBtn.addEventListener('click', async function () {
         if (!pendingRejectId) return;
-        var submission = getCurrentSubmissions().find(function (s) { return s.id === pendingRejectId; });
-        if (submission) {
-          submission.status = 'rejected';
-          renderSubmissionList();
+        var textarea = document.getElementById('rv-reject-reason');
+        var reason = textarea ? textarea.value.trim() : '';
+        if (!reason) {
+          alert(rvT('rv_alert_reject_reason'));
+          return;
         }
-        closeRejectModal();
+
+        confirmBtn.disabled = true;
+        var ok = await rejectSubmission(pendingRejectId, reason);
+        confirmBtn.disabled = false;
+        if (ok) {
+          closeRejectModal();
+          await loadSubmissionsForSelectedTask();
+        }
       });
     }
 
@@ -4356,15 +4609,15 @@ window.addEventListener('hashchange', handleRoute);
     }
   }
 
-  function renderReviewPage() {
-    var taskSelect = document.getElementById('rv-task-select');
-    if (taskSelect) {
-      currentTaskKey = taskSelect.value || 'task1';
-    }
+  async function renderReviewPage() {
+    if (reviewLoading) return;
+    reviewLoading = true;
 
     initReviewEvents();
-    renderSubmissionList();
     applyReviewI18n();
+    await loadPublisherTasks();
+
+    reviewLoading = false;
   }
 
   function restoreAppContentIfNeeded() {
@@ -4372,23 +4625,10 @@ window.addEventListener('hashchange', handleRoute);
     if (!document.getElementById('home-page')) {
       appContentEl.innerHTML = APP_CONTENT_HTML;
       reviewInitialized = false;
-      currentTaskKey = 'task1';
+      publisherTasks = [];
+      currentSubmissions = [];
+      selectedTaskId = null;
       pendingRejectId = null;
-      reviewTasksData.task1 = cloneSubmissions([
-        { id: 't1-s1', username: 'LinkerDAO', time: '2025-01-15 14:30', type: 'text', text: '我已完成XX交易所注册并完成KYC验证，注册邮箱为test@example.com，UID为8839201，请审核通过。', status: 'pending' },
-        { id: 't1-s2', username: 'CryptoAce', time: '2025-01-15 13:10', type: 'screenshot', screenshotCount: 2, status: 'pending' },
-        { id: 't1-s3', username: 'WhaleSwap', time: '2025-01-15 11:45', type: 'text', text: '已完成注册并绑定钱包地址0x88f2...abc9，附注册成功截图说明。', status: 'pending' }
-      ]);
-      reviewTasksData.task2 = cloneSubmissions([
-        { id: 't2-s1', username: 'GameFi_Hub', time: '2025-01-14 20:15', type: 'screenshot', screenshotCount: 3, status: 'pending' },
-        { id: 't2-s2', username: 'AlphaRadar', time: '2025-01-14 18:40', type: 'text', text: '已试玩Web3游戏达到10级，游戏内昵称PlayerOne，耗时约2小时完成。', status: 'pending' },
-        { id: 't2-s3', username: 'NodeRunner', time: '2025-01-14 16:22', type: 'text', text: '完成新手教程并通关第一章，UID 55231，请审核。', status: 'pending' }
-      ]);
-      reviewTasksData.task3 = cloneSubmissions([
-        { id: 't3-s1', username: 'ShareMaster', time: '2025-01-13 09:30', type: 'screenshot', screenshotCount: 1, status: 'pending' },
-        { id: 't3-s2', username: 'ReferPro', time: '2025-01-13 08:50', type: 'text', text: '已转发指定推文并保留24小时，推文链接https://x.com/example/status/123', status: 'pending' },
-        { id: 't3-s3', username: 'GrowthHacker', time: '2025-01-13 07:15', type: 'screenshot', screenshotCount: 2, status: 'pending' }
-      ]);
     }
   }
 
