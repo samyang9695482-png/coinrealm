@@ -619,69 +619,9 @@ function buildTaskCardHtml(task) {
     );
 }
 
-async function handleClaimTask(btn) {
+function handleClaimTask(btn) {
     var taskId = btn.getAttribute('data-task-id');
     if (!taskId) return;
-
-    if (!window.supabase) {
-        alert('请先登录');
-        return;
-    }
-
-    var user = await getUserInfo();
-    if (!user || !user.id) {
-        alert('请先登录');
-        return;
-    }
-
-    var existingSubResult = await window.supabase
-        .from('submissions')
-        .select('id')
-        .eq('task_id', taskId)
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-    if (!existingSubResult.error && !existingSubResult.data) {
-        var taskResult = await window.supabase
-            .from('tasks')
-            .select('*')
-            .eq('id', taskId)
-            .single();
-
-        if (taskResult.error || !taskResult.data) {
-            alert('任务不存在');
-            return;
-        }
-
-        var task = taskResult.data;
-        var max = task.max_participants != null ? Number(task.max_participants) : null;
-        var current = Number(task.current_participants) || 0;
-
-        if (max != null && current >= max) {
-            alert('任务已满');
-            return;
-        }
-
-        var insertResult = await window.supabase
-            .from('submissions')
-            .insert({
-                task_id: taskId,
-                user_id: user.id,
-                status: 'pending'
-            })
-            .select()
-            .single();
-
-        if (insertResult.error) {
-            alert('领取失败：' + insertResult.error.message);
-            return;
-        }
-
-        await window.supabase
-            .from('tasks')
-            .update({ current_participants: current + 1 })
-            .eq('id', taskId);
-    }
 
     var targetHash = 'task-detail?id=' + encodeURIComponent(taskId);
     if (window.location.hash.replace(/^#/, '') === targetHash) {
@@ -1203,9 +1143,9 @@ window.addEventListener('hashchange', handleRoute);
 
     currentTaskRecord.current_participants = nextCount;
     currentSubmissionRecord = insertResult.data;
-    saveSubmissionContext(currentTaskRecord, currentSubmissionRecord);
+    detailActionState = resolveDetailActionState(currentTaskRecord, currentSubmissionRecord, currentUserId);
+    updateBottomActionBar();
     alert(tdT('td_alert_claim_ok'));
-    await renderTaskDetailPage();
   }
 
   function getLang() {
