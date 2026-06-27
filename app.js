@@ -412,6 +412,47 @@ async function getCurrentUserId() {
     return null;
 }
 
+async function getAuthenticatedUserId() {
+    if (!window.supabase) return null;
+
+    var sessionResult = await window.supabase.auth.getSession();
+    var session = sessionResult.data && sessionResult.data.session;
+
+    if (session && session.user && session.user.id) {
+        var expiresAt = session.expires_at ? session.expires_at * 1000 : 0;
+        if (expiresAt && Date.now() > expiresAt - 120000) {
+            var refreshed = await window.supabase.auth.refreshSession();
+            if (!refreshed.error && refreshed.data && refreshed.data.session && refreshed.data.session.user) {
+                return refreshed.data.session.user.id;
+            }
+        }
+        return session.user.id;
+    }
+
+    if (typeof window.coinrealmEnsureWalletAuth === 'function') {
+        return window.coinrealmEnsureWalletAuth();
+    }
+
+    return null;
+}
+
+function buildTaskInsertPayload(userId, fields) {
+    return {
+        publisher_id: userId,
+        title: fields.title,
+        task_type: fields.type,
+        type: fields.type,
+        description: fields.description,
+        requirements: fields.requirements,
+        reward_type: fields.rewardType,
+        reward_amount: fields.rewardAmount,
+        max_participants: fields.maxParticipants,
+        deadline: fields.deadline,
+        proof_type: fields.proofType,
+        is_official: false
+    };
+}
+
 async function getUserInfo() {
     if (!window.supabase) return null;
 
@@ -1080,7 +1121,9 @@ window.addEventListener('hashchange', handleRoute);
     var status = submission.status;
 
     if (status === 'submitted') return 'waiting_review';
-    if (status === 'pending') return 'go_submit';
+    if (status === 'claimed') return 'go_submit';
+    if (status === 'pending' && !submission.submitted_at) return 'go_submit';
+    if (status === 'pending' && submission.submitted_at) return 'waiting_review';
     if (status === 'approved') return 'approved';
     if (status === 'rejected') return 'rejected_resubmit';
 
@@ -1096,7 +1139,7 @@ window.addEventListener('hashchange', handleRoute);
     if (!window.supabase || !currentTaskRecord) return;
 
     var taskId = currentTaskRecord.id;
-    var userId = await getCurrentUserId();
+    var userId = await getAuthenticatedUserId();
 
     if (!userId) {
       alert(tdT('td_alert_login'));
@@ -1135,7 +1178,7 @@ window.addEventListener('hashchange', handleRoute);
       .insert({
         task_id: taskId,
         user_id: userId,
-        status: 'pending'
+        status: 'claimed'
       })
       .select()
       .single();
@@ -1912,7 +1955,7 @@ window.addEventListener('hashchange', handleRoute);
       }
 
       try {
-        var userId = await getCurrentUserId();
+        var userId = await getAuthenticatedUserId();
         if (!userId) {
           alert('请先登录后再发布任务');
           return;
@@ -1932,20 +1975,17 @@ window.addEventListener('hashchange', handleRoute);
 
         var insertResult = await window.supabase
           .from('tasks')
-          .insert({
-            publisher_id: userId,
+          .insert(buildTaskInsertPayload(userId, {
             title: title,
             type: type,
             description: description,
             requirements: requirements,
-            reward_type: rewardType,
-            reward_amount: rewardAmount,
-            max_participants: maxParticipants,
+            rewardType: rewardType,
+            rewardAmount: rewardAmount,
+            maxParticipants: maxParticipants,
             deadline: deadline,
-            proof_type: proofType,
-            is_official: false
-          })
-          .select();
+            proofType: proofType
+          }));
 
         if (insertResult.error) throw insertResult.error;
 
@@ -1975,66 +2015,6 @@ window.addEventListener('hashchange', handleRoute);
             updateSubmitButtonState();
         });
     });
-    // 修复：重新绑定提交按钮的点击事件
-    var submitBtn = document.getElementById('ct-submit-btn');
-    if (submitBtn) {
-        var newSubmitBtn = submitBtn.cloneNode(true);
-        submitBtn.parentNode.replaceChild(newSubmitBtn, submitBtn);
-
-        newSubmitBtn.addEventListener('click', async function () {
-            if (newSubmitBtn.disabled) return;
-            if (!validateForm()) {
-                alert(ctT('ct_alert_required'));
-                return;
-            }
-            var userId = await getCurrentUserId();
-            if (!userId) {
-                alert('请先登录后再发布任务');
-                return;
-            }
-            var title = document.getElementById('ct-task-title').value.trim();
-            var type = document.getElementById('ct-task-type').value;
-            var desc = document.getElementById('ct-task-desc').value.trim();
-            var rewardType = document.querySelector('input[name="ct-reward-type"]:checked').value;
-            var rewardAmount = parseFloat(document.getElementById('ct-reward-amount').value);
-            var slots = parseInt(document.getElementById('ct-task-slots').value) || null;
-            var deadline = document.getElementById('ct-deadline').value;
-            var proofType = document.querySelector('input[name="ct-proof-type"]:checked').value;
-            var reqInputs = document.querySelectorAll('#ct-requirements-list .create-task-req-input');
-            var requirements = [];
-            reqInputs.forEach(function (input) {
-                if (input.value.trim()) {
-                    requirements.push(input.value.trim());
-                }
-            });
-            var insertResult = await window.supabase
-                .from('tasks')
-                .insert({
-                    publisher_id: userId,
-                    title: title,
-                    type: type,
-                    description: desc,
-                    requirements: requirements,
-                    reward_type: rewardType,
-                    reward_amount: rewardAmount,
-                    max_participants: slots,
-                    deadline: deadline,
-                    proof_type: proofType,
-                    is_official: false
-                })
-                .select();
-            var data = insertResult.data;
-            var error = insertResult.error;
-            if (error) {
-                alert('发布失败：' + error.message);
-                console.error('发布任务失败', error);
-                return;
-            }
-            alert('任务发布成功！');
-            resetCreateTaskForm();
-            goToHomeAndRefreshTasks();
-        });
-    }
     initRequirementList();
   }
 
@@ -2259,6 +2239,14 @@ window.addEventListener('hashchange', handleRoute);
     return false;
   }
 
+  function isSubmissionReadyToSubmit(submission) {
+    if (!submission) return false;
+    if (submission.status === 'claimed') return true;
+    if (submission.status === 'pending' && !submission.submitted_at) return true;
+    if (submission.status === 'rejected') return true;
+    return false;
+  }
+
   function handleFilesSelected(fileList) {
     var files = Array.from(fileList);
     var remaining = 3 - uploadedFiles.length;
@@ -2435,6 +2423,8 @@ window.addEventListener('hashchange', handleRoute);
 
     if (isSubmissionWaitingReview(submissionResult.data)) {
       submitState = 'waiting';
+    } else if (isSubmissionReadyToSubmit(submissionResult.data)) {
+      submitState = 'form';
     } else if (submissionResult.data.status === 'rejected') {
       submitState = 'rejected';
     } else {
@@ -2503,7 +2493,7 @@ window.addEventListener('hashchange', handleRoute);
           return;
         }
 
-        var userId = await getCurrentUserId();
+        var userId = await getAuthenticatedUserId();
         if (!userId) {
           alert('请先登录');
           return;
@@ -2533,7 +2523,7 @@ window.addEventListener('hashchange', handleRoute);
             .update({
               description: desc,
               screenshot_urls: screenshotNames,
-              status: 'pending',
+              status: 'submitted',
               submitted_at: new Date().toISOString()
             })
             .eq('id', lookupResult.data.id)
@@ -2546,7 +2536,7 @@ window.addEventListener('hashchange', handleRoute);
 
           currentSubmissionRecord = Object.assign({}, currentSubmissionRecord || {}, {
             id: lookupResult.data.id,
-            status: 'pending',
+            status: 'submitted',
             submitted_at: new Date().toISOString(),
             description: desc
           });
