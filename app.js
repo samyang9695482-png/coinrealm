@@ -342,6 +342,7 @@ const translations = {
         ads_banner: "广告位（Web3 Ads）",
         broadcast_prefix: "用户",
         broadcast_done: "完成了注册任务，获得",
+        broadcast_empty: "暂无动态",
         guide_text: "欢迎来到 CoinRealm！选择一个任务，开始赚取 CRLM 吧。",
         search_placeholder: "搜索任务...",
         tag_all: "全部",
@@ -375,6 +376,7 @@ const translations = {
         ads_banner: "Advertising Space (Web3 Ads)",
         broadcast_prefix: "User",
         broadcast_done: "completed the registration task and received",
+        broadcast_empty: "No activity yet",
         guide_text: "Welcome to CoinRealm! Select a task and start earning CRLM.",
         search_placeholder: "Search tasks...",
         tag_all: "All",
@@ -495,6 +497,163 @@ function escapeHtml(str) {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
+}
+
+function writeBroadcast(payload) {
+    if (!window.supabase || !payload || !payload.user_id) return;
+
+    window.supabase
+        .from('broadcasts')
+        .insert({
+            user_id: payload.user_id,
+            event_type: payload.event_type,
+            description: payload.description,
+            reward_amount: payload.reward_amount != null ? payload.reward_amount : null
+        })
+        .then(function (result) {
+            if (result.error) {
+                console.warn('广播写入失败:', result.error);
+                return;
+            }
+            if (typeof window.coinrealmRefreshHomeBroadcast === 'function') {
+                window.coinrealmRefreshHomeBroadcast();
+            }
+        })
+        .catch(function (err) {
+            console.warn('广播写入失败:', err);
+        });
+}
+
+function isHomepageBroadcast(record) {
+    var amount = Number(record.reward_amount) || 0;
+    var eventType = record.event_type || '';
+    if (amount >= 500) return true;
+    if (eventType === 'rare_box' || eventType === 'dividend' || eventType === 'invite') return true;
+    return false;
+}
+
+function formatBroadcastRelativeTime(iso) {
+    if (!iso) return '—';
+    var date = new Date(iso);
+    if (isNaN(date.getTime())) return String(iso).slice(0, 16);
+
+    var diffMs = Date.now() - date.getTime();
+    if (diffMs < 0) diffMs = 0;
+
+    var minutes = Math.floor(diffMs / 60000);
+    var hours = Math.floor(diffMs / 3600000);
+    var days = Math.floor(diffMs / 86400000);
+    var lang = currentLang === 'en' ? 'en' : 'zh';
+
+    if (minutes < 1) return lang === 'zh' ? '刚刚' : 'Just now';
+    if (minutes < 60) return lang === 'zh' ? minutes + '分钟前' : minutes + ' min ago';
+    if (hours < 24) return lang === 'zh' ? hours + '小时前' : hours + ' h ago';
+    if (days === 1) return lang === 'zh' ? '昨天' : 'Yesterday';
+    return lang === 'zh' ? days + '天前' : days + ' d ago';
+}
+
+function renderHomeBroadcastTicker(items) {
+    var wrapper = document.getElementById('broadcast-ticker');
+    if (!wrapper) return;
+
+    var langData = translations[currentLang] || translations.zh;
+    var emptyText = langData.broadcast_empty || '暂无动态';
+
+    if (!items.length) {
+        wrapper.style.animation = 'none';
+        wrapper.innerHTML = '<div class="broadcast-item"><span>' + escapeHtml(emptyText) + '</span></div>';
+        return;
+    }
+
+    wrapper.innerHTML = items.map(function (record) {
+        var desc = escapeHtml(record.description || '');
+        var rewardHtml = record.reward_amount
+            ? ' <span class="highlight">' + Number(record.reward_amount).toLocaleString() + ' CRLM</span>'
+            : '';
+        return '<div class="broadcast-item">' + desc + rewardHtml + '</div>';
+    }).join('');
+
+    if (items.length === 1) {
+        wrapper.style.animation = 'none';
+        return;
+    }
+
+    var styleEl = document.getElementById('coinrealm-broadcast-keyframes');
+    if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'coinrealm-broadcast-keyframes';
+        document.head.appendChild(styleEl);
+    }
+
+    var count = items.length;
+    var height = 60;
+    var step = 100 / count;
+    var keyframes = '@keyframes scrollBroadcastDynamic {';
+    var i;
+
+    for (i = 0; i < count; i++) {
+        var holdStart = (i * step).toFixed(2);
+        var holdEnd = (i * step + step * 0.85).toFixed(2);
+        keyframes += holdStart + '% { transform: translateY(-' + (i * height) + 'px); }';
+        keyframes += holdEnd + '% { transform: translateY(-' + (i * height) + 'px); }';
+    }
+    keyframes += '100% { transform: translateY(0); }';
+    keyframes += '}';
+
+    styleEl.textContent = keyframes;
+    wrapper.style.animation = 'scrollBroadcastDynamic ' + (count * 4) + 's linear infinite';
+}
+
+function loadHomeBroadcasts() {
+    if (!window.supabase) {
+        renderHomeBroadcastTicker([]);
+        return Promise.resolve();
+    }
+
+    return window.supabase
+        .from('broadcasts')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10)
+        .then(function (result) {
+            if (result.error) {
+                console.warn('加载首页广播失败:', result.error);
+                renderHomeBroadcastTicker([]);
+                return;
+            }
+            var items = (result.data || []).filter(isHomepageBroadcast);
+            renderHomeBroadcastTicker(items);
+        })
+        .catch(function (err) {
+            console.warn('加载首页广播失败:', err);
+            renderHomeBroadcastTicker([]);
+        });
+}
+
+window.coinrealmRefreshHomeBroadcast = loadHomeBroadcasts;
+
+function buildTaskBroadcastTitle(title) {
+    return String(title || '任务').replace(/[「」]/g, '');
+}
+
+function getPublisherIdFromHash() {
+    var hash = window.location.hash.replace(/^#/, '') || '';
+    if (hash.indexOf('publisher') === -1) return null;
+    var query = hash.split('?')[1];
+    if (!query) return null;
+    return new URLSearchParams(query).get('id');
+}
+
+function navigateToPublisher(publisherId) {
+    if (!publisherId) return;
+    var targetHash = 'publisher?id=' + encodeURIComponent(publisherId);
+    if (window.location.hash.replace(/^#/, '') === targetHash) {
+        if (typeof window.coinrealmApplyRoute === 'function') {
+            window.coinrealmApplyRoute('publisher');
+        }
+        return;
+    }
+    window.location.hash = targetHash;
 }
 
 function getTaskField(task, keys, fallback) {
@@ -642,6 +801,7 @@ function buildTaskCardHtml(task) {
     const publisher = resolvePublisherFields(task);
     const username = escapeHtml(publisher.username);
     const level = escapeHtml(publisher.level);
+    const publisherId = escapeHtml(getTaskField(task, ['publisher_id'], ''));
     const title = escapeHtml(getTaskField(task, ['title', 'task_title'], ''));
     const reward = formatRewardAmount(getTaskField(task, ['reward_amount', 'reward'], 0));
     const slotsTotalRaw = getTaskField(task, ['slots_total', 'total_slots', 'max_participants'], 0);
@@ -662,7 +822,7 @@ function buildTaskCardHtml(task) {
     return (
         '<div class="task-card" data-category="' + escapeHtml(category) + '" data-task-id="' + escapeHtml(getTaskField(task, ['id'], '')) + '">' +
             '<div class="card-top">' +
-                '<div class="author-info">' +
+                '<div class="author-info publisher-link" data-publisher-id="' + publisherId + '" style="cursor:pointer">' +
                     '<div class="css-avatar"></div>' +
                     '<div class="meta-text">' +
                         '<span class="username">' + username + '</span>' +
@@ -857,6 +1017,12 @@ async function handleDailyCheckin() {
         }
 
         showCheckinSuccessModal(finalReward, consecutiveDays);
+        writeBroadcast({
+            user_id: userId,
+            event_type: 'checkin',
+            description: '完成每日签到，获得',
+            reward_amount: finalReward
+        });
     } finally {
         checkinInProgress = false;
     }
@@ -1011,6 +1177,7 @@ function initHomePageLogic() {
 
     // B. 骨架屏 → 从 Supabase 拉取任务数据
     fetchTasks();
+    loadHomeBroadcasts();
 
     if (!homeEventsBound) {
         homeEventsBound = true;
@@ -1038,6 +1205,15 @@ function initHomePageLogic() {
         const taskGrid = document.getElementById('task-grid');
         if (taskGrid) {
             taskGrid.addEventListener('click', function (e) {
+                var publisherLink = e.target.closest('.publisher-link');
+                if (publisherLink && taskGrid.contains(publisherLink)) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var publisherId = publisherLink.getAttribute('data-publisher-id');
+                    if (publisherId) navigateToPublisher(publisherId);
+                    return;
+                }
+
                 var btn = e.target.closest('.claim-btn');
                 if (!btn || !taskGrid.contains(btn)) return;
                 e.preventDefault();
@@ -1399,6 +1575,12 @@ window.addEventListener('hashchange', handleRoute);
     detailActionState = resolveDetailActionState(currentTaskRecord, currentSubmissionRecord, currentUserId);
     updateBottomActionBar();
     alert(tdT('td_alert_claim_ok'));
+    writeBroadcast({
+      user_id: userId,
+      event_type: 'task_claim',
+      description: '领取了任务「' + buildTaskBroadcastTitle(currentTaskRecord.title) + '」',
+      reward_amount: Number(currentTaskRecord.reward_amount) || 0
+    });
   }
 
   function getLang() {
@@ -1506,6 +1688,21 @@ window.addEventListener('hashchange', handleRoute);
 
     var publisherNameEl = document.getElementById('td-publisher-name');
     if (publisherNameEl) publisherNameEl.textContent = publisherName;
+
+    var publisherInfoLeft = document.querySelector('#task-detail-page .publisher-info-left');
+    if (publisherInfoLeft && currentTaskRecord.publisher_id) {
+      publisherInfoLeft.style.cursor = 'pointer';
+      publisherInfoLeft.setAttribute('data-publisher-id', currentTaskRecord.publisher_id);
+      if (!publisherInfoLeft.dataset.bound) {
+        publisherInfoLeft.dataset.bound = 'true';
+        publisherInfoLeft.addEventListener('click', function () {
+          navigateToPublisher(currentTaskRecord.publisher_id);
+        });
+      }
+    } else if (publisherInfoLeft) {
+      publisherInfoLeft.style.cursor = '';
+      publisherInfoLeft.removeAttribute('data-publisher-id');
+    }
 
     var publisherLevelEl = document.getElementById('td-publisher-level');
     if (publisherLevelEl) {
@@ -2738,6 +2935,12 @@ window.addEventListener('hashchange', handleRoute);
           submitState = 'waiting';
           updatePageStateUI();
           applySubmitTaskI18n();
+          writeBroadcast({
+            user_id: userId,
+            event_type: 'task_submit',
+            description: '提交了任务「' + buildTaskBroadcastTitle(activeSubmitContext.title) + '」凭证',
+            reward_amount: Number(activeSubmitContext.reward) || 0
+          });
         } finally {
           if (submitBtn) {
             submitBtn.disabled = submitState === 'waiting';
@@ -4427,81 +4630,27 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   var visibleCount = 10;
-  var loadMoreUsed = false;
+  var broadcastHasMore = true;
+  var broadcastFetchOffset = 0;
+  var broadcastLoading = false;
   var broadcastInitialized = false;
-
-  var allBroadcasts = [
-    { user: '0x1234...ab9f', taskKey: 'register', reward: 500, timeKey: 'bh_time_3min' },
-    { user: '0x88f2...c3d1', taskKey: 'trade', reward: 1200, timeKey: 'bh_time_8min' },
-    { user: '0xabc9...7e2a', taskKey: 'official', reward: 2500, timeKey: 'bh_time_15min' },
-    { user: '0x5566...f890', taskKey: 'airdrop', reward: 800, timeKey: 'bh_time_25min' },
-    { user: '0xdead...beef', taskKey: 'game', reward: 650, timeKey: 'bh_time_40min' },
-    { user: '0xface...cafe', taskKey: 'register', reward: 300, timeKey: 'bh_time_1h' },
-    { user: '0x1024...2048', taskKey: 'trade', reward: 1800, timeKey: 'bh_time_2h' },
-    { user: '0x7777...8888', taskKey: 'content', reward: 420, timeKey: 'bh_time_3h' },
-    { user: '0xaaaa...bbbb', taskKey: 'test', reward: 1500, timeKey: 'bh_time_5h' },
-    { user: '0xcccc...dddd', taskKey: 'register', reward: 350, timeKey: 'bh_time_8h' },
-    { user: '0xeeee...ffff', taskKey: 'official', reward: 3200, timeKey: 'bh_time_yesterday' },
-    { user: '0x1111...2222', taskKey: 'airdrop', reward: 900, timeKey: 'bh_time_yesterday' },
-    { user: '0x3333...4444', taskKey: 'trade', reward: 2100, timeKey: 'bh_time_2days' },
-    { user: '0x5555...6666', taskKey: 'game', reward: 720, timeKey: 'bh_time_2days' },
-    { user: '0x9999...0000', taskKey: 'register', reward: 480, timeKey: 'bh_time_3days' }
-  ];
+  var BROADCAST_PAGE_SIZE = 10;
+  var allBroadcasts = [];
 
   var broadcastTranslations = {
     zh: {
       bh_page_title: '最新战报',
       bh_load_more: '加载更多',
       bh_no_more: '没有更多了',
-      bh_user_prefix: '用户',
-      bh_task_register: '注册任务',
-      bh_task_trade: '交易任务',
-      bh_task_official: '官方任务',
-      bh_task_airdrop: '空投任务',
-      bh_task_game: '游戏任务',
-      bh_task_content: '内容任务',
-      bh_task_test: '测试任务',
-      bh_event_done: '完成了{task}，获得',
-      bh_time_3min: '3分钟前',
-      bh_time_8min: '8分钟前',
-      bh_time_15min: '15分钟前',
-      bh_time_25min: '25分钟前',
-      bh_time_40min: '40分钟前',
-      bh_time_1h: '1小时前',
-      bh_time_2h: '2小时前',
-      bh_time_3h: '3小时前',
-      bh_time_5h: '5小时前',
-      bh_time_8h: '8小时前',
-      bh_time_yesterday: '昨天',
-      bh_time_2days: '2天前',
-      bh_time_3days: '3天前'
+      bh_empty: '暂无广播记录',
+      bh_loading: '加载中...'
     },
     en: {
       bh_page_title: 'Latest Activity',
       bh_load_more: 'Load More',
       bh_no_more: 'No More',
-      bh_user_prefix: 'User',
-      bh_task_register: 'registration task',
-      bh_task_trade: 'trading task',
-      bh_task_official: 'official task',
-      bh_task_airdrop: 'airdrop task',
-      bh_task_game: 'game task',
-      bh_task_content: 'content task',
-      bh_task_test: 'test task',
-      bh_event_done: 'completed {task} and received',
-      bh_time_3min: '3 min ago',
-      bh_time_8min: '8 min ago',
-      bh_time_15min: '15 min ago',
-      bh_time_25min: '25 min ago',
-      bh_time_40min: '40 min ago',
-      bh_time_1h: '1 hour ago',
-      bh_time_2h: '2 hours ago',
-      bh_time_3h: '3 hours ago',
-      bh_time_5h: '5 hours ago',
-      bh_time_8h: '8 hours ago',
-      bh_time_yesterday: 'Yesterday',
-      bh_time_2days: '2 days ago',
-      bh_time_3days: '3 days ago'
+      bh_empty: 'No broadcasts yet',
+      bh_loading: 'Loading...'
     }
   };
 
@@ -4521,22 +4670,90 @@ window.addEventListener('hashchange', handleRoute);
     return text;
   }
 
-  function getTaskName(taskKey) {
-    return bhT('bh_task_' + taskKey);
+  function fetchBroadcastBatch() {
+    if (!window.supabase) {
+      return Promise.resolve([]);
+    }
+
+    return window.supabase
+      .from('broadcasts')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .range(broadcastFetchOffset, broadcastFetchOffset + BROADCAST_PAGE_SIZE - 1)
+      .then(function (result) {
+        if (result.error) {
+          throw result.error;
+        }
+        var rows = result.data || [];
+        broadcastFetchOffset += BROADCAST_PAGE_SIZE;
+        if (rows.length < BROADCAST_PAGE_SIZE) {
+          broadcastHasMore = false;
+        }
+        return rows;
+      });
+  }
+
+  function resetBroadcastHistoryData() {
+    visibleCount = 10;
+    broadcastHasMore = true;
+    broadcastFetchOffset = 0;
+    broadcastLoading = false;
+    allBroadcasts = [];
+  }
+
+  function loadInitialBroadcastHistory() {
+    if (broadcastLoading) {
+      return Promise.resolve();
+    }
+
+    resetBroadcastHistoryData();
+    broadcastLoading = true;
+
+    return fetchBroadcastBatch()
+      .then(function (rows) {
+        allBroadcasts = rows;
+      })
+      .catch(function (err) {
+        console.warn('加载广播历史失败:', err);
+        allBroadcasts = [];
+        broadcastHasMore = false;
+      })
+      .then(function () {
+        broadcastLoading = false;
+      });
+  }
+
+  function loadMoreBroadcastHistory() {
+    if (broadcastLoading || !broadcastHasMore) {
+      return Promise.resolve();
+    }
+
+    broadcastLoading = true;
+
+    return fetchBroadcastBatch()
+      .then(function (rows) {
+        allBroadcasts = allBroadcasts.concat(rows);
+      })
+      .catch(function (err) {
+        console.warn('加载更多广播失败:', err);
+        broadcastHasMore = false;
+      })
+      .then(function () {
+        broadcastLoading = false;
+      });
   }
 
   function renderBroadcastItem(item) {
-    var taskName = getTaskName(item.taskKey);
-    var desc =
-      bhT('bh_user_prefix') + ' ' + item.user + ' ' +
-      bhT('bh_event_done', { task: taskName }) + ' ' +
-      '<span class="bh-reward-highlight">' + item.reward.toLocaleString() + ' CRLM</span>';
+    var desc = typeof escapeHtml === 'function' ? escapeHtml(item.description || '') : (item.description || '');
+    var rewardHtml = item.reward_amount
+      ? ' <span class="bh-reward-highlight">' + Number(item.reward_amount).toLocaleString() + ' CRLM</span>'
+      : '';
 
     return (
       '<li class="broadcast-history-item">' +
         '<div class="bh-avatar"></div>' +
-        '<p class="bh-content">' + desc + '</p>' +
-        '<span class="bh-time">' + bhT(item.timeKey) + '</span>' +
+        '<p class="bh-content">' + desc + rewardHtml + '</p>' +
+        '<span class="bh-time">' + formatBroadcastRelativeTime(item.created_at) + '</span>' +
       '</li>'
     );
   }
@@ -4544,6 +4761,16 @@ window.addEventListener('hashchange', handleRoute);
   function renderBroadcastList() {
     var listEl = document.getElementById('bh-broadcast-list');
     if (!listEl) return;
+
+    if (broadcastLoading && !allBroadcasts.length) {
+      listEl.innerHTML = '<li class="broadcast-history-item"><span class="bh-time">' + bhT('bh_loading') + '</span></li>';
+      return;
+    }
+
+    if (!allBroadcasts.length) {
+      listEl.innerHTML = '<li class="broadcast-history-item"><span class="bh-time">' + bhT('bh_empty') + '</span></li>';
+      return;
+    }
 
     var items = allBroadcasts.slice(0, visibleCount);
     listEl.innerHTML = items.map(renderBroadcastItem).join('');
@@ -4553,7 +4780,9 @@ window.addEventListener('hashchange', handleRoute);
     var btn = document.getElementById('bh-load-more-btn');
     if (!btn) return;
 
-    if (loadMoreUsed) {
+    var canShowMore = visibleCount < allBroadcasts.length || broadcastHasMore;
+
+    if (!canShowMore) {
       btn.textContent = bhT('bh_no_more');
       btn.disabled = true;
     } else {
@@ -4579,9 +4808,18 @@ window.addEventListener('hashchange', handleRoute);
     var loadBtn = document.getElementById('bh-load-more-btn');
     if (loadBtn) {
       loadBtn.addEventListener('click', function () {
-        if (loadMoreUsed) return;
-        visibleCount = allBroadcasts.length;
-        loadMoreUsed = true;
+        if (loadBtn.disabled) return;
+
+        visibleCount += BROADCAST_PAGE_SIZE;
+
+        if (visibleCount > allBroadcasts.length && broadcastHasMore) {
+          loadMoreBroadcastHistory().then(function () {
+            renderBroadcastList();
+            updateLoadMoreButton();
+          });
+          return;
+        }
+
         renderBroadcastList();
         updateLoadMoreButton();
       });
@@ -4589,10 +4827,17 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   function renderBroadcastHistoryPage() {
-    renderBroadcastList();
-    updateLoadMoreButton();
     initBroadcastEvents();
     applyBroadcastI18n();
+    renderBroadcastList();
+    updateLoadMoreButton();
+
+    if (!allBroadcasts.length && !broadcastLoading) {
+      loadInitialBroadcastHistory().then(function () {
+        renderBroadcastList();
+        updateLoadMoreButton();
+      });
+    }
   }
 
   function restoreAppContentIfNeeded() {
@@ -4600,8 +4845,7 @@ window.addEventListener('hashchange', handleRoute);
     if (!document.getElementById('home-page')) {
       appContentEl.innerHTML = APP_CONTENT_HTML;
       broadcastInitialized = false;
-      visibleCount = 10;
-      loadMoreUsed = false;
+      resetBroadcastHistoryData();
     }
   }
 
@@ -4617,6 +4861,7 @@ window.addEventListener('hashchange', handleRoute);
         renderBroadcastHistoryPage();
       } else {
         broadcastPage.classList.add('hidden');
+        resetBroadcastHistoryData();
       }
     }
   }
@@ -4648,26 +4893,10 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   var publisherInitialized = false;
-
-  var samplePublisher = {
-    username: 'AlphaRadar',
-    level: 5,
-    levelLabelKey: 'pub_level_master',
-    reputationScore: 98,
-    completionRate: 96,
-    taskCount: 23,
-    registeredAt: '2024年3月',
-    registeredAtEn: 'Mar 2024',
-    isOfficial: false,
-    isHighRisk: false,
-    hasActiveTasks: true,
-    tasks: [
-      { type: 'airdrop', reward: 500, slotsLeft: 88, slotsTotal: 100, daysLeft: 5 },
-      { type: 'register', reward: 300, slotsLeft: 2, slotsTotal: 50, daysLeft: 1 },
-      { type: 'trade', reward: 2500, slotsLeft: 11, slotsTotal: 15, daysLeft: 7 },
-      { type: 'game', reward: 800, slotsLeft: 40, slotsTotal: 200, daysLeft: 12 }
-    ]
-  };
+  var publisherLoading = false;
+  var publisherDataLoaded = false;
+  var loadedPublisher = null;
+  var publisherActiveTasks = [];
 
   var publisherTranslations = {
     zh: {
@@ -4683,17 +4912,8 @@ window.addEventListener('hashchange', handleRoute);
       pub_level_badge: 'Lv.{level} {label}',
       pub_task_count_unit: '{count} 个',
       pub_percent: '{value}%',
-      pub_alert_claim: '任务领取成功！',
-      pub_text_slots: '剩余名额',
-      pub_text_days: '天后',
-      pub_btn_claim: '领取',
-      tag_airdrop: '空投',
-      tag_register: '注册',
-      tag_trade: '交易',
-      tag_game: '游戏',
-      tag_official: '官方',
-      tag_content: '内容',
-      tag_test: '测试'
+      pub_loading: '加载中...',
+      pub_not_found: '未找到该发布者'
     },
     en: {
       pub_official_badge: 'Official Verified',
@@ -4708,17 +4928,8 @@ window.addEventListener('hashchange', handleRoute);
       pub_level_badge: 'Lv.{level} {label}',
       pub_task_count_unit: '{count}',
       pub_percent: '{value}%',
-      pub_alert_claim: 'Task claimed successfully!',
-      pub_text_slots: 'Slots left',
-      pub_text_days: 'days left',
-      pub_btn_claim: 'Claim',
-      tag_airdrop: 'Airdrop',
-      tag_register: 'Register',
-      tag_trade: 'Trade',
-      tag_game: 'Game',
-      tag_official: 'Official',
-      tag_content: 'Content',
-      tag_test: 'Test'
+      pub_loading: 'Loading...',
+      pub_not_found: 'Publisher not found'
     }
   };
 
@@ -4751,33 +4962,95 @@ window.addEventListener('hashchange', handleRoute);
     });
   }
 
-  function renderTaskCard(task) {
-    var typeKey = 'tag_' + task.type;
-    var labelClass = 'label-' + task.type;
+  function formatRegisterDate(dateStr) {
+    if (!dateStr) return '—';
+    var d = new Date(dateStr);
+    if (isNaN(d.getTime())) return String(dateStr).slice(0, 10);
+    if (getLang() === 'zh') {
+      return d.getFullYear() + '年' + (d.getMonth() + 1) + '月';
+    }
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
+  }
 
-    return (
-      '<div class="task-card" data-category="' + task.type + '">' +
-        '<div class="reward-amount">' + formatNumber(task.reward) + ' CRLM</div>' +
-        '<div class="card-bottom">' +
-          '<div class="meta-tags">' +
-            '<span class="type-label ' + labelClass + '">' + pubT(typeKey) + '</span>' +
-            '<span class="info-text">' + pubT('pub_text_slots') + ' ' + task.slotsLeft + '/' + task.slotsTotal + '</span>' +
-            '<span class="info-text">' + task.daysLeft + ' ' + pubT('pub_text_days') + '</span>' +
-          '</div>' +
-          '<button type="button" class="claim-btn pub-claim-btn">' + pubT('pub_btn_claim') + '</button>' +
-        '</div>' +
-      '</div>'
-    );
+  function loadPublisherPageData(publisherId) {
+    if (!publisherId || !window.supabase) {
+      return Promise.resolve(null);
+    }
+
+    publisherLoading = true;
+
+    return window.supabase
+      .from('users')
+      .select('*')
+      .eq('id', publisherId)
+      .single()
+      .then(function (userResult) {
+        if (userResult.error || !userResult.data) {
+          return null;
+        }
+
+        return Promise.all([
+          Promise.resolve(userResult.data),
+          window.supabase
+            .from('tasks')
+            .select('*')
+            .eq('publisher_id', publisherId)
+            .eq('status', 'active')
+            .order('created_at', { ascending: false }),
+          window.supabase
+            .from('tasks')
+            .select('*', { count: 'exact', head: true })
+            .eq('publisher_id', publisherId)
+        ]).then(function (results) {
+          var user = results[0];
+          var tasksResult = results[1];
+          var countResult = results[2];
+
+          publisherActiveTasks = (tasksResult.error ? [] : (tasksResult.data || [])).map(function (task) {
+            return Object.assign({}, task, {
+              publisher_username: username,
+              publisher_level: level
+            });
+          });
+
+          var username = user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'Unknown');
+          var level = user.level != null ? Number(user.level) : 0;
+          var reputationScore = user.reputation_score != null ? Number(user.reputation_score) : 0;
+          var completionRate = user.completion_rate != null ? Number(user.completion_rate) : reputationScore;
+
+          return {
+            id: user.id,
+            username: username,
+            level: level,
+            levelLabelKey: level >= 5 ? 'pub_level_master' : '',
+            reputationScore: reputationScore,
+            completionRate: completionRate,
+            taskCount: countResult.error ? 0 : (countResult.count || 0),
+            registeredAt: formatRegisterDate(user.created_at),
+            isOfficial: !!user.is_official,
+            isHighRisk: !!user.is_high_risk
+          };
+        });
+      })
+      .catch(function (err) {
+        console.warn('加载发布者主页失败:', err);
+        return null;
+      })
+      .then(function (data) {
+        loadedPublisher = data;
+        publisherDataLoaded = true;
+        publisherLoading = false;
+        return data;
+      });
   }
 
   function renderPublisherTasks() {
     var grid = document.getElementById('pub-task-grid');
     var emptyState = document.getElementById('pub-empty-state');
-    var publisher = samplePublisher;
 
     if (!grid || !emptyState) return;
 
-    if (!publisher.hasActiveTasks || !publisher.tasks.length) {
+    if (!publisherActiveTasks.length) {
       grid.innerHTML = '';
       grid.classList.add('hidden');
       emptyState.classList.remove('hidden');
@@ -4786,19 +5059,25 @@ window.addEventListener('hashchange', handleRoute);
 
     grid.classList.remove('hidden');
     emptyState.classList.add('hidden');
-    grid.innerHTML = publisher.tasks.map(renderTaskCard).join('');
 
-    grid.querySelectorAll('.pub-claim-btn').forEach(function (btn) {
-      btn.addEventListener('click', function (e) {
-        e.stopPropagation();
-        alert(pubT('pub_alert_claim'));
-      });
-    });
+    if (typeof buildTaskCardHtml === 'function') {
+      grid.innerHTML = publisherActiveTasks.map(buildTaskCardHtml).join('');
+      if (typeof applyLanguageStrings === 'function') {
+        applyLanguageStrings();
+      }
+      return;
+    }
+
+    grid.innerHTML = '';
   }
 
-  function renderPublisherPage() {
-    var publisher = samplePublisher;
-    var isZh = getLang() === 'zh';
+  function renderPublisherProfile(publisher) {
+    if (!publisher) {
+      var usernameEl = document.getElementById('pub-username');
+      if (usernameEl) usernameEl.textContent = pubT('pub_not_found');
+      renderPublisherTasks();
+      return;
+    }
 
     var officialBadge = document.getElementById('pub-official-badge');
     if (officialBadge) {
@@ -4823,10 +5102,10 @@ window.addEventListener('hashchange', handleRoute);
 
     var levelBadge = document.getElementById('pub-level-badge');
     if (levelBadge) {
-      levelBadge.textContent = pubT('pub_level_badge', {
-        level: publisher.level,
-        label: pubT(publisher.levelLabelKey)
-      });
+      var levelLabel = publisher.levelLabelKey ? pubT(publisher.levelLabelKey) : '';
+      levelBadge.textContent = levelLabel
+        ? pubT('pub_level_badge', { level: publisher.level, label: levelLabel })
+        : 'Lv.' + publisher.level;
     }
 
     var reputationEl = document.getElementById('pub-reputation-score');
@@ -4846,16 +5125,68 @@ window.addEventListener('hashchange', handleRoute);
 
     var registerEl = document.getElementById('pub-register-date');
     if (registerEl) {
-      registerEl.textContent = isZh ? publisher.registeredAt : publisher.registeredAtEn;
+      registerEl.textContent = publisher.registeredAt;
     }
 
     renderPublisherTasks();
+  }
+
+  function renderPublisherPage() {
     applyPublisherI18n();
+
+    var publisherId = typeof getPublisherIdFromHash === 'function' ? getPublisherIdFromHash() : null;
+    if (!publisherId) {
+      window.location.hash = 'home';
+      return;
+    }
+
+    if (publisherLoading && !publisherDataLoaded) {
+      var loadingEl = document.getElementById('pub-username');
+      if (loadingEl) loadingEl.textContent = pubT('pub_loading');
+      return;
+    }
+
+    if (loadedPublisher && String(loadedPublisher.id) === String(publisherId)) {
+      renderPublisherProfile(loadedPublisher);
+      applyPublisherI18n();
+      return;
+    }
+
+    publisherDataLoaded = false;
+    loadPublisherPageData(publisherId).then(function (data) {
+      renderPublisherProfile(data);
+      applyPublisherI18n();
+    });
   }
 
   function initPublisherEvents() {
     if (publisherInitialized) return;
     publisherInitialized = true;
+
+    var grid = document.getElementById('pub-task-grid');
+    if (grid && !grid.dataset.bound) {
+      grid.dataset.bound = 'true';
+      grid.addEventListener('click', function (e) {
+        var publisherLink = e.target.closest('.publisher-link');
+        if (publisherLink && grid.contains(publisherLink)) {
+          e.preventDefault();
+          e.stopPropagation();
+          var publisherId = publisherLink.getAttribute('data-publisher-id');
+          if (publisherId && typeof navigateToPublisher === 'function') {
+            navigateToPublisher(publisherId);
+          }
+          return;
+        }
+
+        var btn = e.target.closest('.claim-btn');
+        if (!btn || !grid.contains(btn)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof handleClaimTask === 'function') {
+          handleClaimTask(btn);
+        }
+      });
+    }
   }
 
   function restoreAppContentIfNeeded() {
@@ -4863,6 +5194,10 @@ window.addEventListener('hashchange', handleRoute);
     if (!document.getElementById('home-page')) {
       appContentEl.innerHTML = APP_CONTENT_HTML;
       publisherInitialized = false;
+      publisherDataLoaded = false;
+      publisherLoading = false;
+      loadedPublisher = null;
+      publisherActiveTasks = [];
     }
   }
 
@@ -4870,15 +5205,19 @@ window.addEventListener('hashchange', handleRoute);
     restoreAppContentIfNeeded();
 
     var route = window.location.hash.replace(/^#/, '') || 'home';
+    var routeBase = route.split('?')[0] || 'home';
     var publisherPage = document.getElementById('publisher-page');
 
     if (publisherPage) {
-      if (route === 'publisher') {
+      if (routeBase === 'publisher') {
         publisherPage.classList.remove('hidden');
         initPublisherEvents();
         renderPublisherPage();
       } else {
         publisherPage.classList.add('hidden');
+        publisherDataLoaded = false;
+        loadedPublisher = null;
+        publisherActiveTasks = [];
       }
     }
   }
@@ -5253,6 +5592,27 @@ window.addEventListener('hashchange', handleRoute);
       return false;
     }
 
+    var submissionResult = await window.supabase
+      .from('submissions')
+      .select('id, user_id, task_id')
+      .eq('id', submissionId)
+      .single();
+
+    if (submissionResult.error || !submissionResult.data) {
+      alert(rvT('rv_alert_action_fail') + (submissionResult.error ? submissionResult.error.message : 'submission not found'));
+      return false;
+    }
+
+    var submission = submissionResult.data;
+    var taskResult = await window.supabase
+      .from('tasks')
+      .select('title, reward_amount')
+      .eq('id', submission.task_id)
+      .maybeSingle();
+
+    var taskTitle = taskResult.data && taskResult.data.title ? taskResult.data.title : '任务';
+    var rewardAmount = taskResult.data ? Number(taskResult.data.reward_amount) || 0 : 0;
+
     var updateResult = await window.supabase
       .from('submissions')
       .update({
@@ -5265,6 +5625,13 @@ window.addEventListener('hashchange', handleRoute);
       alert(rvT('rv_alert_action_fail') + updateResult.error.message);
       return false;
     }
+
+    writeBroadcast({
+      user_id: submission.user_id,
+      event_type: 'task_approved',
+      description: '任务「' + buildTaskBroadcastTitle(taskTitle) + '」审核通过，获得',
+      reward_amount: rewardAmount
+    });
 
     return true;
   }
@@ -5496,23 +5863,9 @@ window.addEventListener('hashchange', handleRoute);
   var inviteInitialized = false;
   var friendsSortBy = 'time';
   var rulesExpanded = false;
-
-  var sampleInviteData = {
-    inviteCode: 'CRLM888',
-    inviteLink: 'https://coinrealm.pages.dev?ref=CRLM888',
-    inviteCount: 23,
-    totalReward: 12500,
-    currentBonus: 1.5,
-    nextBonus: 2.0,
-    nextBonusThreshold: 50,
-    friends: [
-      { username: 'LinkerDAO', registeredAt: '2025-01-10', reward: 350 },
-      { username: 'CryptoAce', registeredAt: '2025-01-08', reward: 520 },
-      { username: 'WhaleSwap', registeredAt: '2025-01-05', reward: 280 },
-      { username: 'GameFi_Hub', registeredAt: '2025-01-03', reward: 410 },
-      { username: 'AlphaRadar', registeredAt: '2024-12-28', reward: 190 }
-    ]
-  };
+  var inviteDataLoaded = false;
+  var inviteDataLoading = false;
+  var inviteData = null;
 
   var inviteTranslations = {
     zh: {
@@ -5528,6 +5881,7 @@ window.addEventListener('hashchange', handleRoute);
       iv_progress_title: '分红加成进度',
       iv_current_bonus: '当前：{bonus}x 加成',
       iv_next_level: '距下一等级 {bonus}x 加成还需邀请 {count} 人',
+      iv_next_level_max: '已达到最高加成等级',
       iv_node_1: '1x（5人）',
       iv_node_15: '1.5x（20人）',
       iv_node_2: '2x（50人）',
@@ -5543,7 +5897,10 @@ window.addEventListener('hashchange', handleRoute);
       iv_reward_amount: '+{amount} CRLM',
       iv_alert_copied: '已复制！',
       iv_alert_share: '已复制链接，即将跳转...',
-      iv_alert_poster: '海报生成功能即将上线！'
+      iv_alert_poster: '海报生成功能即将上线！',
+      iv_login_required: '请先登录查看邀请信息',
+      iv_loading: '加载中...',
+      iv_no_friends: '暂无邀请好友'
     },
     en: {
       iv_page_title: 'Invite Friends',
@@ -5558,6 +5915,7 @@ window.addEventListener('hashchange', handleRoute);
       iv_progress_title: 'Dividend Bonus Progress',
       iv_current_bonus: 'Current: {bonus}x bonus',
       iv_next_level: '{count} more invites to reach {bonus}x bonus',
+      iv_next_level_max: 'Maximum bonus tier reached',
       iv_node_1: '1x (5)',
       iv_node_15: '1.5x (20)',
       iv_node_2: '2x (50)',
@@ -5573,7 +5931,10 @@ window.addEventListener('hashchange', handleRoute);
       iv_reward_amount: '+{amount} CRLM',
       iv_alert_copied: 'Copied!',
       iv_alert_share: 'Link copied, redirecting...',
-      iv_alert_poster: 'Poster generation coming soon!'
+      iv_alert_poster: 'Poster generation coming soon!',
+      iv_login_required: 'Please sign in to view invite info',
+      iv_loading: 'Loading...',
+      iv_no_friends: 'No invited friends yet'
     }
   };
 
@@ -5629,50 +5990,253 @@ window.addEventListener('hashchange', handleRoute);
     });
   }
 
+  function calcInviteBonus(count) {
+    if (count >= 50) return 2;
+    if (count >= 20) return 1.5;
+    if (count >= 5) return 1;
+    return 0;
+  }
+
+  function getInviteProgressInfo(count) {
+    var tiers = [
+      { threshold: 5, bonus: 1 },
+      { threshold: 20, bonus: 1.5 },
+      { threshold: 50, bonus: 2 }
+    ];
+    var currentBonus = calcInviteBonus(count);
+    var nextTier = null;
+    var prevThreshold = 0;
+
+    for (var i = 0; i < tiers.length; i++) {
+      if (count < tiers[i].threshold) {
+        nextTier = tiers[i];
+        prevThreshold = i === 0 ? 0 : tiers[i - 1].threshold;
+        break;
+      }
+    }
+
+    if (!nextTier) {
+      return {
+        currentBonus: currentBonus,
+        nextBonus: 2,
+        remaining: 0,
+        pct: 100
+      };
+    }
+
+    var pct = ((count - prevThreshold) / (nextTier.threshold - prevThreshold)) * 100;
+    return {
+      currentBonus: currentBonus,
+      nextBonus: nextTier.bonus,
+      remaining: nextTier.threshold - count,
+      pct: Math.max(0, Math.min(100, pct))
+    };
+  }
+
+  function buildInviteLink(code) {
+    var base = window.location.origin + window.location.pathname;
+    return base + (base.indexOf('?') >= 0 ? '&' : '?') + 'ref=' + encodeURIComponent(code);
+  }
+
+  function getInviteField(row, names, fallback) {
+    for (var i = 0; i < names.length; i++) {
+      if (row[names[i]] != null && row[names[i]] !== '') {
+        return row[names[i]];
+      }
+    }
+    return fallback;
+  }
+
+  function mapInviteFriends(rows, userMap) {
+    return (rows || []).map(function (row) {
+      var inviteeId = getInviteField(row, ['invitee_id', 'invited_user_id', 'friend_id'], '');
+      var user = userMap[inviteeId] || {};
+      var createdAt = getInviteField(row, ['created_at', 'registered_at'], user.created_at);
+      return {
+        username: user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'Unknown'),
+        registeredAt: createdAt ? String(createdAt).slice(0, 10) : '—',
+        reward: Number(getInviteField(row, ['reward_amount', 'reward', 'contribution'], 0)) || 0
+      };
+    });
+  }
+
+  function loadInvitePageData() {
+    if (inviteDataLoading) {
+      return Promise.resolve(inviteData);
+    }
+
+    inviteDataLoading = true;
+
+    return getCurrentUserId()
+      .then(function (userId) {
+        if (!userId || !window.supabase) {
+          return { loggedIn: false };
+        }
+
+        return window.supabase
+          .from('users')
+          .select('invite_count')
+          .eq('id', userId)
+          .single()
+          .then(function (userResult) {
+            if (userResult.error || !userResult.data) {
+              return { loggedIn: false };
+            }
+
+            return window.supabase
+              .from('invites')
+              .select('*')
+              .eq('inviter_id', userId)
+              .order('created_at', { ascending: false })
+              .then(function (invitesResult) {
+                if (invitesResult.error) {
+                  console.warn('加载邀请列表失败:', invitesResult.error);
+                }
+
+                var inviteRows = invitesResult.error ? [] : (invitesResult.data || []);
+                var inviteeIds = inviteRows
+                  .map(function (row) {
+                    return getInviteField(row, ['invitee_id', 'invited_user_id', 'friend_id'], null);
+                  })
+                  .filter(function (id) { return !!id; });
+
+                var uniqueIds = inviteeIds.filter(function (id, index) {
+                  return inviteeIds.indexOf(id) === index;
+                });
+
+                if (!uniqueIds.length) {
+                  return {
+                    loggedIn: true,
+                    userId: userId,
+                    inviteCount: Number(userResult.data.invite_count) || 0,
+                    totalReward: inviteRows.reduce(function (sum, row) {
+                      return sum + (Number(getInviteField(row, ['reward_amount', 'reward', 'contribution'], 0)) || 0);
+                    }, 0),
+                    friends: mapInviteFriends(inviteRows, {})
+                  };
+                }
+
+                return window.supabase
+                  .from('users')
+                  .select('id, username, email, created_at')
+                  .in('id', uniqueIds)
+                  .then(function (usersResult) {
+                    var userMap = {};
+                    if (!usersResult.error && usersResult.data) {
+                      usersResult.data.forEach(function (user) {
+                        userMap[user.id] = user;
+                      });
+                    }
+
+                    var friends = mapInviteFriends(inviteRows, userMap);
+                    return {
+                      loggedIn: true,
+                      userId: userId,
+                      inviteCount: Number(userResult.data.invite_count) || friends.length,
+                      totalReward: friends.reduce(function (sum, friend) {
+                        return sum + friend.reward;
+                      }, 0),
+                      friends: friends
+                    };
+                  });
+              });
+          });
+      })
+      .catch(function (err) {
+        console.warn('加载邀请页数据失败:', err);
+        return { loggedIn: false };
+      })
+      .then(function (data) {
+        inviteData = data;
+        inviteDataLoaded = true;
+        inviteDataLoading = false;
+        return data;
+      });
+  }
+
+  function renderLoginRequiredState() {
+    var loginMsg = ivT('iv_login_required');
+    var codeEl = document.getElementById('iv-invite-code');
+    var countEl = document.getElementById('iv-invite-count');
+    var rewardEl = document.getElementById('iv-invite-reward');
+    var linkEl = document.getElementById('iv-invite-link');
+    var currentEl = document.getElementById('iv-current-bonus');
+    var nextEl = document.getElementById('iv-next-level-text');
+    var fillEl = document.getElementById('iv-progress-fill');
+    var listEl = document.getElementById('iv-friends-list');
+    var friendsCountEl = document.getElementById('iv-friends-count');
+
+    if (codeEl) codeEl.textContent = '—';
+    if (countEl) countEl.textContent = loginMsg;
+    if (rewardEl) rewardEl.textContent = '';
+    if (linkEl) linkEl.value = '';
+    if (currentEl) currentEl.textContent = loginMsg;
+    if (nextEl) nextEl.textContent = '';
+    if (fillEl) fillEl.style.width = '0%';
+    if (friendsCountEl) friendsCountEl.textContent = '';
+    if (listEl) {
+      listEl.innerHTML = '<li class="invite-friend-item"><span class="iv-friend-name">' + loginMsg + '</span></li>';
+    }
+  }
+
   function renderOverview() {
-    var data = sampleInviteData;
+    if (!inviteData || !inviteData.loggedIn) {
+      renderLoginRequiredState();
+      return;
+    }
+
+    var inviteCode = String(inviteData.userId).slice(0, 8);
+    var inviteLink = buildInviteLink(inviteCode);
 
     var codeEl = document.getElementById('iv-invite-code');
-    if (codeEl) codeEl.textContent = data.inviteCode;
+    if (codeEl) codeEl.textContent = inviteCode;
 
     var countEl = document.getElementById('iv-invite-count');
     if (countEl) {
-      countEl.textContent = ivT('iv_invite_count', { count: data.inviteCount });
+      countEl.textContent = ivT('iv_invite_count', { count: inviteData.inviteCount });
     }
 
     var rewardEl = document.getElementById('iv-invite-reward');
     if (rewardEl) {
-      rewardEl.textContent = ivT('iv_total_reward', { amount: formatNumber(data.totalReward) });
+      rewardEl.textContent = ivT('iv_total_reward', { amount: formatNumber(inviteData.totalReward) });
     }
 
     var linkEl = document.getElementById('iv-invite-link');
-    if (linkEl) linkEl.value = data.inviteLink;
+    if (linkEl) linkEl.value = inviteLink;
+
+    inviteData.inviteCode = inviteCode;
+    inviteData.inviteLink = inviteLink;
   }
 
   function renderProgress() {
-    var data = sampleInviteData;
-    var pct = Math.min(100, (data.inviteCount / data.nextBonusThreshold) * 100);
-    var remaining = data.nextBonusThreshold - data.inviteCount;
+    if (!inviteData || !inviteData.loggedIn) return;
+
+    var progress = getInviteProgressInfo(inviteData.inviteCount);
 
     var currentEl = document.getElementById('iv-current-bonus');
     if (currentEl) {
-      currentEl.textContent = ivT('iv_current_bonus', { bonus: data.currentBonus });
+      currentEl.textContent = ivT('iv_current_bonus', { bonus: progress.currentBonus });
     }
 
     var fillEl = document.getElementById('iv-progress-fill');
-    if (fillEl) fillEl.style.width = pct + '%';
+    if (fillEl) fillEl.style.width = progress.pct + '%';
 
     var nextEl = document.getElementById('iv-next-level-text');
     if (nextEl) {
-      nextEl.textContent = ivT('iv_next_level', {
-        bonus: data.nextBonus,
-        count: remaining
-      });
+      if (progress.remaining <= 0) {
+        nextEl.textContent = ivT('iv_next_level_max');
+      } else {
+        nextEl.textContent = ivT('iv_next_level', {
+          bonus: progress.nextBonus,
+          count: progress.remaining
+        });
+      }
     }
   }
 
   function getSortedFriends() {
-    var friends = sampleInviteData.friends.slice();
+    if (!inviteData || !inviteData.loggedIn) return [];
+    var friends = (inviteData.friends || []).slice();
     if (friendsSortBy === 'contribution') {
       friends.sort(function (a, b) { return b.reward - a.reward; });
     } else {
@@ -5688,17 +6252,28 @@ window.addEventListener('hashchange', handleRoute);
     var countEl = document.getElementById('iv-friends-count');
     if (!listEl) return;
 
+    if (!inviteData || !inviteData.loggedIn) {
+      renderLoginRequiredState();
+      return;
+    }
+
     var friends = getSortedFriends();
 
     if (countEl) {
       countEl.textContent = ivT('iv_friends_count', { count: friends.length });
     }
 
+    if (!friends.length) {
+      listEl.innerHTML = '<li class="invite-friend-item"><span class="iv-friend-name">' + ivT('iv_no_friends') + '</span></li>';
+      return;
+    }
+
     listEl.innerHTML = friends.map(function (friend) {
+      var safeName = typeof escapeHtml === 'function' ? escapeHtml(friend.username) : friend.username;
       return (
         '<li class="invite-friend-item">' +
           '<div class="iv-friend-avatar"></div>' +
-          '<span class="iv-friend-name">' + friend.username + '</span>' +
+          '<span class="iv-friend-name">' + safeName + '</span>' +
           '<span class="iv-friend-date">' + friend.registeredAt + '</span>' +
           '<span class="iv-friend-reward">' + ivT('iv_reward_amount', { amount: formatNumber(friend.reward) }) + '</span>' +
         '</li>'
@@ -5745,7 +6320,11 @@ window.addEventListener('hashchange', handleRoute);
     var copyCodeBtn = document.getElementById('iv-copy-code-btn');
     if (copyCodeBtn) {
       copyCodeBtn.addEventListener('click', function () {
-        copyText(sampleInviteData.inviteCode).then(function () {
+        if (!inviteData || !inviteData.loggedIn || !inviteData.inviteCode) {
+          alert(ivT('iv_login_required'));
+          return;
+        }
+        copyText(inviteData.inviteCode).then(function () {
           alert(ivT('iv_alert_copied'));
         });
       });
@@ -5754,7 +6333,11 @@ window.addEventListener('hashchange', handleRoute);
     var copyLinkBtn = document.getElementById('iv-copy-link-btn');
     if (copyLinkBtn) {
       copyLinkBtn.addEventListener('click', function () {
-        copyText(sampleInviteData.inviteLink).then(function () {
+        if (!inviteData || !inviteData.loggedIn || !inviteData.inviteLink) {
+          alert(ivT('iv_login_required'));
+          return;
+        }
+        copyText(inviteData.inviteLink).then(function () {
           alert(ivT('iv_alert_copied'));
         });
       });
@@ -5762,7 +6345,11 @@ window.addEventListener('hashchange', handleRoute);
 
     document.querySelectorAll('.invite-share-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        copyText(sampleInviteData.inviteLink).then(function () {
+        if (!inviteData || !inviteData.loggedIn || !inviteData.inviteLink) {
+          alert(ivT('iv_login_required'));
+          return;
+        }
+        copyText(inviteData.inviteLink).then(function () {
           alert(ivT('iv_alert_share'));
         });
       });
@@ -5804,13 +6391,31 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   function renderInvitePage() {
-    renderOverview();
-    renderProgress();
-    updateSortTabsUI();
-    renderFriendsList();
-    updateRulesUI();
     initInviteEvents();
     applyInviteI18n();
+    updateSortTabsUI();
+    updateRulesUI();
+
+    if (inviteDataLoading && !inviteDataLoaded) {
+      var codeEl = document.getElementById('iv-invite-code');
+      if (codeEl) codeEl.textContent = ivT('iv_loading');
+      return;
+    }
+
+    if (inviteDataLoaded && inviteData) {
+      renderOverview();
+      renderProgress();
+      renderFriendsList();
+      applyInviteI18n();
+      return;
+    }
+
+    loadInvitePageData().then(function () {
+      renderOverview();
+      renderProgress();
+      renderFriendsList();
+      applyInviteI18n();
+    });
   }
 
   function restoreAppContentIfNeeded() {
@@ -5820,6 +6425,9 @@ window.addEventListener('hashchange', handleRoute);
       inviteInitialized = false;
       friendsSortBy = 'time';
       rulesExpanded = false;
+      inviteDataLoaded = false;
+      inviteDataLoading = false;
+      inviteData = null;
     }
   }
 
@@ -5827,14 +6435,18 @@ window.addEventListener('hashchange', handleRoute);
     restoreAppContentIfNeeded();
 
     var route = window.location.hash.replace(/^#/, '') || 'home';
+    var routeBase = route.split('?')[0] || 'home';
     var invitePage = document.getElementById('invite-page');
 
     if (invitePage) {
-      if (route === 'invite') {
+      if (routeBase === 'invite') {
         invitePage.classList.remove('hidden');
         renderInvitePage();
       } else {
         invitePage.classList.add('hidden');
+        inviteDataLoaded = false;
+        inviteDataLoading = false;
+        inviteData = null;
       }
     }
   }
