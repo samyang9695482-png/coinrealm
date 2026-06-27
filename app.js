@@ -3449,26 +3449,11 @@ window.addEventListener('hashchange', handleRoute);
 
   var exchangeMode = 'buy';
   var exchangeInitialized = false;
-
-  var buyOrders = [
-    { price: 0.10, qty: 1000, total: 100.00 },
-    { price: 0.098, qty: 2000, total: 196.00 },
-    { price: 0.102, qty: 500, total: 51.00 },
-    { price: 0.095, qty: 3000, total: 285.00 }
-  ];
-
-  var sellOrders = [
-    { price: 0.105, qty: 800, total: 84.00 },
-    { price: 0.108, qty: 1500, total: 162.00 },
-    { price: 0.103, qty: 600, total: 61.80 },
-    { price: 0.110, qty: 2500, total: 275.00 }
-  ];
-
-  var recentTrades = [
-    { time: '14:32:18', price: 0.101, qty: 500 },
-    { time: '14:28:05', price: 0.099, qty: 1200 },
-    { time: '14:15:42', price: 0.100, qty: 800 }
-  ];
+  var exchangeDataLoaded = false;
+  var exchangeDataLoading = false;
+  var activeOrders = [];
+  var matchedTrades = [];
+  var exchangeActionInProgress = false;
 
   var exchangeTranslations = {
     zh: {
@@ -3491,7 +3476,15 @@ window.addEventListener('hashchange', handleRoute);
       ex_alert_trade: '交易成功！',
       ex_alert_required: '请填写价格和数量',
       ex_alert_order: '挂单成功！',
-      ex_trade_qty: '{qty} CRLM'
+      ex_alert_login: '请先登录后再操作',
+      ex_alert_self_trade: '不能与自己挂单交易',
+      ex_alert_usdt_insufficient: 'USDT 余额不足',
+      ex_alert_crlm_insufficient: 'CRLM 余额不足',
+      ex_alert_order_fail: '挂单失败：',
+      ex_alert_trade_fail: '交易失败：',
+      ex_trade_qty: '{qty} CRLM',
+      ex_no_trades: '暂无成交记录',
+      ex_loading: '加载中...'
     },
     en: {
       ex_page_title: 'Exchange Market',
@@ -3513,7 +3506,15 @@ window.addEventListener('hashchange', handleRoute);
       ex_alert_trade: 'Trade successful!',
       ex_alert_required: 'Please enter price and quantity',
       ex_alert_order: 'Order placed successfully!',
-      ex_trade_qty: '{qty} CRLM'
+      ex_alert_login: 'Please sign in first',
+      ex_alert_self_trade: 'You cannot trade with your own order',
+      ex_alert_usdt_insufficient: 'Insufficient USDT balance',
+      ex_alert_crlm_insufficient: 'Insufficient CRLM balance',
+      ex_alert_order_fail: 'Order failed: ',
+      ex_alert_trade_fail: 'Trade failed: ',
+      ex_trade_qty: '{qty} CRLM',
+      ex_no_trades: 'No trades yet',
+      ex_loading: 'Loading...'
     }
   };
 
@@ -3549,45 +3550,317 @@ window.addEventListener('hashchange', handleRoute);
     });
   }
 
+  function formatOrderTime(iso) {
+    if (!iso) return '—';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso).slice(0, 16);
+    var month = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    var hours = String(d.getHours()).padStart(2, '0');
+    var minutes = String(d.getMinutes()).padStart(2, '0');
+    return month + '-' + day + ' ' + hours + ':' + minutes;
+  }
+
+  function getVisibleOrders() {
+    var orderTypeFilter = exchangeMode === 'buy' ? 'sell' : 'buy';
+    return activeOrders.filter(function (order) {
+      return order.order_type === orderTypeFilter;
+    });
+  }
+
+  function loadExchangeData() {
+    if (exchangeDataLoading) {
+      return Promise.resolve();
+    }
+
+    if (!window.supabase) {
+      activeOrders = [];
+      matchedTrades = [];
+      exchangeDataLoaded = true;
+      return Promise.resolve();
+    }
+
+    exchangeDataLoading = true;
+
+    return Promise.all([
+      window.supabase
+        .from('exchange_orders')
+        .select('*')
+        .eq('status', 'active')
+        .order('created_at', { ascending: false }),
+      window.supabase
+        .from('exchange_orders')
+        .select('*')
+        .eq('status', 'matched')
+        .order('created_at', { ascending: false })
+        .limit(50)
+    ])
+      .then(function (results) {
+        var activeResult = results[0];
+        var matchedResult = results[1];
+
+        if (activeResult.error) {
+          console.warn('加载挂单失败:', activeResult.error);
+          activeOrders = [];
+        } else {
+          activeOrders = activeResult.data || [];
+        }
+
+        if (matchedResult.error) {
+          console.warn('加载成交记录失败:', matchedResult.error);
+          matchedTrades = [];
+        } else {
+          matchedTrades = matchedResult.data || [];
+        }
+      })
+      .catch(function (err) {
+        console.warn('加载兑换市场数据失败:', err);
+        activeOrders = [];
+        matchedTrades = [];
+      })
+      .then(function () {
+        exchangeDataLoaded = true;
+        exchangeDataLoading = false;
+      });
+  }
+
   function renderOrderList() {
     var listEl = document.getElementById('ex-order-list');
+    var noMoreEl = document.querySelector('#exchange-page .exchange-no-more');
     if (!listEl) return;
 
-    var orders = exchangeMode === 'buy' ? buyOrders : sellOrders;
+    if (exchangeDataLoading && !exchangeDataLoaded) {
+      listEl.innerHTML = '<tr><td colspan="4">' + exT('ex_loading') + '</td></tr>';
+      if (noMoreEl) noMoreEl.classList.add('hidden');
+      return;
+    }
+
+    var orders = getVisibleOrders();
     var actionKey = exchangeMode === 'buy' ? 'ex_btn_buy' : 'ex_btn_sell';
     var actionText = exT(actionKey);
 
+    if (!orders.length) {
+      listEl.innerHTML = '';
+      if (noMoreEl) noMoreEl.classList.remove('hidden');
+      return;
+    }
+
+    if (noMoreEl) noMoreEl.classList.add('hidden');
+
     listEl.innerHTML = orders.map(function (order) {
+      var price = Number(order.price) || 0;
+      var qty = Number(order.quantity) || 0;
+      var total = price * qty;
+      var orderId = order.id != null ? String(order.id) : '';
+      var safeId = typeof escapeHtml === 'function' ? escapeHtml(orderId) : orderId;
+
       return (
-        '<tr>' +
-          '<td>' + order.price.toFixed(4) + '</td>' +
-          '<td>' + order.qty.toLocaleString() + '</td>' +
-          '<td>' + order.total.toFixed(2) + '</td>' +
-          '<td><button type="button" class="exchange-action-btn ex-order-action-btn">' + actionText + '</button></td>' +
+        '<tr data-order-id="' + safeId + '">' +
+          '<td>' + price.toFixed(4) + '</td>' +
+          '<td>' + qty.toLocaleString() + '</td>' +
+          '<td>' + total.toFixed(2) + '<br><small>' + formatOrderTime(order.created_at) + '</small></td>' +
+          '<td><button type="button" class="exchange-action-btn ex-order-action-btn" data-order-id="' + safeId + '">' + actionText + '</button></td>' +
         '</tr>'
       );
     }).join('');
-
-    listEl.querySelectorAll('.ex-order-action-btn').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        alert(exT('ex_alert_trade'));
-      });
-    });
   }
 
   function renderTradesList() {
     var listEl = document.getElementById('ex-trades-list');
     if (!listEl) return;
 
-    listEl.innerHTML = recentTrades.map(function (trade) {
+    if (exchangeDataLoading && !exchangeDataLoaded) {
+      listEl.innerHTML = '<li class="exchange-trades-item"><span class="exchange-trades-time">' + exT('ex_loading') + '</span></li>';
+      return;
+    }
+
+    if (!matchedTrades.length) {
+      listEl.innerHTML = '<li class="exchange-trades-item"><span class="exchange-trades-time">' + exT('ex_no_trades') + '</span></li>';
+      return;
+    }
+
+    listEl.innerHTML = matchedTrades.map(function (trade) {
+      var price = Number(trade.price) || 0;
+      var qty = Number(trade.quantity) || 0;
       return (
         '<li class="exchange-trades-item">' +
-          '<span class="exchange-trades-time">' + trade.time + '</span>' +
-          '<span class="exchange-trades-price">' + trade.price.toFixed(4) + '</span>' +
-          '<span class="exchange-trades-qty">' + exT('ex_trade_qty', { qty: trade.qty.toLocaleString() }) + '</span>' +
+          '<span class="exchange-trades-time">' + formatOrderTime(trade.created_at) + '</span>' +
+          '<span class="exchange-trades-price">' + price.toFixed(4) + '</span>' +
+          '<span class="exchange-trades-qty">' + exT('ex_trade_qty', { qty: qty.toLocaleString() }) + '</span>' +
         '</li>'
       );
     }).join('');
+  }
+
+  async function placeExchangeOrder(price, qty) {
+    if (!window.supabase) {
+      alert(exT('ex_alert_login'));
+      return;
+    }
+
+    var userId = await getCurrentUserId();
+    if (!userId) {
+      alert(exT('ex_alert_login'));
+      return;
+    }
+
+    var orderType = exchangeMode === 'buy' ? 'buy' : 'sell';
+    var insertResult = await window.supabase.from('exchange_orders').insert({
+      user_id: userId,
+      order_type: orderType,
+      price: price,
+      quantity: qty,
+      status: 'active'
+    });
+
+    if (insertResult.error) {
+      alert(exT('ex_alert_order_fail') + insertResult.error.message);
+      return;
+    }
+
+    alert(exT('ex_alert_order'));
+    clearOrderForm();
+    exchangeDataLoaded = false;
+    await loadExchangeData();
+    renderOrderList();
+    renderTradesList();
+  }
+
+  async function matchExchangeOrder(orderId) {
+    if (exchangeActionInProgress) return;
+
+    if (!window.supabase) {
+      alert(exT('ex_alert_login'));
+      return;
+    }
+
+    var userId = await getCurrentUserId();
+    if (!userId) {
+      alert(exT('ex_alert_login'));
+      return;
+    }
+
+    var order = activeOrders.find(function (item) {
+      return String(item.id) === String(orderId);
+    });
+
+    if (!order) {
+      alert(exT('ex_alert_trade_fail') + 'order not found');
+      return;
+    }
+
+    if (String(order.user_id) === String(userId)) {
+      alert(exT('ex_alert_self_trade'));
+      return;
+    }
+
+    exchangeActionInProgress = true;
+
+    try {
+      var qty = Number(order.quantity) || 0;
+      var price = Number(order.price) || 0;
+      var total = Math.round(price * qty * 100) / 100;
+
+      if (qty <= 0 || price <= 0) {
+        alert(exT('ex_alert_trade_fail') + 'invalid order');
+        return;
+      }
+
+      var buyerId;
+      var sellerId;
+      if (order.order_type === 'sell') {
+        sellerId = order.user_id;
+        buyerId = userId;
+      } else if (order.order_type === 'buy') {
+        buyerId = order.user_id;
+        sellerId = userId;
+      } else {
+        alert(exT('ex_alert_trade_fail') + 'invalid order type');
+        return;
+      }
+
+      var usersResult = await window.supabase
+        .from('users')
+        .select('id, crlm_balance, usdt_balance')
+        .in('id', [buyerId, sellerId]);
+
+      if (usersResult.error || !usersResult.data || usersResult.data.length < 2) {
+        alert(exT('ex_alert_trade_fail') + (usersResult.error ? usersResult.error.message : 'user not found'));
+        return;
+      }
+
+      var buyer = null;
+      var seller = null;
+      usersResult.data.forEach(function (user) {
+        if (String(user.id) === String(buyerId)) buyer = user;
+        if (String(user.id) === String(sellerId)) seller = user;
+      });
+
+      if (!buyer || !seller) {
+        alert(exT('ex_alert_trade_fail') + 'user not found');
+        return;
+      }
+
+      var buyerUsdt = Number(buyer.usdt_balance) || 0;
+      var buyerCrlm = Number(buyer.crlm_balance) || 0;
+      var sellerCrlm = Number(seller.crlm_balance) || 0;
+      var sellerUsdt = Number(seller.usdt_balance) || 0;
+
+      if (buyerUsdt < total) {
+        alert(exT('ex_alert_usdt_insufficient'));
+        return;
+      }
+
+      if (sellerCrlm < qty) {
+        alert(exT('ex_alert_crlm_insufficient'));
+        return;
+      }
+
+      var buyerUpdate = await window.supabase
+        .from('users')
+        .update({
+          crlm_balance: buyerCrlm + qty,
+          usdt_balance: Math.round((buyerUsdt - total) * 100) / 100
+        })
+        .eq('id', buyerId);
+
+      if (buyerUpdate.error) {
+        alert(exT('ex_alert_trade_fail') + buyerUpdate.error.message);
+        return;
+      }
+
+      var sellerUpdate = await window.supabase
+        .from('users')
+        .update({
+          crlm_balance: sellerCrlm - qty,
+          usdt_balance: Math.round((sellerUsdt + total) * 100) / 100
+        })
+        .eq('id', sellerId);
+
+      if (sellerUpdate.error) {
+        alert(exT('ex_alert_trade_fail') + sellerUpdate.error.message);
+        return;
+      }
+
+      var orderUpdate = await window.supabase
+        .from('exchange_orders')
+        .update({ status: 'matched' })
+        .eq('id', order.id)
+        .eq('status', 'active');
+
+      if (orderUpdate.error) {
+        alert(exT('ex_alert_trade_fail') + orderUpdate.error.message);
+        return;
+      }
+
+      alert(exT('ex_alert_trade'));
+      exchangeDataLoaded = false;
+      await loadExchangeData();
+      renderOrderList();
+      renderTradesList();
+    } finally {
+      exchangeActionInProgress = false;
+    }
   }
 
   function updateTabUI() {
@@ -3678,19 +3951,37 @@ window.addEventListener('hashchange', handleRoute);
           return;
         }
 
-        alert(exT('ex_alert_order'));
-        clearOrderForm();
+        placeExchangeOrder(price, qty);
+      });
+    }
+
+    var orderListEl = document.getElementById('ex-order-list');
+    if (orderListEl && !orderListEl.dataset.bound) {
+      orderListEl.dataset.bound = 'true';
+      orderListEl.addEventListener('click', function (e) {
+        var btn = e.target.closest('.ex-order-action-btn');
+        if (!btn || !orderListEl.contains(btn)) return;
+        var orderId = btn.getAttribute('data-order-id');
+        if (!orderId) return;
+        matchExchangeOrder(orderId);
       });
     }
   }
 
   function renderExchangePage() {
-    updateTabUI();
-    renderOrderList();
-    renderTradesList();
-    updateTotalDisplay();
     initExchangeEvents();
     applyExchangeI18n();
+    updateTabUI();
+    updateTotalDisplay();
+    renderOrderList();
+    renderTradesList();
+
+    if (!exchangeDataLoaded && !exchangeDataLoading) {
+      loadExchangeData().then(function () {
+        renderOrderList();
+        renderTradesList();
+      });
+    }
   }
 
   function restoreAppContentIfNeeded() {
@@ -3699,6 +3990,10 @@ window.addEventListener('hashchange', handleRoute);
       appContentEl.innerHTML = APP_CONTENT_HTML;
       exchangeInitialized = false;
       exchangeMode = 'buy';
+      exchangeDataLoaded = false;
+      exchangeDataLoading = false;
+      activeOrders = [];
+      matchedTrades = [];
     }
   }
 
@@ -3714,6 +4009,10 @@ window.addEventListener('hashchange', handleRoute);
         renderExchangePage();
       } else {
         exchangePage.classList.add('hidden');
+        exchangeDataLoaded = false;
+        exchangeDataLoading = false;
+        activeOrders = [];
+        matchedTrades = [];
       }
     }
   }
