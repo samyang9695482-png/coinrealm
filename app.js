@@ -3538,46 +3538,27 @@ window.addEventListener('hashchange', handleRoute);
 
   var leaderboardType = 'earnings';
   var leaderboardInitialized = false;
+  var leaderboardDataLoaded = false;
+  var leaderboardDataLoading = false;
 
   var rankBadges = ['🥇', '🥈', '🥉'];
 
+  var leaderboardColumns = {
+    earnings: { field: 'crlm_balance', select: 'username, level, crlm_balance' },
+    invites: { field: 'invite_count', select: 'username, level, invite_count' },
+    reputation: { field: 'reputation_score', select: 'username, level, reputation_score' }
+  };
+
   var leaderboardData = {
-    earnings: [
-      { username: 'WhaleKing', level: 9, value: 125000 },
-      { username: 'CryptoAce', level: 8, value: 98500 },
-      { username: 'TaskMaster', level: 7, value: 87200 },
-      { username: 'CRLM_Hunter', level: 7, value: 76800 },
-      { username: 'DeFiPro', level: 6, value: 65400 },
-      { username: 'AlphaRadar', level: 6, value: 58900 },
-      { username: 'LinkerDAO', level: 5, value: 45200 },
-      { username: 'GameFi_Hub', level: 5, value: 39800 }
-    ],
-    invites: [
-      { username: 'InviteKing', level: 8, value: 156 },
-      { username: 'ReferPro', level: 7, value: 128 },
-      { username: 'ShareMaster', level: 7, value: 112 },
-      { username: 'GrowthHacker', level: 6, value: 98 },
-      { username: 'NodeRunner', level: 6, value: 85 },
-      { username: 'ChainLinker', level: 5, value: 72 },
-      { username: 'AlphaRadar', level: 5, value: 65 },
-      { username: 'NewbieGuide', level: 4, value: 58 }
-    ],
-    reputation: [
-      { username: 'TrustAce', level: 9, value: 99 },
-      { username: 'HonestTrader', level: 8, value: 98 },
-      { username: 'ReliableOne', level: 8, value: 97 },
-      { username: 'TopPublisher', level: 7, value: 96 },
-      { username: 'FairDeal', level: 7, value: 95 },
-      { username: 'AlphaRadar', level: 5, value: 94 },
-      { username: 'LinkerDAO', level: 5, value: 93 },
-      { username: 'WhaleSwap', level: 6, value: 92 }
-    ]
+    earnings: [],
+    invites: [],
+    reputation: []
   };
 
   var myRankData = {
-    earnings: { rank: 42, username: 'AlphaRadar', level: 5, value: 15600 },
-    invites: { rank: 28, username: 'AlphaRadar', level: 5, value: 23 },
-    reputation: { rank: 15, username: 'AlphaRadar', level: 5, value: 98 }
+    earnings: null,
+    invites: null,
+    reputation: null
   };
 
   var leaderboardTranslations = {
@@ -3590,7 +3571,9 @@ window.addEventListener('hashchange', handleRoute);
       lb_my_rank: '#{rank}',
       lb_earnings_value: '{amount} CRLM',
       lb_invites_value: '{count} 人',
-      lb_reputation_value: '{score}%'
+      lb_reputation_value: '{score}%',
+      lb_login_required: '请先登录查看排名',
+      lb_loading: '加载中...'
     },
     en: {
       lb_page_title: 'Leaderboard',
@@ -3601,7 +3584,9 @@ window.addEventListener('hashchange', handleRoute);
       lb_my_rank: '#{rank}',
       lb_earnings_value: '{amount} CRLM',
       lb_invites_value: '{count} people',
-      lb_reputation_value: '{score}%'
+      lb_reputation_value: '{score}%',
+      lb_login_required: 'Please sign in to view your rank',
+      lb_loading: 'Loading...'
     }
   };
 
@@ -3635,6 +3620,104 @@ window.addEventListener('hashchange', handleRoute);
     return lbT('lb_reputation_value', { score: value });
   }
 
+  function mapUserRow(row, type) {
+    var field = leaderboardColumns[type].field;
+    return {
+      username: row.username || '—',
+      level: row.level != null ? row.level : 1,
+      value: Number(row[field]) || 0
+    };
+  }
+
+  function fetchTopUsers(type) {
+    var config = leaderboardColumns[type];
+    return window.supabase
+      .from('users')
+      .select(config.select)
+      .order(config.field, { ascending: false })
+      .limit(20)
+      .then(function (result) {
+        if (result.error) throw result.error;
+        return (result.data || []).map(function (row) {
+          return mapUserRow(row, type);
+        });
+      });
+  }
+
+  function fetchMyRankForType(type, userId) {
+    var config = leaderboardColumns[type];
+    return window.supabase
+      .from('users')
+      .select('username, level, ' + config.field)
+      .eq('id', userId)
+      .single()
+      .then(function (userResult) {
+        if (userResult.error || !userResult.data) return null;
+
+        var value = Number(userResult.data[config.field]) || 0;
+        return window.supabase
+          .from('users')
+          .select('*', { count: 'exact', head: true })
+          .gt(config.field, value)
+          .then(function (countResult) {
+            if (countResult.error) return null;
+            return {
+              rank: (countResult.count || 0) + 1,
+              username: userResult.data.username || '—',
+              level: userResult.data.level != null ? userResult.data.level : 1,
+              value: value
+            };
+          });
+      });
+  }
+
+  function loadLeaderboardData() {
+    if (leaderboardDataLoaded || leaderboardDataLoading) {
+      return Promise.resolve();
+    }
+
+    if (!window.supabase) {
+      leaderboardDataLoaded = true;
+      return Promise.resolve();
+    }
+
+    leaderboardDataLoading = true;
+    var types = ['earnings', 'invites', 'reputation'];
+
+    return Promise.all(types.map(fetchTopUsers))
+      .then(function (topResults) {
+        types.forEach(function (type, index) {
+          leaderboardData[type] = topResults[index];
+        });
+        return getCurrentUserId();
+      })
+      .then(function (userId) {
+        if (!userId) {
+          types.forEach(function (type) {
+            myRankData[type] = null;
+          });
+          return null;
+        }
+        return Promise.all(types.map(function (type) {
+          return fetchMyRankForType(type, userId);
+        })).then(function (myResults) {
+          types.forEach(function (type, index) {
+            myRankData[type] = myResults[index];
+          });
+        });
+      })
+      .catch(function (err) {
+        console.warn('加载排行榜失败:', err);
+        types.forEach(function (type) {
+          myRankData[type] = null;
+        });
+      })
+      .then(function () {
+        leaderboardDataLoaded = true;
+        leaderboardDataLoading = false;
+      });
+  }
+
   function getRankDisplay(rank) {
     if (rank <= 3) {
       return '<span class="leaderboard-rank">' + rankBadges[rank - 1] + '</span>';
@@ -3655,17 +3738,23 @@ window.addEventListener('hashchange', handleRoute);
     var listEl = document.getElementById('lb-rank-list');
     if (!listEl) return;
 
-    var data = leaderboardData[leaderboardType];
+    if (leaderboardDataLoading && !leaderboardDataLoaded) {
+      listEl.innerHTML = '<li class="leaderboard-item"><span class="leaderboard-value">' + lbT('lb_loading') + '</span></li>';
+      return;
+    }
+
+    var data = leaderboardData[leaderboardType] || [];
 
     listEl.innerHTML = data.map(function (item, index) {
       var rank = index + 1;
       var topClass = rank <= 3 ? ' leaderboard-item-top3' : '';
+      var safeUsername = typeof escapeHtml === 'function' ? escapeHtml(item.username) : item.username;
       return (
         '<li class="leaderboard-item' + topClass + '">' +
           getRankDisplay(rank) +
           '<div class="leaderboard-avatar"></div>' +
           '<div class="leaderboard-user-info">' +
-            '<span class="leaderboard-username">' + item.username + '</span>' +
+            '<span class="leaderboard-username">' + safeUsername + '</span>' +
             '<span class="leaderboard-level">' + lbT('lb_level', { level: item.level }) + '</span>' +
           '</div>' +
           '<span class="leaderboard-value">' + formatValue(leaderboardType, item.value) + '</span>' +
@@ -3675,13 +3764,28 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   function renderMyRank() {
-    var myData = myRankData[leaderboardType];
-    if (!myData) return;
-
     var rankEl = document.getElementById('lb-my-rank-num');
     var usernameEl = document.getElementById('lb-my-username');
     var levelEl = document.getElementById('lb-my-level');
     var valueEl = document.getElementById('lb-my-value');
+
+    var myData = myRankData[leaderboardType];
+
+    if (leaderboardDataLoading && !leaderboardDataLoaded) {
+      if (rankEl) rankEl.textContent = '';
+      if (usernameEl) usernameEl.textContent = lbT('lb_loading');
+      if (levelEl) levelEl.textContent = '';
+      if (valueEl) valueEl.textContent = '';
+      return;
+    }
+
+    if (!myData) {
+      if (rankEl) rankEl.textContent = '';
+      if (usernameEl) usernameEl.textContent = lbT('lb_login_required');
+      if (levelEl) levelEl.textContent = '';
+      if (valueEl) valueEl.textContent = '';
+      return;
+    }
 
     if (rankEl) rankEl.textContent = lbT('lb_my_rank', { rank: myData.rank });
     if (usernameEl) usernameEl.textContent = myData.username;
@@ -3744,11 +3848,18 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   function renderLeaderboardPage() {
+    initLeaderboardEvents();
+    applyLeaderboardI18n();
     updateTabUI();
     renderRankList();
     renderMyRank();
-    initLeaderboardEvents();
-    applyLeaderboardI18n();
+
+    if (!leaderboardDataLoaded && !leaderboardDataLoading) {
+      loadLeaderboardData().then(function () {
+        renderRankList();
+        renderMyRank();
+      });
+    }
   }
 
   function restoreAppContentIfNeeded() {
@@ -3757,6 +3868,10 @@ window.addEventListener('hashchange', handleRoute);
       appContentEl.innerHTML = APP_CONTENT_HTML;
       leaderboardInitialized = false;
       leaderboardType = 'earnings';
+      leaderboardDataLoaded = false;
+      leaderboardDataLoading = false;
+      leaderboardData = { earnings: [], invites: [], reputation: [] };
+      myRankData = { earnings: null, invites: null, reputation: null };
     }
   }
 
@@ -3772,6 +3887,8 @@ window.addEventListener('hashchange', handleRoute);
         renderLeaderboardPage();
       } else {
         leaderboardPage.classList.add('hidden');
+        leaderboardDataLoaded = false;
+        leaderboardDataLoading = false;
       }
     }
   }
