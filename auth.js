@@ -29,7 +29,8 @@
     invite: 'invite-page',
     'broadcast-history': 'broadcast-history-page',
     publisher: 'publisher-page',
-    review: 'review-page'
+    review: 'review-page',
+    admin: 'admin-page'
   };
 
   function getRouteBaseName(routeOrHash) {
@@ -49,7 +50,8 @@
     'broadcast-history-page',
     'publisher-page',
     'review-page',
-    'invite-page'
+    'invite-page',
+    'admin-page'
   ];
 
   var authText = {
@@ -67,6 +69,7 @@
       menuExchange: '兑换市场',
       menuLeaderboard: '排行榜',
       menuInvite: '邀请好友',
+      menuAdmin: '管理后台',
       signOutAll: '退出登录'
     },
     en: {
@@ -83,6 +86,7 @@
       menuExchange: 'Exchange',
       menuLeaderboard: 'Leaderboard',
       menuInvite: 'Invite Friends',
+      menuAdmin: 'Admin Panel',
       signOutAll: 'Sign out'
     }
   };
@@ -405,8 +409,13 @@
   }
 
   // 构建下拉菜单 HTML
-  function buildDropdownMenuHtml() {
-    var items = menuRoutes.map(function (route) {
+  function buildDropdownMenuHtml(includeAdmin) {
+    var routes = menuRoutes.slice();
+    if (includeAdmin) {
+      routes.push({ key: 'menuAdmin', hash: 'admin' });
+    }
+
+    var items = routes.map(function (route) {
       return (
         '<a href="#' + route.hash + '" class="auth-dropdown-item" data-route="' + route.hash + '">' +
           t(route.key) +
@@ -592,16 +601,29 @@
 
     if (isLoggedIn()) {
       var display = getDisplayInfo();
-      area.innerHTML =
-        '<div class="auth-user-wrap">' +
-          '<div class="auth-user-trigger">' +
-            getAvatarHtml() +
-            '<span class="auth-user-name" title="' + display.title + '">' + display.name + '</span>' +
-            '<span class="auth-dropdown-arrow" aria-hidden="true">▼</span>' +
-          '</div>' +
-          '<div class="auth-dropdown">' + buildDropdownMenuHtml() + '</div>' +
-        '</div>';
-      bindDropdownEvents();
+
+      function renderLoggedInMenu(includeAdmin) {
+        area.innerHTML =
+          '<div class="auth-user-wrap">' +
+            '<div class="auth-user-trigger">' +
+              getAvatarHtml() +
+              '<span class="auth-user-name" title="' + display.title + '">' + display.name + '</span>' +
+              '<span class="auth-dropdown-arrow" aria-hidden="true">▼</span>' +
+            '</div>' +
+            '<div class="auth-dropdown">' + buildDropdownMenuHtml(!!includeAdmin) + '</div>' +
+          '</div>';
+        bindDropdownEvents();
+      }
+
+      if (typeof window.coinrealmIsAdminUser === 'function') {
+        window.coinrealmIsAdminUser().then(function (isAdmin) {
+          renderLoggedInMenu(isAdmin);
+        }).catch(function () {
+          renderLoggedInMenu(false);
+        });
+      } else {
+        renderLoggedInMenu(false);
+      }
       return;
     }
 

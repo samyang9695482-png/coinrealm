@@ -904,6 +904,77 @@
       <button type="button" id="iv-poster-btn" class="invite-poster-btn" data-i18n="iv_btn_poster">生成专属海报</button>
 
     </div>
+
+    <!-- 管理后台 — 由路由 #admin 显示 -->
+    <div id="admin-page" class="admin-container hidden">
+      <div id="admin-denied" class="admin-denied hidden">
+        <h1 class="admin-title" data-i18n="ad_denied_title">无权访问</h1>
+        <p class="admin-denied-text" data-i18n="ad_denied_text">您没有权限访问此页面</p>
+        <a href="#home" class="admin-primary-btn admin-home-link" data-i18n="ad_btn_back_home">返回首页</a>
+      </div>
+
+      <div id="admin-content" class="hidden">
+        <h1 class="admin-title" data-i18n="ad_page_title">管理后台</h1>
+
+        <div class="admin-tabs">
+          <button type="button" class="admin-tab admin-tab-active" data-admin-tab="dashboard" data-i18n="ad_tab_dashboard">数据看板</button>
+          <button type="button" class="admin-tab" data-admin-tab="tasks" data-i18n="ad_tab_tasks">任务管理</button>
+          <button type="button" class="admin-tab" data-admin-tab="users" data-i18n="ad_tab_users">用户管理</button>
+          <button type="button" class="admin-tab" data-admin-tab="broadcasts" data-i18n="ad_tab_broadcasts">广播管理</button>
+        </div>
+
+        <section id="admin-panel-dashboard" class="admin-panel">
+          <h2 class="admin-section-title" data-i18n="ad_dashboard_title">数据看板</h2>
+          <div class="admin-stats-grid">
+            <div class="admin-stat-card"><span id="ad-stat-users" class="admin-stat-value">0</span><span class="admin-stat-label" data-i18n="ad_stat_users">总用户数</span></div>
+            <div class="admin-stat-card"><span id="ad-stat-tasks" class="admin-stat-value">0</span><span class="admin-stat-label" data-i18n="ad_stat_tasks">总任务数</span></div>
+            <div class="admin-stat-card"><span id="ad-stat-active" class="admin-stat-value">0</span><span class="admin-stat-label" data-i18n="ad_stat_active">进行中任务</span></div>
+            <div class="admin-stat-card"><span id="ad-stat-completed" class="admin-stat-value">0</span><span class="admin-stat-label" data-i18n="ad_stat_completed">已完成任务</span></div>
+            <div class="admin-stat-card"><span id="ad-stat-checkins" class="admin-stat-value">0</span><span class="admin-stat-label" data-i18n="ad_stat_checkins">累计签到次数</span></div>
+            <div class="admin-stat-card"><span id="ad-stat-broadcasts" class="admin-stat-value">0</span><span class="admin-stat-label" data-i18n="ad_stat_broadcasts">累计广播数</span></div>
+          </div>
+        </section>
+
+        <section id="admin-panel-tasks" class="admin-panel hidden">
+          <h2 class="admin-section-title" data-i18n="ad_tasks_title">任务管理</h2>
+          <div class="admin-toolbar">
+            <input type="search" id="ad-task-search" class="admin-input admin-search-input" data-i18n-placeholder="ad_search_tasks" placeholder="搜索任务标题...">
+            <select id="ad-task-filter" class="admin-input admin-filter-select">
+              <option value="all" data-i18n="ad_filter_all">全部状态</option>
+              <option value="active" data-i18n="ad_filter_active">进行中</option>
+              <option value="completed" data-i18n="ad_filter_completed">已完成</option>
+              <option value="cancelled" data-i18n="ad_filter_cancelled">已下架</option>
+              <option value="high" data-i18n="ad_filter_high">高风险</option>
+            </select>
+          </div>
+          <div id="ad-task-list" class="admin-list"></div>
+        </section>
+
+        <section id="admin-panel-users" class="admin-panel hidden">
+          <h2 class="admin-section-title" data-i18n="ad_users_title">用户管理</h2>
+          <div id="ad-users-list" class="admin-list"></div>
+        </section>
+
+        <section id="admin-panel-broadcasts" class="admin-panel hidden">
+          <h2 class="admin-section-title" data-i18n="ad_broadcasts_title">广播管理</h2>
+          <div id="ad-broadcast-list" class="admin-list"></div>
+        </section>
+
+        <div id="ad-cancel-modal" class="admin-modal hidden" aria-hidden="true">
+          <div class="admin-modal-overlay"></div>
+          <div class="admin-modal-card">
+            <h3 class="admin-modal-title" data-i18n="ad_modal_cancel_title">下架任务</h3>
+            <input type="hidden" id="ad-cancel-task-id">
+            <label class="admin-label" data-i18n="ad_label_cancel_reason">下架原因</label>
+            <textarea id="ad-cancel-reason" class="admin-textarea" rows="4" required></textarea>
+            <div class="admin-modal-actions">
+              <button type="button" id="ad-cancel-close" class="admin-secondary-btn" data-i18n="ad_btn_cancel">取消</button>
+              <button type="button" id="ad-cancel-confirm" class="admin-danger-btn" data-i18n="ad_btn_confirm_cancel">确认下架</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </main>
   <script src="auth.js"></script>
   <script src="app.js"></script>

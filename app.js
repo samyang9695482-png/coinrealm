@@ -656,6 +656,26 @@ function navigateToPublisher(publisherId) {
     window.location.hash = targetHash;
 }
 
+var ADMIN_FOUNDER_EMAIL = 'samyang9695482@gmail.com';
+
+async function isAdminUser() {
+    if (!window.supabase) return false;
+
+    var userId = await getCurrentUserId();
+    if (!userId) return false;
+
+    var userResult = await window.supabase
+        .from('users')
+        .select('email')
+        .eq('id', userId)
+        .single();
+
+    if (userResult.error || !userResult.data) return false;
+    return userResult.data.email === ADMIN_FOUNDER_EMAIL;
+}
+
+window.coinrealmIsAdminUser = isAdminUser;
+
 function getTaskField(task, keys, fallback) {
     for (let i = 0; i < keys.length; i++) {
         if (task[keys[i]] != null && task[keys[i]] !== '') return task[keys[i]];
@@ -6461,6 +6481,614 @@ window.addEventListener('hashchange', handleRoute);
   if (langToggleBtn) {
     langToggleBtn.addEventListener('click', function () {
       setTimeout(handleInviteRoute, 0);
+    });
+  }
+})();
+
+// ==========================================
+// 16. 管理后台 (#admin)
+// ==========================================
+(function () {
+  'use strict';
+
+  var APP_CONTENT_HTML = '';
+  var appContentEl = document.getElementById('app-content');
+  if (appContentEl) {
+    APP_CONTENT_HTML = appContentEl.innerHTML;
+  }
+
+  var adminInitialized = false;
+  var adminAccessGranted = false;
+  var adminTab = 'dashboard';
+  var allTasks = [];
+  var taskSearch = '';
+  var taskStatusFilter = 'all';
+  var adminUsers = [];
+  var adminBroadcasts = [];
+
+  var adminTranslations = {
+    zh: {
+      ad_page_title: '管理后台',
+      ad_denied_title: '无权访问',
+      ad_denied_text: '您没有权限访问此页面',
+      ad_btn_back_home: '返回首页',
+      ad_tab_dashboard: '数据看板',
+      ad_tab_tasks: '任务管理',
+      ad_tab_users: '用户管理',
+      ad_tab_broadcasts: '广播管理',
+      ad_dashboard_title: '数据看板',
+      ad_tasks_title: '任务管理',
+      ad_users_title: '用户管理',
+      ad_broadcasts_title: '广播管理',
+      ad_stat_users: '总用户数',
+      ad_stat_tasks: '总任务数',
+      ad_stat_active: '进行中任务',
+      ad_stat_completed: '已完成任务',
+      ad_stat_checkins: '累计签到次数',
+      ad_stat_broadcasts: '累计广播数',
+      ad_search_tasks: '搜索任务标题...',
+      ad_filter_all: '全部状态',
+      ad_filter_active: '进行中',
+      ad_filter_completed: '已完成',
+      ad_filter_cancelled: '已下架',
+      ad_filter_high: '高风险',
+      ad_modal_cancel_title: '下架任务',
+      ad_label_cancel_reason: '下架原因',
+      ad_btn_cancel: '取消',
+      ad_btn_confirm_cancel: '确认下架',
+      ad_btn_high_risk: '标记高风险',
+      ad_btn_cancel_task: '下架',
+      ad_btn_ban: '封禁',
+      ad_btn_level: '调等级',
+      ad_btn_del_broadcast: '删除',
+      ad_empty_tasks: '暂无任务',
+      ad_empty_users: '暂无用户',
+      ad_empty_broadcasts: '暂无广播',
+      ad_loading: '加载中...',
+      ad_login_required: '请先登录',
+      ad_confirm_ban: '确定封禁该用户吗？',
+      ad_confirm_del_broadcast: '确定删除该广播吗？',
+      ad_save_fail: '操作失败：',
+      ad_meta_reward: '奖励',
+      ad_meta_publisher: '发布者',
+      ad_meta_status: '状态',
+      ad_meta_username: '用户名',
+      ad_meta_email: '邮箱',
+      ad_meta_level: '等级',
+      ad_meta_balance: '余额',
+      ad_meta_registered: '注册',
+      ad_prompt_level: '请输入新等级（数字）：'
+    },
+    en: {
+      ad_page_title: 'Admin Panel',
+      ad_denied_title: 'Access Denied',
+      ad_denied_text: 'You do not have permission to access this page',
+      ad_btn_back_home: 'Back to Home',
+      ad_tab_dashboard: 'Dashboard',
+      ad_tab_tasks: 'Tasks',
+      ad_tab_users: 'Users',
+      ad_tab_broadcasts: 'Broadcasts',
+      ad_dashboard_title: 'Dashboard',
+      ad_tasks_title: 'Task Management',
+      ad_users_title: 'User Management',
+      ad_broadcasts_title: 'Broadcast Management',
+      ad_stat_users: 'Total Users',
+      ad_stat_tasks: 'Total Tasks',
+      ad_stat_active: 'Active Tasks',
+      ad_stat_completed: 'Completed Tasks',
+      ad_stat_checkins: 'Total Check-ins',
+      ad_stat_broadcasts: 'Total Broadcasts',
+      ad_search_tasks: 'Search task title...',
+      ad_filter_all: 'All Status',
+      ad_filter_active: 'Active',
+      ad_filter_completed: 'Completed',
+      ad_filter_cancelled: 'Removed',
+      ad_filter_high: 'High Risk',
+      ad_modal_cancel_title: 'Remove Task',
+      ad_label_cancel_reason: 'Reason',
+      ad_btn_cancel: 'Cancel',
+      ad_btn_confirm_cancel: 'Confirm Remove',
+      ad_btn_high_risk: 'Mark High Risk',
+      ad_btn_cancel_task: 'Remove',
+      ad_btn_ban: 'Ban',
+      ad_btn_level: 'Set Level',
+      ad_btn_del_broadcast: 'Delete',
+      ad_empty_tasks: 'No tasks',
+      ad_empty_users: 'No users',
+      ad_empty_broadcasts: 'No broadcasts',
+      ad_loading: 'Loading...',
+      ad_login_required: 'Please sign in first',
+      ad_confirm_ban: 'Ban this user?',
+      ad_confirm_del_broadcast: 'Delete this broadcast?',
+      ad_save_fail: 'Operation failed: ',
+      ad_meta_reward: 'Reward',
+      ad_meta_publisher: 'Publisher',
+      ad_meta_status: 'Status',
+      ad_meta_username: 'Username',
+      ad_meta_email: 'Email',
+      ad_meta_level: 'Level',
+      ad_meta_balance: 'Balance',
+      ad_meta_registered: 'Registered',
+      ad_prompt_level: 'Enter new level (number):'
+    }
+  };
+
+  function getLang() {
+    var saved = localStorage.getItem('coinrealm_lang');
+    return saved === 'en' ? 'en' : 'zh';
+  }
+
+  function adT(key, vars) {
+    var dict = adminTranslations[getLang()];
+    var text = dict[key] || key;
+    if (vars) {
+      Object.keys(vars).forEach(function (k) {
+        text = text.replace('{' + k + '}', vars[k]);
+      });
+    }
+    return text;
+  }
+
+  function formatNumber(num) {
+    return String(num).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  function safeText(str) {
+    return typeof escapeHtml === 'function' ? escapeHtml(str) : String(str || '');
+  }
+
+  function applyAdminI18n() {
+    document.querySelectorAll('#admin-page [data-i18n]').forEach(function (el) {
+      var key = el.getAttribute('data-i18n');
+      if (adminTranslations[getLang()][key]) {
+        el.textContent = adT(key);
+      }
+    });
+    document.querySelectorAll('#admin-page [data-i18n-placeholder]').forEach(function (el) {
+      var key = el.getAttribute('data-i18n-placeholder');
+      if (adminTranslations[getLang()][key]) {
+        el.setAttribute('placeholder', adT(key));
+      }
+    });
+  }
+
+  function showAdminAccess(allowed) {
+    adminAccessGranted = !!allowed;
+    var denied = document.getElementById('admin-denied');
+    var content = document.getElementById('admin-content');
+    if (denied) denied.classList.toggle('hidden', allowed);
+    if (content) content.classList.toggle('hidden', !allowed);
+  }
+
+  function switchAdminTab(tab) {
+    if (!adminAccessGranted) return;
+    adminTab = tab;
+    document.querySelectorAll('#admin-page .admin-tab').forEach(function (btn) {
+      if (btn.getAttribute('data-admin-tab') === tab) {
+        btn.classList.add('admin-tab-active');
+      } else {
+        btn.classList.remove('admin-tab-active');
+      }
+    });
+    document.querySelectorAll('#admin-page .admin-panel').forEach(function (panel) {
+      panel.classList.add('hidden');
+    });
+    var target = document.getElementById('admin-panel-' + tab);
+    if (target) target.classList.remove('hidden');
+    loadActiveAdminTab();
+  }
+
+  function displayUserLabel(user) {
+    if (!user) return 'Unknown';
+    if (user.username) return user.username;
+    if (user.email) return user.email;
+    if (user.wallet_address) return user.wallet_address;
+    return String(user.id || '').slice(0, 8);
+  }
+
+  function getFilteredTasks() {
+    var keyword = taskSearch.trim().toLowerCase();
+    return allTasks.filter(function (task) {
+      if (keyword && String(task.title || '').toLowerCase().indexOf(keyword) < 0) {
+        return false;
+      }
+      if (taskStatusFilter === 'high') {
+        return task.risk_level === 'high';
+      }
+      if (taskStatusFilter !== 'all') {
+        return (task.status || 'active') === taskStatusFilter;
+      }
+      return true;
+    });
+  }
+
+  async function loadAllTasks() {
+    if (!window.supabase) return;
+    var result = await window.supabase
+      .from('tasks')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (result.error) {
+      console.warn('加载任务失败:', result.error);
+      allTasks = [];
+      return;
+    }
+
+    var tasks = result.data || [];
+    var publisherIds = tasks.map(function (t) { return t.publisher_id; }).filter(Boolean);
+    var uniqueIds = publisherIds.filter(function (id, i) { return publisherIds.indexOf(id) === i; });
+
+    if (!uniqueIds.length) {
+      allTasks = tasks;
+      return;
+    }
+
+    var usersResult = await window.supabase.from('users').select('id, username, email, wallet_address').in('id', uniqueIds);
+    var userMap = {};
+    if (!usersResult.error && usersResult.data) {
+      usersResult.data.forEach(function (u) { userMap[u.id] = u; });
+    }
+
+    allTasks = tasks.map(function (task) {
+      task._publisherName = displayUserLabel(userMap[task.publisher_id]);
+      return task;
+    });
+  }
+
+  function renderTaskList() {
+    var listEl = document.getElementById('ad-task-list');
+    if (!listEl) return;
+
+    var tasks = getFilteredTasks();
+    if (!tasks.length) {
+      listEl.innerHTML = '<p class="admin-empty">' + adT('ad_empty_tasks') + '</p>';
+      return;
+    }
+
+    listEl.innerHTML = tasks.map(function (task) {
+      var highTag = task.risk_level === 'high' ? '<span class="admin-tag-high">HIGH</span>' : '';
+      var cancelled = task.status === 'cancelled';
+      var officialTag = task.is_official ? '<span class="admin-tag-official">OFFICIAL</span>' : '';
+      return (
+        '<div class="admin-row">' +
+          '<div class="admin-row-main">' +
+            '<p class="admin-row-title">' + safeText(task.title) + highTag + officialTag + '</p>' +
+            '<p class="admin-row-meta">' +
+              adT('ad_meta_publisher') + ': ' + safeText(task._publisherName) + ' · ' +
+              safeText(task.type || task.task_type) + ' · ' +
+              adT('ad_meta_reward') + ' ' + formatNumber(Number(task.reward_amount) || 0) + ' CRLM · ' +
+              adT('ad_meta_status') + ': ' + safeText(task.status || 'active') +
+            '</p>' +
+          '</div>' +
+          '<div class="admin-row-actions">' +
+            (cancelled ? '' : '<button type="button" class="admin-warning-btn ad-task-risk" data-id="' + safeText(task.id) + '">' + adT('ad_btn_high_risk') + '</button>') +
+            (cancelled ? '' : '<button type="button" class="admin-danger-btn ad-task-cancel" data-id="' + safeText(task.id) + '">' + adT('ad_btn_cancel_task') + '</button>') +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+  }
+
+  async function markTaskHighRisk(taskId) {
+    var result = await window.supabase.from('tasks').update({ risk_level: 'high' }).eq('id', taskId);
+    if (result.error) {
+      alert(adT('ad_save_fail') + result.error.message);
+      return;
+    }
+    await loadAllTasks();
+    renderTaskList();
+  }
+
+  function openCancelModal(taskId) {
+    var modal = document.getElementById('ad-cancel-modal');
+    document.getElementById('ad-cancel-task-id').value = taskId;
+    document.getElementById('ad-cancel-reason').value = '';
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.setAttribute('aria-hidden', 'false');
+    }
+  }
+
+  function closeCancelModal() {
+    var modal = document.getElementById('ad-cancel-modal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  async function confirmCancelTask() {
+    var taskId = document.getElementById('ad-cancel-task-id').value;
+    var reason = document.getElementById('ad-cancel-reason').value.trim();
+    if (!reason) return;
+
+    var result = await window.supabase.from('tasks').update({
+      status: 'cancelled',
+      review_comment: reason
+    }).eq('id', taskId);
+
+    if (result.error) {
+      alert(adT('ad_save_fail') + result.error.message);
+      return;
+    }
+
+    closeCancelModal();
+    await loadAllTasks();
+    renderTaskList();
+  }
+
+  async function loadAdminUsers() {
+    if (!window.supabase) return;
+    var result = await window.supabase.from('users').select('*').order('created_at', { ascending: false });
+    adminUsers = result.error ? [] : (result.data || []);
+  }
+
+  function renderUsersList() {
+    var listEl = document.getElementById('ad-users-list');
+    if (!listEl) return;
+
+    if (!adminUsers.length) {
+      listEl.innerHTML = '<p class="admin-empty">' + adT('ad_empty_users') + '</p>';
+      return;
+    }
+
+    listEl.innerHTML = adminUsers.map(function (user) {
+      var bannedTag = user.is_banned ? '<span class="admin-tag-high">BANNED</span>' : '';
+      return (
+        '<div class="admin-row">' +
+          '<div class="admin-row-main">' +
+            '<p class="admin-row-title">' + safeText(displayUserLabel(user)) + bannedTag + '</p>' +
+            '<p class="admin-row-meta">' +
+              adT('ad_meta_email') + ': ' + safeText(user.email || '—') + ' · ' +
+              adT('ad_meta_level') + ' Lv.' + (user.level != null ? user.level : 0) +
+              ' · ' + adT('ad_meta_balance') + ' ' + formatNumber(Number(user.crlm_balance) || 0) + ' CRLM' +
+              ' · ' + adT('ad_meta_registered') + ' ' + safeText(String(user.created_at || '').slice(0, 10)) +
+            '</p>' +
+          '</div>' +
+          '<div class="admin-row-actions">' +
+            '<button type="button" class="admin-ghost-btn ad-user-level" data-id="' + safeText(user.id) + '">' + adT('ad_btn_level') + '</button>' +
+            '<button type="button" class="admin-danger-btn ad-user-ban" data-id="' + safeText(user.id) + '"' + (user.is_banned ? ' disabled' : '') + '>' + adT('ad_btn_ban') + '</button>' +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+  }
+
+  async function banUser(userId) {
+    if (!confirm(adT('ad_confirm_ban'))) return;
+
+    var banResult = await window.supabase.from('users').update({ is_banned: true }).eq('id', userId);
+    if (banResult.error) {
+      alert(adT('ad_save_fail') + banResult.error.message);
+      return;
+    }
+
+    await loadAdminUsers();
+    renderUsersList();
+  }
+
+  async function setUserLevel(userId) {
+    var input = prompt(adT('ad_prompt_level'));
+    if (input == null || input.trim() === '') return;
+    var level = parseInt(input, 10);
+    if (isNaN(level) || level < 0) return;
+
+    var result = await window.supabase.from('users').update({ level: level }).eq('id', userId);
+    if (result.error) {
+      alert(adT('ad_save_fail') + result.error.message);
+      return;
+    }
+
+    await loadAdminUsers();
+    renderUsersList();
+  }
+
+  async function loadDashboard() {
+    if (!window.supabase) return;
+
+    var results = await Promise.all([
+      window.supabase.from('users').select('*', { count: 'exact', head: true }),
+      window.supabase.from('tasks').select('*', { count: 'exact', head: true }),
+      window.supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('status', 'active'),
+      window.supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('status', 'completed'),
+      window.supabase.from('checkins').select('*', { count: 'exact', head: true }),
+      window.supabase.from('broadcasts').select('*', { count: 'exact', head: true })
+    ]);
+
+    var usersEl = document.getElementById('ad-stat-users');
+    var tasksEl = document.getElementById('ad-stat-tasks');
+    var activeEl = document.getElementById('ad-stat-active');
+    var completedEl = document.getElementById('ad-stat-completed');
+    var checkinsEl = document.getElementById('ad-stat-checkins');
+    var broadcastsEl = document.getElementById('ad-stat-broadcasts');
+
+    if (usersEl) usersEl.textContent = formatNumber(results[0].count || 0);
+    if (tasksEl) tasksEl.textContent = formatNumber(results[1].count || 0);
+    if (activeEl) activeEl.textContent = formatNumber(results[2].count || 0);
+    if (completedEl) completedEl.textContent = formatNumber(results[3].count || 0);
+    if (checkinsEl) checkinsEl.textContent = formatNumber(results[4].count || 0);
+    if (broadcastsEl) broadcastsEl.textContent = formatNumber(results[5].count || 0);
+  }
+
+  async function loadAdminBroadcasts() {
+    if (!window.supabase) return;
+    var result = await window.supabase.from('broadcasts').select('*').order('created_at', { ascending: false });
+    adminBroadcasts = result.error ? [] : (result.data || []);
+  }
+
+  function renderBroadcastList() {
+    var listEl = document.getElementById('ad-broadcast-list');
+    if (!listEl) return;
+
+    if (!adminBroadcasts.length) {
+      listEl.innerHTML = '<p class="admin-empty">' + adT('ad_empty_broadcasts') + '</p>';
+      return;
+    }
+
+    listEl.innerHTML = adminBroadcasts.map(function (item) {
+      return (
+        '<div class="admin-row">' +
+          '<div class="admin-row-main">' +
+            '<p class="admin-row-title">' + safeText(item.description) + '</p>' +
+            '<p class="admin-row-meta">' + safeText(item.event_type) + ' · ' + safeText(String(item.created_at || '').slice(0, 19)) +
+              (item.reward_amount ? ' · ' + formatNumber(Number(item.reward_amount)) + ' CRLM' : '') +
+            '</p>' +
+          '</div>' +
+          '<div class="admin-row-actions">' +
+            '<button type="button" class="admin-danger-btn ad-broadcast-delete" data-id="' + safeText(item.id) + '">' + adT('ad_btn_del_broadcast') + '</button>' +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+  }
+
+  async function deleteBroadcast(id) {
+    if (!confirm(adT('ad_confirm_del_broadcast'))) return;
+    var result = await window.supabase.from('broadcasts').delete().eq('id', id);
+    if (result.error) {
+      alert(adT('ad_save_fail') + result.error.message);
+      return;
+    }
+    await loadAdminBroadcasts();
+    renderBroadcastList();
+  }
+
+  async function loadActiveAdminTab() {
+    if (!adminAccessGranted) return;
+
+    if (adminTab === 'dashboard') {
+      await loadDashboard();
+    } else if (adminTab === 'tasks') {
+      await loadAllTasks();
+      renderTaskList();
+    } else if (adminTab === 'users') {
+      await loadAdminUsers();
+      renderUsersList();
+    } else if (adminTab === 'broadcasts') {
+      await loadAdminBroadcasts();
+      renderBroadcastList();
+    }
+  }
+
+  function initAdminEvents() {
+    if (adminInitialized) return;
+    adminInitialized = true;
+
+    document.querySelectorAll('#admin-page .admin-tab').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        switchAdminTab(btn.getAttribute('data-admin-tab'));
+      });
+    });
+
+    var searchInput = document.getElementById('ad-task-search');
+    if (searchInput) {
+      searchInput.addEventListener('input', function () {
+        taskSearch = searchInput.value;
+        renderTaskList();
+      });
+    }
+
+    var filterSelect = document.getElementById('ad-task-filter');
+    if (filterSelect) {
+      filterSelect.addEventListener('change', function () {
+        taskStatusFilter = filterSelect.value;
+        renderTaskList();
+      });
+    }
+
+    var taskList = document.getElementById('ad-task-list');
+    if (taskList) {
+      taskList.addEventListener('click', function (e) {
+        var riskBtn = e.target.closest('.ad-task-risk');
+        var cancelBtn = e.target.closest('.ad-task-cancel');
+        if (riskBtn) markTaskHighRisk(riskBtn.getAttribute('data-id'));
+        if (cancelBtn) openCancelModal(cancelBtn.getAttribute('data-id'));
+      });
+    }
+
+    var usersList = document.getElementById('ad-users-list');
+    if (usersList) {
+      usersList.addEventListener('click', function (e) {
+        var banBtn = e.target.closest('.ad-user-ban');
+        var levelBtn = e.target.closest('.ad-user-level');
+        if (banBtn && !banBtn.disabled) banUser(banBtn.getAttribute('data-id'));
+        if (levelBtn) setUserLevel(levelBtn.getAttribute('data-id'));
+      });
+    }
+
+    var broadcastList = document.getElementById('ad-broadcast-list');
+    if (broadcastList) {
+      broadcastList.addEventListener('click', function (e) {
+        var delBtn = e.target.closest('.ad-broadcast-delete');
+        if (delBtn) deleteBroadcast(delBtn.getAttribute('data-id'));
+      });
+    }
+
+    var cancelClose = document.getElementById('ad-cancel-close');
+    var cancelConfirm = document.getElementById('ad-cancel-confirm');
+    if (cancelClose) cancelClose.addEventListener('click', closeCancelModal);
+    if (cancelConfirm) cancelConfirm.addEventListener('click', confirmCancelTask);
+
+    document.querySelectorAll('#ad-cancel-modal .admin-modal-overlay').forEach(function (overlay) {
+      overlay.addEventListener('click', closeCancelModal);
+    });
+  }
+
+  async function renderAdminPage() {
+    initAdminEvents();
+    applyAdminI18n();
+    switchAdminTab(adminTab);
+  }
+
+  function restoreAppContentIfNeeded() {
+    if (!appContentEl || !APP_CONTENT_HTML) return;
+    if (!document.getElementById('home-page')) {
+      appContentEl.innerHTML = APP_CONTENT_HTML;
+      adminInitialized = false;
+      adminTab = 'dashboard';
+    }
+  }
+
+  async function handleAdminRoute() {
+    restoreAppContentIfNeeded();
+
+    var route = window.location.hash.replace(/^#/, '') || 'home';
+    var routeBase = route.split('?')[0] || 'home';
+    var adminPage = document.getElementById('admin-page');
+
+    if (!adminPage) return;
+
+    if (routeBase === 'admin') {
+      adminPage.classList.remove('hidden');
+      showAdminAccess(false);
+
+      var allowed = false;
+      if (typeof isAdminUser === 'function') {
+        allowed = await isAdminUser();
+      }
+
+      showAdminAccess(allowed);
+      if (allowed) {
+        await renderAdminPage();
+      } else {
+        applyAdminI18n();
+      }
+    } else {
+      adminPage.classList.add('hidden');
+      adminAccessGranted = false;
+    }
+  }
+
+  window.addEventListener('hashchange', handleAdminRoute);
+
+  window.addEventListener('DOMContentLoaded', function () {
+    setTimeout(handleAdminRoute, 0);
+  });
+
+  var langToggleBtn = document.getElementById('lang-toggle');
+  if (langToggleBtn) {
+    langToggleBtn.addEventListener('click', function () {
+      setTimeout(handleAdminRoute, 0);
     });
   }
 })();
