@@ -2620,7 +2620,11 @@ window.addEventListener('hashchange', handleRoute);
   var SUBMISSION_STORAGE_KEY = 'coinrealm_active_submission';
   var submitState = 'form';
   var uploadedFiles = [];
+  var uploadInProgress = false;
   var submitTaskInitialized = false;
+  var MAX_SCREENSHOT_FILES = 3;
+  var MAX_SCREENSHOT_SIZE = 5 * 1024 * 1024;
+  var ALLOWED_SCREENSHOT_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
   var activeSubmitContext = null;
   var currentSubmissionRecord = null;
 
@@ -2633,7 +2637,7 @@ window.addEventListener('hashchange', handleRoute);
       st_title_waiting: '等待审核',
       st_ph_desc: '请描述你是如何完成任务的...',
       st_upload_main: '📷 点击或拖拽上传截图',
-      st_upload_hint: '支持 JPG、PNG 格式，单张不超过 5MB',
+      st_upload_hint: '支持 JPG、PNG、WebP 格式，单张不超过 5MB，最多 3 张',
       st_ph_note: '补充说明（可选）',
       st_waiting_text: '你的凭证已提交，等待发布者审核',
       st_waiting_sub: '预计 48 小时内完成审核',
@@ -2644,6 +2648,9 @@ window.addEventListener('hashchange', handleRoute);
       st_alert_desc: '请填写任务完成描述',
       st_alert_login: '请先登录',
       st_alert_max_files: '最多上传 3 张截图',
+      st_alert_invalid_type: '仅支持 JPG、PNG、WebP 格式',
+      st_alert_file_size: '单张图片不能超过 5MB',
+      st_alert_upload_fail: '上传失败：',
       st_alert_no_task: '请先在任务详情页领取任务',
       st_alert_submit_fail: '提交失败：'
     },
@@ -2652,7 +2659,7 @@ window.addEventListener('hashchange', handleRoute);
       st_title_waiting: 'Pending Review',
       st_ph_desc: 'Describe how you completed the task...',
       st_upload_main: '📷 Click or drag to upload screenshots',
-      st_upload_hint: 'JPG, PNG supported, max 5MB per file',
+      st_upload_hint: 'JPG, PNG, WebP supported, max 5MB each, up to 3 files',
       st_ph_note: 'Additional notes (optional)',
       st_waiting_text: 'Your proof has been submitted and is awaiting publisher review',
       st_waiting_sub: 'Review expected within 48 hours',
@@ -2663,6 +2670,9 @@ window.addEventListener('hashchange', handleRoute);
       st_alert_desc: 'Please fill in the task completion description',
       st_alert_login: 'Please sign in first',
       st_alert_max_files: 'Maximum 3 screenshots allowed',
+      st_alert_invalid_type: 'Only JPG, PNG, and WebP formats are supported',
+      st_alert_file_size: 'Each image must be 5MB or smaller',
+      st_alert_upload_fail: 'Upload failed: ',
       st_alert_no_task: 'Please claim the task on the task detail page first',
       st_alert_submit_fail: 'Submit failed: '
     }
@@ -2678,16 +2688,78 @@ window.addEventListener('hashchange', handleRoute);
     return dict[key] || key;
   }
 
+  function getScreenshotExtension(filename) {
+    var parts = String(filename || '').toLowerCase().split('.');
+    return parts.length > 1 ? parts.pop() : '';
+  }
+
+  function validateScreenshotFile(file) {
+    if (!file) return stT('st_alert_invalid_type');
+    var ext = getScreenshotExtension(file.name);
+    if (ALLOWED_SCREENSHOT_EXTENSIONS.indexOf(ext) < 0) {
+      return stT('st_alert_invalid_type');
+    }
+    if (file.size > MAX_SCREENSHOT_SIZE) {
+      return stT('st_alert_file_size');
+    }
+    return '';
+  }
+
+  function buildScreenshotStoragePath(userId, originalName) {
+    var safeName = String(originalName || 'image').replace(/[^a-zA-Z0-9._-]/g, '_');
+    return userId + '_' + Date.now() + '_' + safeName;
+  }
+
+  async function uploadScreenshotFile(file) {
+    if (!window.supabase) {
+      alert(stT('st_alert_upload_fail') + 'Supabase unavailable');
+      return null;
+    }
+
+    var userId = await getCurrentUserId();
+    if (!userId) {
+      alert(stT('st_alert_login'));
+      return null;
+    }
+
+    var storagePath = buildScreenshotStoragePath(userId, file.name);
+    var uploadResult = await window.supabase.storage
+      .from('screenshots')
+      .upload(storagePath, file, {
+        contentType: file.type || undefined,
+        upsert: false
+      });
+
+    if (uploadResult.error) {
+      alert(stT('st_alert_upload_fail') + uploadResult.error.message);
+      return null;
+    }
+
+    var urlResult = window.supabase.storage.from('screenshots').getPublicUrl(storagePath);
+    var publicUrl = urlResult.data && urlResult.data.publicUrl;
+    if (!publicUrl) {
+      alert(stT('st_alert_upload_fail'));
+      return null;
+    }
+
+    return {
+      name: file.name,
+      url: publicUrl,
+      path: storagePath
+    };
+  }
+
   function renderFileList() {
     var listEl = document.getElementById('st-file-list');
     if (!listEl) return;
 
     listEl.innerHTML = '';
-    uploadedFiles.forEach(function (file, index) {
+    uploadedFiles.forEach(function (item, index) {
+      var displayName = item.name || item.url || '';
       var li = document.createElement('li');
       li.className = 'submit-task-file-item';
       li.innerHTML =
-        '<span class="st-file-name">' + file.name + '</span>' +
+        '<span class="st-file-name">' + escapeHtml(displayName) + '</span>' +
         '<button type="button" class="st-file-delete" data-index="' + index + '" aria-label="Delete">&times;</button>';
       listEl.appendChild(li);
     });
@@ -2696,6 +2768,7 @@ window.addEventListener('hashchange', handleRoute);
       btn.addEventListener('click', function (e) {
         e.stopPropagation();
         var idx = parseInt(btn.getAttribute('data-index'), 10);
+        if (isNaN(idx) || idx < 0 || idx >= uploadedFiles.length) return;
         uploadedFiles.splice(idx, 1);
         renderFileList();
       });
@@ -2771,10 +2844,13 @@ window.addEventListener('hashchange', handleRoute);
     return false;
   }
 
-  function handleFilesSelected(fileList) {
-    var files = Array.from(fileList);
-    var remaining = 3 - uploadedFiles.length;
+  async function handleFilesSelected(fileList) {
+    if (uploadInProgress) return;
 
+    var files = Array.from(fileList || []);
+    if (!files.length) return;
+
+    var remaining = MAX_SCREENSHOT_FILES - uploadedFiles.length;
     if (remaining <= 0) {
       alert(stT('st_alert_max_files'));
       return;
@@ -2785,11 +2861,34 @@ window.addEventListener('hashchange', handleRoute);
       files = files.slice(0, remaining);
     }
 
-    files.forEach(function (file) {
-      uploadedFiles.push(file);
-    });
+    uploadInProgress = true;
+    var uploadZone = document.getElementById('st-upload-zone');
 
-    renderFileList();
+    try {
+      for (var i = 0; i < files.length; i++) {
+        if (uploadedFiles.length >= MAX_SCREENSHOT_FILES) {
+          alert(stT('st_alert_max_files'));
+          break;
+        }
+
+        var file = files[i];
+        var validationError = validateScreenshotFile(file);
+        if (validationError) {
+          alert(validationError);
+          continue;
+        }
+
+        if (uploadZone) uploadZone.classList.add('st-uploading');
+        var uploaded = await uploadScreenshotFile(file);
+        if (uploaded) {
+          uploadedFiles.push(uploaded);
+          renderFileList();
+        }
+      }
+    } finally {
+      uploadInProgress = false;
+      if (uploadZone) uploadZone.classList.remove('st-uploading');
+    }
   }
 
   function applySubmitTaskI18n() {
@@ -3038,15 +3137,15 @@ window.addEventListener('hashchange', handleRoute);
             return;
           }
 
-          var screenshotNames = uploadedFiles.map(function (file) {
-            return file.name;
+          var screenshotUrls = uploadedFiles.map(function (item) {
+            return item.url;
           });
 
           var updateResult = await window.supabase
             .from('submissions')
             .update({
               description: desc,
-              screenshot_urls: screenshotNames,
+              screenshot_urls: screenshotUrls,
               status: 'submitted',
               submitted_at: new Date().toISOString()
             })
@@ -3062,10 +3161,13 @@ window.addEventListener('hashchange', handleRoute);
             id: lookupResult.data.id,
             status: 'submitted',
             submitted_at: new Date().toISOString(),
-            description: desc
+            description: desc,
+            screenshot_urls: screenshotUrls
           });
 
           submitState = 'waiting';
+          uploadedFiles = [];
+          renderFileList();
           updatePageStateUI();
           applySubmitTaskI18n();
           writeBroadcast({

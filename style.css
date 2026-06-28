@@ -1569,6 +1569,10 @@ img {
 .submit-task-upload-zone:hover {
     border-color: #f0b90b;
 }
+.submit-task-upload-zone.st-uploading {
+    opacity: 0.65;
+    pointer-events: none;
+}
 
 .submit-task-file-input {
     display: none;
