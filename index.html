@@ -31,6 +31,15 @@
       background-color: #ccc;
       flex-shrink: 0;
     }
+    .auth-avatar.cr-avatar-letter {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
     .auth-user-name {
       font-size: 0.875rem;
       color: #ffffff;
@@ -529,7 +538,10 @@
 
       <!-- 用户信息区 -->
       <div class="profile-user-card">
-        <div class="profile-avatar"></div>
+        <div class="profile-avatar-wrap">
+          <div id="pf-avatar" class="profile-avatar"></div>
+          <button type="button" id="pf-avatar-edit-btn" class="profile-avatar-edit-btn hidden" aria-label="选择头像">+</button>
+        </div>
         <h2 id="pf-username" class="profile-username">AlphaRadar</h2>
         <span id="pf-level-badge" class="profile-level-badge">Lv.5 大师</span>
         <span id="pf-reputation" class="profile-reputation">98% 完成率</span>
@@ -590,6 +602,18 @@
           <span data-i18n="pf_menu_settings">设置（语言/通知/退出登录）</span>
           <span class="profile-menu-arrow">→</span>
         </a>
+      </div>
+
+      <div id="avatar-picker-modal" class="avatar-picker-modal hidden" aria-hidden="true">
+        <div class="avatar-picker-overlay"></div>
+        <div class="avatar-picker-card">
+          <h3 class="avatar-picker-title" data-i18n="pf_avatar_picker_title">选择头像</h3>
+          <div id="avatar-picker-grid" class="avatar-picker-grid"></div>
+          <div class="avatar-picker-actions">
+            <button type="button" id="avatar-picker-cancel" class="avatar-picker-cancel-btn" data-i18n="pf_avatar_cancel">取消</button>
+            <button type="button" id="avatar-picker-confirm" class="avatar-picker-confirm-btn" data-i18n="pf_avatar_confirm">确认</button>
+          </div>
+        </div>
       </div>
 
     </div>

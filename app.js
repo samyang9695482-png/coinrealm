@@ -504,6 +504,157 @@ function escapeHtml(str) {
         .replace(/"/g, '&quot;');
 }
 
+var coinrealmCurrentUserProfile = null;
+var coinrealmGoogleAvatarUrl = '';
+var PRESET_AVATAR_COUNT = 9;
+var AVATAR_COLOR_PALETTE = ['#f0b90b', '#52c41a', '#1890ff', '#722ed1', '#eb2f96', '#13c2c2', '#fa8c16', '#597ef7', '#ff7875'];
+
+function getPresetAvatarPaths() {
+    var paths = [];
+    for (var i = 1; i <= PRESET_AVATAR_COUNT; i++) {
+        paths.push('img/avatars/avatar-' + i + '.png');
+    }
+    return paths;
+}
+
+function getPresetAvatarPathByIndex(index) {
+    var n = Number(index);
+    if (isNaN(n) || n < 1 || n > PRESET_AVATAR_COUNT) return '';
+    return 'img/avatars/avatar-' + n + '.png';
+}
+
+function getAvatarColor(seed) {
+    var str = String(seed || 'user');
+    var hash = 0;
+    for (var i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return AVATAR_COLOR_PALETTE[Math.abs(hash) % AVATAR_COLOR_PALETTE.length];
+}
+
+function getAvatarInitial(name) {
+    var text = String(name || 'U').trim();
+    return text ? text.charAt(0).toUpperCase() : 'U';
+}
+
+function resolveAvatarDisplay(user, options) {
+    options = options || {};
+    if (options.googleAvatarUrl) {
+        return { type: 'image', src: options.googleAvatarUrl };
+    }
+    var avatarUrl = user && user.avatar_url;
+    if (avatarUrl) {
+        return { type: 'image', src: avatarUrl };
+    }
+    var labelSource = (user && (user.username || user.email || user.id)) || 'U';
+    return {
+        type: 'letter',
+        initial: getAvatarInitial(labelSource),
+        color: getAvatarColor(user && user.id ? user.id : labelSource)
+    };
+}
+
+function buildAvatarHtml(user, className, options) {
+    className = className || 'cr-avatar';
+    var resolved = resolveAvatarDisplay(user, options || {});
+    if (resolved.type === 'image') {
+        return '<img class="' + escapeHtml(className) + ' cr-avatar-img" src="' + escapeHtml(resolved.src) + '" alt="">';
+    }
+    return '<div class="' + escapeHtml(className) + ' cr-avatar-letter" style="background-color:' + escapeHtml(resolved.color) + '">' + escapeHtml(resolved.initial) + '</div>';
+}
+
+function applyAvatarToElement(el, user, className, options) {
+    if (!el) return;
+    el.innerHTML = buildAvatarHtml(user, className, options);
+}
+
+function getPublisherAvatarUser(task) {
+    var publisher = task.publisher;
+    if (publisher && typeof publisher === 'object') {
+        return {
+            id: publisher.id || task.publisher_id,
+            username: publisher.username || task.publisher_username,
+            email: publisher.email,
+            avatar_url: publisher.avatar_url
+        };
+    }
+    return {
+        id: task.publisher_id,
+        username: task.publisher_username,
+        email: task.publisher_email,
+        avatar_url: task.publisher_avatar_url
+    };
+}
+
+async function refreshGoogleAvatarCache() {
+    coinrealmGoogleAvatarUrl = '';
+    if (!window.supabase) return;
+    try {
+        var result = await window.supabase.auth.getSession();
+        var session = result.data && result.data.session;
+        if (session && session.user && session.user.user_metadata && session.user.user_metadata.avatar_url) {
+            coinrealmGoogleAvatarUrl = session.user.user_metadata.avatar_url;
+        }
+    } catch (e) { /* ignore */ }
+}
+
+async function loadCurrentUserProfileCache() {
+    await refreshGoogleAvatarCache();
+    if (!window.supabase) {
+        coinrealmCurrentUserProfile = null;
+        return null;
+    }
+    var userId = await getCurrentUserId();
+    if (!userId) {
+        coinrealmCurrentUserProfile = null;
+        return null;
+    }
+    var result = await window.supabase
+        .from('users')
+        .select('id, username, email, avatar_url')
+        .eq('id', userId)
+        .single();
+    if (!result.error && result.data) {
+        coinrealmCurrentUserProfile = result.data;
+        if (typeof window.coinrealmRefreshAuthArea === 'function') {
+            window.coinrealmRefreshAuthArea();
+        }
+        return result.data;
+    }
+    return null;
+}
+
+window.coinrealmGetNavAvatarHtml = function () {
+    var profile = coinrealmCurrentUserProfile || {};
+    return buildAvatarHtml(profile, 'auth-avatar', { googleAvatarUrl: coinrealmGoogleAvatarUrl });
+};
+
+window.coinrealmRefreshAllAvatars = async function () {
+    await loadCurrentUserProfileCache();
+    if (typeof window.coinrealmRefreshAuthArea === 'function') {
+        window.coinrealmRefreshAuthArea();
+    }
+    var pfAvatar = document.getElementById('pf-avatar');
+    if (pfAvatar && coinrealmCurrentUserProfile) {
+        applyAvatarToElement(pfAvatar, coinrealmCurrentUserProfile, 'profile-avatar', {
+            googleAvatarUrl: coinrealmGoogleAvatarUrl
+        });
+    }
+    if (typeof applyFiltersAndSort === 'function') {
+        applyFiltersAndSort();
+    }
+    if (typeof renderOfficialRecommendSection === 'function') {
+        renderOfficialRecommendSection();
+    }
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+};
+
+window.addEventListener('DOMContentLoaded', function () {
+    setTimeout(function () {
+        loadCurrentUserProfileCache();
+    }, 300);
+});
+
 function writeBroadcast(payload) {
     if (!window.supabase || !payload || !payload.user_id) return;
 
@@ -733,7 +884,7 @@ function enrichTasksWithPublishers(tasks) {
 
     return window.supabase
         .from('users')
-        .select('id, username, level, email')
+        .select('id, username, level, email, avatar_url')
         .in('id', uniqueIds)
         .then(function (userResult) {
             if (userResult.error || !userResult.data) {
@@ -843,11 +994,14 @@ function buildTaskCardHtml(task) {
         badgeHtml = '<span class="badge promo-badge" data-i18n="badge_promo">推广</span>';
     }
 
+    const publisherUser = getPublisherAvatarUser(task);
+    const avatarHtml = buildAvatarHtml(publisherUser, 'css-avatar');
+
     return (
         '<div class="task-card" data-category="' + escapeHtml(category) + '" data-task-id="' + escapeHtml(getTaskField(task, ['id'], '')) + '">' +
             '<div class="card-top">' +
                 '<div class="author-info publisher-link" data-publisher-id="' + publisherId + '" style="cursor:pointer">' +
-                    '<div class="css-avatar"></div>' +
+                    avatarHtml +
                     '<div class="meta-text">' +
                         '<span class="username">' + username + '</span>' +
                         '<span class="level-badge">Lv.' + level + '</span>' +
@@ -882,10 +1036,13 @@ function buildOfficialRecommendCardHtml(task) {
     var slotsTotal = escapeHtml(slotsTotalRaw);
     var taskId = escapeHtml(getTaskField(task, ['id'], ''));
 
+    var publisherUser = getPublisherAvatarUser(task);
+    var avatarHtml = buildAvatarHtml(publisherUser, 'official-card-avatar css-avatar');
+
     return (
         '<article class="official-recommend-card" data-task-id="' + taskId + '" role="link" tabindex="0">' +
             '<div class="official-card-top">' +
-                '<div class="official-card-avatar css-avatar"></div>' +
+                avatarHtml +
                 '<div class="official-card-author">' +
                     '<span class="official-card-username">' + escapeHtml(publisher.username) + '</span>' +
                     '<span class="official-card-level">Lv.' + escapeHtml(publisher.level) + '</span>' +
@@ -3259,6 +3416,8 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   var profileInitialized = false;
+  var avatarPickerInitialized = false;
+  var selectedPresetAvatarPath = '';
 
   var profileTranslations = {
     zh: {
@@ -3276,7 +3435,12 @@ window.addEventListener('hashchange', handleRoute);
       pf_level_master: '大师',
       pf_completion_rate: '{rate}% 完成率',
       pf_level_badge: 'Lv.{level} {label}',
-      pf_usdt_approx: '≈ {amount} USDT'
+      pf_usdt_approx: '≈ {amount} USDT',
+      pf_avatar_picker_title: '选择头像',
+      pf_avatar_cancel: '取消',
+      pf_avatar_confirm: '确认',
+      pf_avatar_save_fail: '保存头像失败：',
+      pf_avatar_pick_required: '请先选择一个头像'
     },
     en: {
       pf_btn_withdraw: 'Withdraw',
@@ -3293,7 +3457,12 @@ window.addEventListener('hashchange', handleRoute);
       pf_level_master: 'Master',
       pf_completion_rate: '{rate}% completion rate',
       pf_level_badge: 'Lv.{level} {label}',
-      pf_usdt_approx: '≈ {amount} USDT'
+      pf_usdt_approx: '≈ {amount} USDT',
+      pf_avatar_picker_title: 'Choose Avatar',
+      pf_avatar_cancel: 'Cancel',
+      pf_avatar_confirm: 'Confirm',
+      pf_avatar_save_fail: 'Failed to save avatar: ',
+      pf_avatar_pick_required: 'Please select an avatar first'
     }
   };
 
@@ -3368,8 +3537,11 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   async function renderProfilePage() {
+    await refreshGoogleAvatarCache();
     var user = await loadUserProfile();
     if (!user) return;
+
+    coinrealmCurrentUserProfile = user;
 
     var displayUsername = user.username || displayNameFromEmail(user.email);
     var crlmBalance = Number(user.crlm_balance) || 0;
@@ -3412,12 +3584,136 @@ window.addEventListener('hashchange', handleRoute);
     var earningsEl = document.getElementById('pf-stat-earnings');
     if (earningsEl) earningsEl.textContent = formatNumber(crlmBalance);
 
+    var avatarEl = document.getElementById('pf-avatar');
+    if (avatarEl) {
+      applyAvatarToElement(avatarEl, user, 'profile-avatar', {
+        googleAvatarUrl: coinrealmGoogleAvatarUrl
+      });
+    }
+
+    var editBtn = document.getElementById('pf-avatar-edit-btn');
+    if (editBtn) editBtn.classList.remove('hidden');
+
     applyProfileI18n();
+  }
+
+  function renderAvatarPickerGrid() {
+    var grid = document.getElementById('avatar-picker-grid');
+    if (!grid) return;
+
+    grid.innerHTML = getPresetAvatarPaths().map(function (path, index) {
+      var selectedClass = path === selectedPresetAvatarPath ? ' avatar-picker-item-selected' : '';
+      return (
+        '<button type="button" class="avatar-picker-item' + selectedClass + '" data-avatar-path="' + escapeHtml(path) + '" aria-label="Avatar ' + (index + 1) + '">' +
+          '<img src="' + escapeHtml(path) + '" alt="">' +
+        '</button>'
+      );
+    }).join('');
+  }
+
+  function openAvatarPicker() {
+    selectedPresetAvatarPath = '';
+    if (coinrealmCurrentUserProfile && coinrealmCurrentUserProfile.avatar_url) {
+      var paths = getPresetAvatarPaths();
+      if (paths.indexOf(coinrealmCurrentUserProfile.avatar_url) >= 0) {
+        selectedPresetAvatarPath = coinrealmCurrentUserProfile.avatar_url;
+      }
+    }
+
+    renderAvatarPickerGrid();
+    var modal = document.getElementById('avatar-picker-modal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.setAttribute('aria-hidden', 'false');
+    }
+    applyProfileI18n();
+  }
+
+  function closeAvatarPicker() {
+    var modal = document.getElementById('avatar-picker-modal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  async function confirmAvatarSelection() {
+    if (!selectedPresetAvatarPath) {
+      alert(pfT('pf_avatar_pick_required'));
+      return;
+    }
+    if (!window.supabase) return;
+
+    var userId = await getCurrentUserId();
+    if (!userId) {
+      alert('请先登录');
+      return;
+    }
+
+    var result = await window.supabase
+      .from('users')
+      .update({ avatar_url: selectedPresetAvatarPath })
+      .eq('id', userId);
+
+    if (result.error) {
+      alert(pfT('pf_avatar_save_fail') + result.error.message);
+      return;
+    }
+
+    if (coinrealmCurrentUserProfile) {
+      coinrealmCurrentUserProfile.avatar_url = selectedPresetAvatarPath;
+    } else {
+      coinrealmCurrentUserProfile = { id: userId, avatar_url: selectedPresetAvatarPath };
+    }
+
+    closeAvatarPicker();
+    var avatarEl = document.getElementById('pf-avatar');
+    if (avatarEl) {
+      applyAvatarToElement(avatarEl, coinrealmCurrentUserProfile, 'profile-avatar', {
+        googleAvatarUrl: coinrealmGoogleAvatarUrl
+      });
+    }
+    if (typeof window.coinrealmRefreshAllAvatars === 'function') {
+      await window.coinrealmRefreshAllAvatars();
+    }
+  }
+
+  function initAvatarPickerEvents() {
+    if (avatarPickerInitialized) return;
+    avatarPickerInitialized = true;
+
+    var editBtn = document.getElementById('pf-avatar-edit-btn');
+    if (editBtn) {
+      editBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        openAvatarPicker();
+      });
+    }
+
+    var grid = document.getElementById('avatar-picker-grid');
+    if (grid) {
+      grid.addEventListener('click', function (e) {
+        var item = e.target.closest('.avatar-picker-item');
+        if (!item) return;
+        selectedPresetAvatarPath = item.getAttribute('data-avatar-path') || '';
+        renderAvatarPickerGrid();
+      });
+    }
+
+    var cancelBtn = document.getElementById('avatar-picker-cancel');
+    if (cancelBtn) cancelBtn.addEventListener('click', closeAvatarPicker);
+
+    var confirmBtn = document.getElementById('avatar-picker-confirm');
+    if (confirmBtn) confirmBtn.addEventListener('click', confirmAvatarSelection);
+
+    var overlay = document.querySelector('#avatar-picker-modal .avatar-picker-overlay');
+    if (overlay) overlay.addEventListener('click', closeAvatarPicker);
   }
 
   function initProfileEvents() {
     if (profileInitialized) return;
     profileInitialized = true;
+    initAvatarPickerEvents();
 
     document.querySelectorAll('#profile-page .profile-menu-item[data-route]').forEach(function (item) {
       item.addEventListener('click', function (e) {
@@ -3435,6 +3731,7 @@ window.addEventListener('hashchange', handleRoute);
     if (!document.getElementById('home-page')) {
       appContentEl.innerHTML = APP_CONTENT_HTML;
       profileInitialized = false;
+      avatarPickerInitialized = false;
     }
   }
 
@@ -4489,9 +4786,9 @@ window.addEventListener('hashchange', handleRoute);
   var rankBadges = ['🥇', '🥈', '🥉'];
 
   var leaderboardColumns = {
-    earnings: { field: 'crlm_balance', select: 'username, level, crlm_balance' },
-    invites: { field: 'invite_count', select: 'username, level, invite_count' },
-    reputation: { field: 'reputation_score', select: 'username, level, reputation_score' }
+    earnings: { field: 'crlm_balance', select: 'id, username, level, crlm_balance, avatar_url' },
+    invites: { field: 'invite_count', select: 'id, username, level, invite_count, avatar_url' },
+    reputation: { field: 'reputation_score', select: 'id, username, level, reputation_score, avatar_url' }
   };
 
   var leaderboardData = {
@@ -4568,9 +4865,11 @@ window.addEventListener('hashchange', handleRoute);
   function mapUserRow(row, type) {
     var field = leaderboardColumns[type].field;
     return {
+      id: row.id,
       username: row.username || '—',
       level: row.level != null ? row.level : 1,
-      value: Number(row[field]) || 0
+      value: Number(row[field]) || 0,
+      avatar_url: row.avatar_url || ''
     };
   }
 
@@ -4593,7 +4892,7 @@ window.addEventListener('hashchange', handleRoute);
     var config = leaderboardColumns[type];
     return window.supabase
       .from('users')
-      .select('username, level, ' + config.field)
+      .select('id, username, level, avatar_url, ' + config.field)
       .eq('id', userId)
       .single()
       .then(function (userResult) {
@@ -4608,9 +4907,11 @@ window.addEventListener('hashchange', handleRoute);
             if (countResult.error) return null;
             return {
               rank: (countResult.count || 0) + 1,
+              id: userResult.data.id,
               username: userResult.data.username || '—',
               level: userResult.data.level != null ? userResult.data.level : 1,
-              value: value
+              value: value,
+              avatar_url: userResult.data.avatar_url || ''
             };
           });
       });
@@ -4694,10 +4995,13 @@ window.addEventListener('hashchange', handleRoute);
       var rank = index + 1;
       var topClass = rank <= 3 ? ' leaderboard-item-top3' : '';
       var safeUsername = typeof escapeHtml === 'function' ? escapeHtml(item.username) : item.username;
+      var avatarHtml = typeof buildAvatarHtml === 'function'
+        ? buildAvatarHtml({ id: item.id, username: item.username, avatar_url: item.avatar_url }, 'leaderboard-avatar')
+        : '<div class="leaderboard-avatar"></div>';
       return (
         '<li class="leaderboard-item' + topClass + '">' +
           getRankDisplay(rank) +
-          '<div class="leaderboard-avatar"></div>' +
+          avatarHtml +
           '<div class="leaderboard-user-info">' +
             '<span class="leaderboard-username">' + safeUsername + '</span>' +
             '<span class="leaderboard-level">' + lbT('lb_level', { level: item.level }) + '</span>' +
@@ -4736,6 +5040,15 @@ window.addEventListener('hashchange', handleRoute);
     if (usernameEl) usernameEl.textContent = myData.username;
     if (levelEl) levelEl.textContent = lbT('lb_level', { level: myData.level });
     if (valueEl) valueEl.textContent = formatValue(leaderboardType, myData.value);
+
+    var myAvatarEl = document.querySelector('.leaderboard-my-rank .leaderboard-avatar');
+    if (myAvatarEl && typeof applyAvatarToElement === 'function') {
+      applyAvatarToElement(myAvatarEl, {
+        id: myData.id,
+        username: myData.username,
+        avatar_url: myData.avatar_url
+      }, 'leaderboard-avatar', { googleAvatarUrl: coinrealmGoogleAvatarUrl });
+    }
   }
 
   function updateTabUI() {
@@ -5263,7 +5576,8 @@ window.addEventListener('hashchange', handleRoute);
             taskCount: countResult.error ? 0 : (countResult.count || 0),
             registeredAt: formatRegisterDate(user.created_at),
             isOfficial: !!user.is_official,
-            isHighRisk: !!user.is_high_risk
+            isHighRisk: !!user.is_high_risk,
+            avatar_url: user.avatar_url || ''
           };
         });
       })
@@ -5361,6 +5675,15 @@ window.addEventListener('hashchange', handleRoute);
     var registerEl = document.getElementById('pub-register-date');
     if (registerEl) {
       registerEl.textContent = publisher.registeredAt;
+    }
+
+    var avatarEl = document.querySelector('#publisher-page .publisher-avatar');
+    if (avatarEl && typeof applyAvatarToElement === 'function') {
+      applyAvatarToElement(avatarEl, {
+        id: publisher.id,
+        username: publisher.username,
+        avatar_url: publisher.avatar_url
+      }, 'publisher-avatar');
     }
 
     renderPublisherTasks();
@@ -5657,10 +5980,18 @@ window.addEventListener('hashchange', handleRoute);
       }
     }
 
+    var submitter = submission.submitter || {
+      id: submission.user_id,
+      username: submission.username || 'Unknown'
+    };
+    var avatarHtml = typeof buildAvatarHtml === 'function'
+      ? buildAvatarHtml(submitter, 'rv-avatar')
+      : '<div class="rv-avatar"></div>';
+
     return (
       '<li class="review-submission-item" data-id="' + escapeHtml(submission.id) + '">' +
         '<div class="rv-user-block">' +
-          '<div class="rv-avatar"></div>' +
+          avatarHtml +
           '<span class="rv-username">' + escapeHtml(submission.username || 'Unknown') + '</span>' +
         '</div>' +
         '<div class="rv-content-block">' +
@@ -5736,18 +6067,25 @@ window.addEventListener('hashchange', handleRoute);
 
     var usersResult = await window.supabase
       .from('users')
-      .select('id, username, email')
+      .select('id, username, email, avatar_url')
       .in('id', uniqueIds);
 
     var userMap = {};
     if (!usersResult.error && usersResult.data) {
       usersResult.data.forEach(function (user) {
-        userMap[user.id] = user.username || displayNameFromEmail(user.email) || 'Unknown';
+        userMap[user.id] = {
+          username: user.username || displayNameFromEmail(user.email) || 'Unknown',
+          avatar_url: user.avatar_url || '',
+          id: user.id,
+          email: user.email
+        };
       });
     }
 
     return submissions.map(function (item) {
-      item.username = userMap[item.user_id] || 'Unknown';
+      var submitter = userMap[item.user_id];
+      item.submitter = submitter || null;
+      item.username = submitter ? submitter.username : 'Unknown';
       return item;
     });
   }

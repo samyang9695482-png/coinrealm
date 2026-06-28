@@ -918,8 +918,9 @@ img {
     width: 48px;
     height: 48px;
     border-radius: 50%;
-    background-color: #ccc;
+    background-color: #eee;
     flex-shrink: 0;
+    overflow: hidden;
 }
 
 .publisher-meta {
@@ -1754,12 +1755,198 @@ img {
     text-align: center;
 }
 
+.profile-avatar-wrap {
+    position: relative;
+    width: 72px;
+    height: 72px;
+    margin-bottom: 16px;
+}
+
 .profile-avatar {
     width: 72px;
     height: 72px;
     border-radius: 50%;
-    background-color: #ccc;
-    margin-bottom: 16px;
+    background-color: #eee;
+    overflow: hidden;
+}
+
+.profile-avatar .cr-avatar-img,
+.profile-avatar .cr-avatar-letter {
+    width: 100%;
+    height: 100%;
+}
+
+.profile-avatar-edit-btn {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    width: 24px;
+    height: 24px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    background-color: #f0b90b;
+    color: #fff;
+    font-size: 16px;
+    line-height: 1;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.profile-avatar-edit-btn:hover {
+    background-color: #d9a407;
+}
+
+.avatar-picker-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+.avatar-picker-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.avatar-picker-card {
+    position: relative;
+    z-index: 1;
+    width: min(400px, 92vw);
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+}
+
+.avatar-picker-title {
+    margin: 0 0 20px;
+    font-size: 18px;
+    font-weight: 700;
+    color: #1a1a2e;
+    text-align: center;
+}
+
+.avatar-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.avatar-picker-item {
+    border: 2px solid transparent;
+    border-radius: 50%;
+    padding: 2px;
+    background: none;
+    cursor: pointer;
+    transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.avatar-picker-item:hover {
+    border-color: #f0b90b;
+}
+
+.avatar-picker-item-selected {
+    border-color: #f0b90b;
+}
+
+.avatar-picker-item img {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+}
+
+.avatar-picker-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.avatar-picker-cancel-btn,
+.avatar-picker-confirm-btn {
+    min-width: 96px;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.avatar-picker-cancel-btn {
+    background: #fff;
+    border: 1px solid #ddd;
+    color: #666;
+}
+
+.avatar-picker-confirm-btn {
+    background: #f0b90b;
+    border: none;
+    color: #1a1a2e;
+}
+
+.cr-avatar-letter {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 600;
+    text-transform: uppercase;
+    flex-shrink: 0;
+}
+
+.cr-avatar-img {
+    object-fit: cover;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.css-avatar.cr-avatar-letter,
+.css-avatar.cr-avatar-img {
+    width: 32px;
+    height: 32px;
+    font-size: 13px;
+}
+
+.official-card-avatar.cr-avatar-letter,
+.official-card-avatar.cr-avatar-img,
+.official-card-avatar.css-avatar.cr-avatar-img,
+.official-card-avatar.css-avatar.cr-avatar-letter {
+    width: 40px;
+    height: 40px;
+    font-size: 15px;
+}
+
+.leaderboard-avatar.cr-avatar-letter,
+.leaderboard-avatar.cr-avatar-img {
+    width: 40px;
+    height: 40px;
+    font-size: 14px;
+}
+
+.publisher-avatar .cr-avatar-img,
+.publisher-avatar .cr-avatar-letter,
+.publisher-avatar.cr-avatar-img,
+.publisher-avatar.cr-avatar-letter {
+    width: 100%;
+    height: 100%;
+}
+
+.rv-avatar.cr-avatar-letter,
+.rv-avatar.cr-avatar-img {
+    width: 40px;
+    height: 40px;
+    font-size: 14px;
 }
 
 .profile-username {
@@ -2484,7 +2671,8 @@ img {
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    background-color: #ccc;
+    background-color: #eee;
+    overflow: hidden;
 }
 
 .leaderboard-user-info {
@@ -3053,8 +3241,9 @@ img {
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    background-color: #ccc;
+    background-color: #eee;
     flex-shrink: 0;
+    overflow: hidden;
 }
 
 .rv-username {

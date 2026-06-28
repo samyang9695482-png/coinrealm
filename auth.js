@@ -397,8 +397,11 @@
     return { name: '', title: '' };
   }
 
-  // 获取头像 HTML：谷歌登录用真实头像，钱包登录用灰色占位圆
+  // 获取头像 HTML：优先谷歌头像，其次预设头像，最后首字母占位
   function getAvatarHtml() {
+    if (typeof window.coinrealmGetNavAvatarHtml === 'function') {
+      return window.coinrealmGetNavAvatarHtml();
+    }
     if (currentUser) {
       var avatar = (currentUser.user_metadata && currentUser.user_metadata.avatar_url) || '';
       if (avatar) {
@@ -698,6 +701,7 @@
   window.coinrealmNavigateToRoute = navigateToRoute;
   window.coinrealmApplyRoute = applyAuthRoute;
   window.coinrealmEnsureWalletAuth = ensureWalletAuthSession;
+  window.coinrealmRefreshAuthArea = renderAuthArea;
 
   // 外部 hash 变化时，若页面被占位内容覆盖则恢复并跳转
   window.addEventListener('hashchange', function () {
