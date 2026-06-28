@@ -363,6 +363,8 @@ const translations = {
         text_days: "天后",
         btn_claim: "领取",
         empty_text: "没有找到相关任务，换个筛选试试？",
+        official_recommend_title: "⭐ 官方推荐",
+        official_view_all: "查看全部 >",
         checkin_success_title: "签到成功",
         checkin_reward_label: "获得奖励",
         checkin_streak: "已连续签到 {days} 天",
@@ -397,6 +399,8 @@ const translations = {
         text_days: "days left",
         btn_claim: "Claim",
         empty_text: "No tasks found. Try changing your filters?",
+        official_recommend_title: "⭐ Official Picks",
+        official_view_all: "View all >",
         checkin_success_title: "Check-in Successful",
         checkin_reward_label: "Reward earned",
         checkin_streak: "Streak: {days} days",
@@ -411,6 +415,7 @@ const translations = {
 // 当前全局语言变量声明（假设项目中已存在该状态控制）
 let currentLang = localStorage.getItem('coinrealm_lang') || 'zh';
 let allTasks = [];
+let homeOfficialTasks = [];
 let homeEventsBound = false;
 let fetchTasksSeq = 0;
 
@@ -684,9 +689,8 @@ function getTaskField(task, keys, fallback) {
 }
 
 function getTaskCategory(task) {
-    const type = getTaskField(task, ['task_type', 'type', 'category'], 'other');
-    if (task.is_official && type === 'official') return 'official';
-    return type;
+    if (task.is_official) return 'official';
+    return getTaskField(task, ['task_type', 'type', 'category'], 'other');
 }
 
 function displayNameFromEmail(email) {
@@ -865,10 +869,55 @@ function buildTaskCardHtml(task) {
     );
 }
 
-function handleClaimTask(btn) {
-    var taskId = btn.getAttribute('data-task-id');
-    if (!taskId) return;
+function buildOfficialRecommendCardHtml(task) {
+    var category = getTaskField(task, ['task_type', 'type', 'category'], 'other');
+    var typeLabelKey = getTypeLabelKey(task);
+    var publisher = resolvePublisherFields(task);
+    var title = escapeHtml(getTaskField(task, ['title', 'task_title'], ''));
+    var description = escapeHtml(getTaskField(task, ['description'], ''));
+    var reward = formatRewardAmount(getTaskField(task, ['reward_amount', 'reward'], 0));
+    var slotsTotalRaw = getTaskField(task, ['slots_total', 'total_slots', 'max_participants'], 0);
+    var slotsLeftRaw = getTaskField(task, ['slots_left', 'slots_remaining', 'remaining_slots'], null);
+    var slotsLeft = escapeHtml(slotsLeftRaw != null && slotsLeftRaw !== '' ? slotsLeftRaw : slotsTotalRaw);
+    var slotsTotal = escapeHtml(slotsTotalRaw);
+    var taskId = escapeHtml(getTaskField(task, ['id'], ''));
 
+    return (
+        '<article class="official-recommend-card" data-task-id="' + taskId + '" role="link" tabindex="0">' +
+            '<div class="official-card-top">' +
+                '<div class="official-card-avatar css-avatar"></div>' +
+                '<div class="official-card-author">' +
+                    '<span class="official-card-username">' + escapeHtml(publisher.username) + '</span>' +
+                    '<span class="official-card-level">Lv.' + escapeHtml(publisher.level) + '</span>' +
+                '</div>' +
+            '</div>' +
+            '<h3 class="official-card-title">' + title + '</h3>' +
+            '<span class="official-card-type label-' + escapeHtml(category) + '" data-i18n="' + typeLabelKey + '"></span>' +
+            '<div class="official-card-reward">' + reward + '</div>' +
+            (description ? '<p class="official-card-desc">' + description + '</p>' : '') +
+            '<div class="official-card-slots"><span data-i18n="text_slots">剩余名额</span> ' + slotsLeft + '/' + slotsTotal + '</div>' +
+        '</article>'
+    );
+}
+
+function renderOfficialRecommendSection() {
+    var section = document.getElementById('official-recommend-section');
+    var grid = document.getElementById('official-recommend-grid');
+    if (!section || !grid) return;
+
+    if (!homeOfficialTasks.length) {
+        section.classList.add('hidden');
+        grid.innerHTML = '';
+        return;
+    }
+
+    section.classList.remove('hidden');
+    grid.innerHTML = homeOfficialTasks.map(buildOfficialRecommendCardHtml).join('');
+    applyLanguageStrings();
+}
+
+function navigateToTaskDetail(taskId) {
+    if (!taskId) return;
     var targetHash = 'task-detail?id=' + encodeURIComponent(taskId);
     if (window.location.hash.replace(/^#/, '') === targetHash) {
         if (typeof window.coinrealmApplyRoute === 'function') {
@@ -877,6 +926,22 @@ function handleClaimTask(btn) {
         return;
     }
     window.location.hash = targetHash;
+}
+
+function filterByOfficialTag() {
+    var tagButtons = document.querySelectorAll('#filter-tags .tag-btn');
+    tagButtons.forEach(function (btn) {
+        btn.classList.toggle('active', btn.getAttribute('data-type') === 'official');
+    });
+    applyFiltersAndSort();
+    var filterBar = document.querySelector('.filter-search-bar');
+    if (filterBar) {
+        filterBar.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
+function handleClaimTask(btn) {
+    navigateToTaskDetail(btn.getAttribute('data-task-id'));
 }
 
 function bindClaimButtons() {
@@ -1133,6 +1198,8 @@ function fetchTasks() {
     if (!window.supabase) {
         if (skeletonScreen) skeletonScreen.classList.add('hidden');
         allTasks = [];
+        homeOfficialTasks = [];
+        renderOfficialRecommendSection();
         if (taskGrid) taskGrid.classList.add('hidden');
         if (emptyState) emptyState.classList.remove('hidden');
         return;
@@ -1146,15 +1213,34 @@ function fetchTasks() {
             if (seq !== fetchTasksSeq) return;
             if (skeletonScreen) skeletonScreen.classList.add('hidden');
 
-            if (result.error || !result.data || result.data.length === 0) {
-                allTasks = [];
-                if (taskGrid) taskGrid.classList.add('hidden');
-                if (emptyState) emptyState.classList.remove('hidden');
-                if (result.error) console.warn('加载任务失败:', result.error);
-                return;
-            }
+            var officialQuery = window.supabase
+                .from('tasks')
+                .select('*')
+                .eq('is_official', true)
+                .order('created_at', { ascending: false })
+                .limit(4);
 
-            return enrichTasksWithPublishers(result.data);
+            return officialQuery.then(function (officialResult) {
+                var officialData = (!officialResult.error && officialResult.data) ? officialResult.data : [];
+                if (officialResult.error) {
+                    console.warn('加载官方推荐任务失败:', officialResult.error);
+                }
+
+                return enrichTasksWithPublishers(officialData).then(function (enrichedOfficial) {
+                    homeOfficialTasks = enrichedOfficial || [];
+                    renderOfficialRecommendSection();
+
+                    if (result.error || !result.data || result.data.length === 0) {
+                        allTasks = [];
+                        if (taskGrid) taskGrid.classList.add('hidden');
+                        if (emptyState) emptyState.classList.remove('hidden');
+                        if (result.error) console.warn('加载任务失败:', result.error);
+                        return null;
+                    }
+
+                    return enrichTasksWithPublishers(result.data);
+                });
+            });
         })
         .then(function (tasks) {
             if (seq !== fetchTasksSeq) return;
@@ -1167,6 +1253,8 @@ function fetchTasks() {
             if (seq !== fetchTasksSeq) return;
             if (skeletonScreen) skeletonScreen.classList.add('hidden');
             allTasks = [];
+            homeOfficialTasks = [];
+            renderOfficialRecommendSection();
             if (taskGrid) taskGrid.classList.add('hidden');
             if (emptyState) emptyState.classList.remove('hidden');
             console.warn('加载任务失败:', err);
@@ -1262,6 +1350,30 @@ function initHomePageLogic() {
         }
 
         bindCheckinEvents();
+
+        var officialGrid = document.getElementById('official-recommend-grid');
+        if (officialGrid) {
+            officialGrid.addEventListener('click', function (e) {
+                var card = e.target.closest('.official-recommend-card');
+                if (!card || !officialGrid.contains(card)) return;
+                navigateToTaskDetail(card.getAttribute('data-task-id'));
+            });
+            officialGrid.addEventListener('keydown', function (e) {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                var card = e.target.closest('.official-recommend-card');
+                if (!card || !officialGrid.contains(card)) return;
+                e.preventDefault();
+                navigateToTaskDetail(card.getAttribute('data-task-id'));
+            });
+        }
+
+        var officialViewAllBtn = document.getElementById('official-view-all-btn');
+        if (officialViewAllBtn) {
+            officialViewAllBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                filterByOfficialTag();
+            });
+        }
     }
 }
 

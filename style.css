@@ -370,9 +370,138 @@ img {
 }
 .task-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 24px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
 }
+/* 官方推荐区 */
+.official-recommend-section {
+    margin: 0 0 24px;
+    padding: 20px;
+    border-radius: 12px;
+    border: 1px solid rgba(240, 185, 11, 0.35);
+    background: linear-gradient(135deg, rgba(255, 248, 220, 0.9) 0%, rgba(255, 255, 255, 0.95) 100%);
+    box-shadow: 0 2px 12px rgba(240, 185, 11, 0.08);
+}
+.official-recommend-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    gap: 12px;
+}
+.official-recommend-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: #1a1a2e;
+}
+.official-view-all-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 14px;
+    color: #b8860b;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color 0.2s ease;
+}
+.official-view-all-link:hover {
+    color: #f0b90b;
+}
+.official-recommend-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+}
+.official-recommend-card {
+    background: #ffffff;
+    border: 1px solid rgba(240, 185, 11, 0.25);
+    border-radius: 10px;
+    padding: 20px;
+    cursor: pointer;
+    transition: box-shadow 0.25s ease, transform 0.25s ease, border-color 0.25s ease;
+    display: flex;
+    flex-direction: column;
+    min-height: 220px;
+}
+.official-recommend-card:hover {
+    box-shadow: 0 6px 20px rgba(240, 185, 11, 0.18);
+    transform: translateY(-2px);
+    border-color: rgba(240, 185, 11, 0.5);
+}
+.official-card-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.official-card-avatar {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+}
+.official-card-author {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.official-card-username {
+    font-size: 14px;
+    font-weight: 500;
+    color: #333333;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.official-card-level {
+    font-size: 12px;
+    color: #888888;
+}
+.official-card-title {
+    margin: 0 0 10px;
+    font-size: 17px;
+    font-weight: 700;
+    color: #1a1a2e;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.official-card-type {
+    display: inline-block;
+    align-self: flex-start;
+    margin-bottom: 10px;
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    background: #f5f5f5;
+    color: #666666;
+}
+.official-card-reward {
+    font-size: 22px;
+    font-weight: 700;
+    color: #f0b90b;
+    margin-bottom: 10px;
+}
+.official-card-desc {
+    margin: 0 0 12px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #666666;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    flex: 1;
+}
+.official-card-slots {
+    margin-top: auto;
+    font-size: 13px;
+    color: #888888;
+}
+
 .task-card {
     background-color: #ffffff;
     border-radius: 8px;
@@ -716,14 +845,19 @@ img {
 }
 
 /* 响应式 */
-@media (max-width: 992px) {
-    .task-grid {
+@media (max-width: 1200px) {
+    .task-grid,
+    .official-recommend-grid {
         grid-template-columns: repeat(2, 1fr);
     }
 }
-@media (max-width: 600px) {
-    .task-grid {
+@media (max-width: 767px) {
+    .task-grid,
+    .official-recommend-grid {
         grid-template-columns: 1fr;
+    }
+    .official-recommend-section {
+        padding: 16px;
     }
     .filter-search-bar {
         flex-direction: column;
