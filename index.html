@@ -945,7 +945,10 @@
         </section>
 
         <section id="admin-panel-tasks" class="admin-panel hidden">
-          <h2 class="admin-section-title" data-i18n="ad_tasks_title">任务管理</h2>
+          <div class="admin-section-header">
+            <h2 class="admin-section-title" data-i18n="ad_tasks_title">任务管理</h2>
+            <button type="button" id="ad-official-add-btn" class="admin-primary-btn" data-i18n="ad_btn_publish_official">发布官方任务</button>
+          </div>
           <div class="admin-toolbar">
             <input type="search" id="ad-task-search" class="admin-input admin-search-input" data-i18n-placeholder="ad_search_tasks" placeholder="搜索任务标题...">
             <select id="ad-task-filter" class="admin-input admin-filter-select">
@@ -968,6 +971,46 @@
           <h2 class="admin-section-title" data-i18n="ad_broadcasts_title">广播管理</h2>
           <div id="ad-broadcast-list" class="admin-list"></div>
         </section>
+
+        <div id="ad-official-modal" class="admin-modal hidden" aria-hidden="true">
+          <div class="admin-modal-overlay"></div>
+          <div class="admin-modal-card admin-modal-wide">
+            <h3 class="admin-modal-title" data-i18n="ad_modal_publish_official">发布官方任务</h3>
+            <form id="ad-official-form" class="admin-form">
+              <label class="admin-label" data-i18n="ad_label_title">标题</label>
+              <input type="text" id="ad-official-title" class="admin-input" required>
+              <label class="admin-label" data-i18n="ad_label_type">类型</label>
+              <select id="ad-official-type" class="admin-input">
+                <option value="airdrop">空投</option>
+                <option value="register">注册</option>
+                <option value="trade">交易</option>
+                <option value="game">游戏</option>
+                <option value="content">内容</option>
+                <option value="test">测试</option>
+                <option value="other">其他</option>
+              </select>
+              <label class="admin-label" data-i18n="ad_label_desc">描述</label>
+              <textarea id="ad-official-desc" class="admin-textarea" rows="3" required></textarea>
+              <label class="admin-label" data-i18n="ad_label_req">要求（每行一条）</label>
+              <textarea id="ad-official-reqs" class="admin-textarea" rows="3" required></textarea>
+              <label class="admin-label" data-i18n="ad_label_reward">奖励金额（CRLM）</label>
+              <input type="number" id="ad-official-reward" class="admin-input" min="1" step="1" required>
+              <label class="admin-label" data-i18n="ad_label_slots">名额</label>
+              <input type="number" id="ad-official-slots" class="admin-input" min="1" step="1">
+              <label class="admin-label" data-i18n="ad_label_deadline">截止时间</label>
+              <input type="date" id="ad-official-deadline" class="admin-input" required>
+              <label class="admin-label" data-i18n="ad_label_proof">凭证要求</label>
+              <select id="ad-official-proof" class="admin-input">
+                <option value="text" data-i18n="ad_proof_text">文字凭证</option>
+                <option value="screenshot" data-i18n="ad_proof_screenshot">截图凭证</option>
+              </select>
+              <div class="admin-modal-actions">
+                <button type="button" id="ad-official-cancel" class="admin-secondary-btn" data-i18n="ad_btn_cancel">取消</button>
+                <button type="submit" class="admin-primary-btn" data-i18n="ad_btn_publish">发布</button>
+              </div>
+            </form>
+          </div>
+        </div>
 
         <div id="ad-cancel-modal" class="admin-modal hidden" aria-hidden="true">
           <div class="admin-modal-overlay"></div>

@@ -1217,6 +1217,7 @@ function fetchTasks() {
                 .from('tasks')
                 .select('*')
                 .eq('is_official', true)
+                .eq('status', 'active')
                 .order('created_at', { ascending: false })
                 .limit(4);
 
@@ -6650,6 +6651,23 @@ window.addEventListener('hashchange', handleRoute);
       ad_btn_confirm_cancel: '确认下架',
       ad_btn_high_risk: '标记高风险',
       ad_btn_cancel_task: '下架',
+      ad_btn_recommend: '设为推荐',
+      ad_btn_unrecommend: '取消推荐',
+      ad_btn_publish_official: '发布官方任务',
+      ad_modal_publish_official: '发布官方任务',
+      ad_label_title: '标题',
+      ad_label_type: '类型',
+      ad_label_desc: '描述',
+      ad_label_req: '要求（每行一条）',
+      ad_label_reward: '奖励金额（CRLM）',
+      ad_label_slots: '名额',
+      ad_label_deadline: '截止时间',
+      ad_label_proof: '凭证要求',
+      ad_proof_text: '文字凭证',
+      ad_proof_screenshot: '截图凭证',
+      ad_btn_publish: '发布',
+      ad_save_ok: '操作成功',
+      ad_alert_required: '请填写所有必填字段',
       ad_btn_ban: '封禁',
       ad_btn_level: '调等级',
       ad_btn_del_broadcast: '删除',
@@ -6702,6 +6720,23 @@ window.addEventListener('hashchange', handleRoute);
       ad_btn_confirm_cancel: 'Confirm Remove',
       ad_btn_high_risk: 'Mark High Risk',
       ad_btn_cancel_task: 'Remove',
+      ad_btn_recommend: 'Feature',
+      ad_btn_unrecommend: 'Unfeature',
+      ad_btn_publish_official: 'Publish Official Task',
+      ad_modal_publish_official: 'Publish Official Task',
+      ad_label_title: 'Title',
+      ad_label_type: 'Type',
+      ad_label_desc: 'Description',
+      ad_label_req: 'Requirements (one per line)',
+      ad_label_reward: 'Reward (CRLM)',
+      ad_label_slots: 'Slots',
+      ad_label_deadline: 'Deadline',
+      ad_label_proof: 'Proof Type',
+      ad_proof_text: 'Text Proof',
+      ad_proof_screenshot: 'Screenshot Proof',
+      ad_btn_publish: 'Publish',
+      ad_save_ok: 'Saved successfully',
+      ad_alert_required: 'Please fill in all required fields',
       ad_btn_ban: 'Ban',
       ad_btn_level: 'Set Level',
       ad_btn_del_broadcast: 'Delete',
@@ -6798,6 +6833,16 @@ window.addEventListener('hashchange', handleRoute);
     return String(user.id || '').slice(0, 8);
   }
 
+  function parseRequirementsText(text) {
+    return String(text || '').split('\n').map(function (line) { return line.trim(); }).filter(Boolean);
+  }
+
+  function getDefaultOfficialDeadline() {
+    var date = new Date();
+    date.setDate(date.getDate() + 7);
+    return date.toISOString().split('T')[0];
+  }
+
   function getFilteredTasks() {
     var keyword = taskSearch.trim().toLowerCase();
     return allTasks.filter(function (task) {
@@ -6873,6 +6918,9 @@ window.addEventListener('hashchange', handleRoute);
             '</p>' +
           '</div>' +
           '<div class="admin-row-actions">' +
+            (task.is_official
+              ? '<button type="button" class="admin-primary-btn ad-task-unrecommend" data-id="' + safeText(task.id) + '">' + adT('ad_btn_unrecommend') + '</button>'
+              : '<button type="button" class="admin-ghost-btn ad-task-recommend" data-id="' + safeText(task.id) + '">' + adT('ad_btn_recommend') + '</button>') +
             (cancelled ? '' : '<button type="button" class="admin-warning-btn ad-task-risk" data-id="' + safeText(task.id) + '">' + adT('ad_btn_high_risk') + '</button>') +
             (cancelled ? '' : '<button type="button" class="admin-danger-btn ad-task-cancel" data-id="' + safeText(task.id) + '">' + adT('ad_btn_cancel_task') + '</button>') +
           '</div>' +
@@ -6887,6 +6935,91 @@ window.addEventListener('hashchange', handleRoute);
       alert(adT('ad_save_fail') + result.error.message);
       return;
     }
+    await loadAllTasks();
+    renderTaskList();
+  }
+
+  async function toggleTaskOfficialRecommend(taskId, makeOfficial) {
+    var result = await window.supabase.from('tasks').update({ is_official: !!makeOfficial }).eq('id', taskId);
+    if (result.error) {
+      alert(adT('ad_save_fail') + result.error.message);
+      return;
+    }
+    await loadAllTasks();
+    renderTaskList();
+  }
+
+  function openOfficialPublishModal() {
+    var modal = document.getElementById('ad-official-modal');
+    var form = document.getElementById('ad-official-form');
+    if (!modal) return;
+    if (form) form.reset();
+    var deadline = document.getElementById('ad-official-deadline');
+    if (deadline) deadline.value = getDefaultOfficialDeadline();
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    applyAdminI18n();
+  }
+
+  function closeOfficialPublishModal() {
+    var modal = document.getElementById('ad-official-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+
+  async function submitOfficialTask(e) {
+    if (e) e.preventDefault();
+    if (!window.supabase) return;
+
+    var title = document.getElementById('ad-official-title').value.trim();
+    var type = document.getElementById('ad-official-type').value;
+    var description = document.getElementById('ad-official-desc').value.trim();
+    var requirements = parseRequirementsText(document.getElementById('ad-official-reqs').value);
+    var rewardAmount = parseFloat(document.getElementById('ad-official-reward').value);
+    var slotsVal = document.getElementById('ad-official-slots').value.trim();
+    var deadline = document.getElementById('ad-official-deadline').value;
+    var proofType = document.getElementById('ad-official-proof').value;
+
+    if (!title || !description || !requirements.length || !deadline || isNaN(rewardAmount) || rewardAmount <= 0) {
+      alert(adT('ad_alert_required'));
+      return;
+    }
+
+    var userId = await getCurrentUserId();
+    if (!userId) {
+      alert(adT('ad_login_required'));
+      return;
+    }
+
+    var maxParticipants = slotsVal ? parseInt(slotsVal, 10) : null;
+    if (maxParticipants !== null && isNaN(maxParticipants)) maxParticipants = null;
+
+    var payload = {
+      publisher_id: userId,
+      title: title,
+      task_type: type,
+      type: type,
+      description: description,
+      requirements: requirements,
+      reward_type: 'CRLM',
+      reward_amount: rewardAmount,
+      max_participants: maxParticipants,
+      deadline: deadline,
+      proof_type: proofType,
+      is_official: true,
+      status: 'active',
+      current_participants: 0
+    };
+
+    var result = await window.supabase.from('tasks').insert(payload);
+    if (result.error) {
+      alert(adT('ad_save_fail') + result.error.message);
+      return;
+    }
+
+    alert(adT('ad_save_ok'));
+    closeOfficialPublishModal();
     await loadAllTasks();
     renderTaskList();
   }
@@ -7111,11 +7244,30 @@ window.addEventListener('hashchange', handleRoute);
     var taskList = document.getElementById('ad-task-list');
     if (taskList) {
       taskList.addEventListener('click', function (e) {
+        var recommendBtn = e.target.closest('.ad-task-recommend');
+        var unrecommendBtn = e.target.closest('.ad-task-unrecommend');
         var riskBtn = e.target.closest('.ad-task-risk');
         var cancelBtn = e.target.closest('.ad-task-cancel');
+        if (recommendBtn) toggleTaskOfficialRecommend(recommendBtn.getAttribute('data-id'), true);
+        if (unrecommendBtn) toggleTaskOfficialRecommend(unrecommendBtn.getAttribute('data-id'), false);
         if (riskBtn) markTaskHighRisk(riskBtn.getAttribute('data-id'));
         if (cancelBtn) openCancelModal(cancelBtn.getAttribute('data-id'));
       });
+    }
+
+    var officialAddBtn = document.getElementById('ad-official-add-btn');
+    if (officialAddBtn) {
+      officialAddBtn.addEventListener('click', openOfficialPublishModal);
+    }
+
+    var officialForm = document.getElementById('ad-official-form');
+    if (officialForm) {
+      officialForm.addEventListener('submit', submitOfficialTask);
+    }
+
+    var officialCancelBtn = document.getElementById('ad-official-cancel');
+    if (officialCancelBtn) {
+      officialCancelBtn.addEventListener('click', closeOfficialPublishModal);
     }
 
     var usersList = document.getElementById('ad-users-list');
@@ -7141,8 +7293,11 @@ window.addEventListener('hashchange', handleRoute);
     if (cancelClose) cancelClose.addEventListener('click', closeCancelModal);
     if (cancelConfirm) cancelConfirm.addEventListener('click', confirmCancelTask);
 
-    document.querySelectorAll('#ad-cancel-modal .admin-modal-overlay').forEach(function (overlay) {
-      overlay.addEventListener('click', closeCancelModal);
+    document.querySelectorAll('#ad-cancel-modal .admin-modal-overlay, #ad-official-modal .admin-modal-overlay').forEach(function (overlay) {
+      overlay.addEventListener('click', function () {
+        closeCancelModal();
+        closeOfficialPublishModal();
+      });
     });
   }
 

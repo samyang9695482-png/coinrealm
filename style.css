@@ -3975,6 +3975,9 @@ img {
     padding: 24px;
     box-shadow: 0 16px 48px rgba(0,0,0,0.2);
 }
+.admin-modal-wide {
+    width: min(640px, 92vw);
+}
 .admin-modal-title {
     margin: 0 0 20px;
     font-size: 20px;
