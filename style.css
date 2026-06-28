@@ -1774,6 +1774,7 @@ img {
 .profile-avatar .cr-avatar-letter {
     width: 100%;
     height: 100%;
+    display: block;
 }
 
 .profile-avatar-edit-btn {
@@ -1837,26 +1838,21 @@ img {
 
 .avatar-picker-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, 64px);
+    justify-content: center;
     gap: 16px;
     margin-bottom: 24px;
 }
 
 .avatar-picker-item {
-    border: 2px solid transparent;
+    width: 64px;
+    height: 64px;
+    border: none;
+    padding: 0;
     border-radius: 50%;
-    padding: 2px;
     background: none;
     cursor: pointer;
-    transition: border-color 0.2s ease, transform 0.2s ease;
-}
-
-.avatar-picker-item:hover {
-    border-color: #f0b90b;
-}
-
-.avatar-picker-item-selected {
-    border-color: #f0b90b;
+    display: block;
 }
 
 .avatar-picker-item img {
@@ -1865,6 +1861,17 @@ img {
     border-radius: 50%;
     object-fit: cover;
     display: block;
+    box-sizing: border-box;
+    border: 2px solid transparent;
+    transition: border-color 0.2s ease;
+}
+
+.avatar-picker-item:hover img {
+    border-color: #f0b90b;
+}
+
+.avatar-picker-item-selected img {
+    border-color: #f0b90b;
 }
 
 .avatar-picker-actions {

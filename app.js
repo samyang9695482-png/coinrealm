@@ -537,14 +537,24 @@ function getAvatarInitial(name) {
     return text ? text.charAt(0).toUpperCase() : 'U';
 }
 
+function resolveAvatarAssetUrl(url) {
+    if (!url) return '';
+    if (/^https?:\/\//i.test(url) || String(url).indexOf('data:') === 0) return url;
+    try {
+        return new URL(url, window.location.href).href;
+    } catch (e) {
+        return url;
+    }
+}
+
 function resolveAvatarDisplay(user, options) {
     options = options || {};
-    if (options.googleAvatarUrl) {
-        return { type: 'image', src: options.googleAvatarUrl };
-    }
     var avatarUrl = user && user.avatar_url;
     if (avatarUrl) {
-        return { type: 'image', src: avatarUrl };
+        return { type: 'image', src: resolveAvatarAssetUrl(avatarUrl) };
+    }
+    if (options.googleAvatarUrl) {
+        return { type: 'image', src: options.googleAvatarUrl };
     }
     var labelSource = (user && (user.username || user.email || user.id)) || 'U';
     return {
@@ -636,7 +646,7 @@ window.coinrealmRefreshAllAvatars = async function () {
     }
     var pfAvatar = document.getElementById('pf-avatar');
     if (pfAvatar && coinrealmCurrentUserProfile) {
-        applyAvatarToElement(pfAvatar, coinrealmCurrentUserProfile, 'profile-avatar', {
+        applyAvatarToElement(pfAvatar, coinrealmCurrentUserProfile, 'cr-avatar-img', {
             googleAvatarUrl: coinrealmGoogleAvatarUrl
         });
     }
@@ -3586,7 +3596,7 @@ window.addEventListener('hashchange', handleRoute);
 
     var avatarEl = document.getElementById('pf-avatar');
     if (avatarEl) {
-      applyAvatarToElement(avatarEl, user, 'profile-avatar', {
+      applyAvatarToElement(avatarEl, user, 'cr-avatar-img', {
         googleAvatarUrl: coinrealmGoogleAvatarUrl
       });
     }
@@ -3669,12 +3679,18 @@ window.addEventListener('hashchange', handleRoute);
     closeAvatarPicker();
     var avatarEl = document.getElementById('pf-avatar');
     if (avatarEl) {
-      applyAvatarToElement(avatarEl, coinrealmCurrentUserProfile, 'profile-avatar', {
+      applyAvatarToElement(avatarEl, coinrealmCurrentUserProfile, 'cr-avatar-img', {
         googleAvatarUrl: coinrealmGoogleAvatarUrl
       });
     }
-    if (typeof window.coinrealmRefreshAllAvatars === 'function') {
-      await window.coinrealmRefreshAllAvatars();
+    if (typeof window.coinrealmRefreshAuthArea === 'function') {
+      window.coinrealmRefreshAuthArea();
+    }
+    if (typeof applyFiltersAndSort === 'function') {
+      applyFiltersAndSort();
+    }
+    if (typeof renderOfficialRecommendSection === 'function') {
+      renderOfficialRecommendSection();
     }
   }
 
