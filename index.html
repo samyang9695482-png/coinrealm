@@ -451,6 +451,7 @@
         <div class="create-task-field">
           <label class="create-task-label" data-i18n="ct_label_reward_amount">奖励金额</label>
           <input type="number" id="ct-reward-amount" class="create-task-input" data-placeholder="ct_ph_reward" placeholder="请输入奖励金额" min="0">
+          <p id="ct-unit-price-hint" class="create-task-orange-hint hidden"></p>
         </div>
 
         <div class="create-task-field">
@@ -461,6 +462,7 @@
         <div class="create-task-field">
           <label class="create-task-label" data-i18n="ct_label_deadline">截止时间</label>
           <input type="date" id="ct-deadline" class="create-task-input">
+          <p class="create-task-orange-hint create-task-deadline-hint" data-i18n="ct_deadline_hint">⏰ 超时审核将自动通过。若多次超时未审核，发布权限可能被暂停。</p>
         </div>
 
         <div class="create-task-field">
@@ -475,6 +477,12 @@
               <span data-i18n="ct_proof_screenshot">截图凭证</span>
             </label>
           </div>
+        </div>
+
+        <div class="create-task-field">
+          <label class="create-task-label" data-i18n="ct_label_images">任务图片</label>
+          <input type="file" id="ct-image-input" class="ct-image-file-input" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple hidden>
+          <div id="ct-image-list" class="ct-image-list"></div>
         </div>
       </div>
 

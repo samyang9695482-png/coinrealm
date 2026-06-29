@@ -460,7 +460,7 @@ async function getAuthenticatedUserId() {
 }
 
 function buildTaskInsertPayload(userId, fields) {
-    return {
+    var payload = {
         publisher_id: userId,
         title: fields.title,
         task_type: fields.type,
@@ -474,6 +474,10 @@ function buildTaskInsertPayload(userId, fields) {
         proof_type: fields.proofType,
         is_official: false
     };
+    if (fields.imageUrl) {
+        payload.image_url = fields.imageUrl;
+    }
+    return payload;
 }
 
 async function getUserInfo() {
@@ -1006,9 +1010,19 @@ function buildTaskCardHtml(task) {
 
     const publisherUser = getPublisherAvatarUser(task);
     const avatarHtml = buildAvatarHtml(publisherUser, 'css-avatar');
+    const imageUrlRaw = getTaskField(task, ['image_url'], '');
+    const imageUrl = imageUrlRaw && typeof resolveAvatarAssetUrl === 'function'
+        ? resolveAvatarAssetUrl(imageUrlRaw)
+        : imageUrlRaw;
+    const imageHtml = imageUrl
+        ? '<div class="task-card-media"><img class="task-card-image" src="' + escapeHtml(imageUrl) + '" alt=""></div>'
+        : '';
+    const cardClass = imageUrl ? ' task-card-with-image' : '';
 
     return (
-        '<div class="task-card" data-category="' + escapeHtml(category) + '" data-task-id="' + escapeHtml(getTaskField(task, ['id'], '')) + '">' +
+        '<div class="task-card' + cardClass + '" data-category="' + escapeHtml(category) + '" data-task-id="' + escapeHtml(getTaskField(task, ['id'], '')) + '">' +
+            imageHtml +
+            '<div class="task-card-body">' +
             '<div class="card-top">' +
                 '<div class="author-info publisher-link" data-publisher-id="' + publisherId + '" style="cursor:pointer">' +
                     avatarHtml +
@@ -1028,6 +1042,7 @@ function buildTaskCardHtml(task) {
                     '<span class="info-text">' + daysLeft + ' <span data-i18n="text_days">天后</span></span>' +
                 '</div>' +
                 '<button type="button" class="claim-btn" data-task-id="' + escapeHtml(getTaskField(task, ['id'], '')) + '" data-i18n="btn_claim">领取</button>' +
+            '</div>' +
             '</div>' +
         '</div>'
     );
@@ -2326,6 +2341,13 @@ window.addEventListener('hashchange', handleRoute);
   var userLevel = 0;
   var userBalance = 500;
   var createTaskInitialized = false;
+  var ctUploadedImages = [];
+  var ctImageUploadInProgress = false;
+  var ctImageUploadSeq = 0;
+  var CT_MAX_IMAGES = 3;
+  var CT_MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+  var CT_ALLOWED_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
+  var CT_PLATFORM_COMMISSION = 0.15;
 
   var createTaskTranslations = {
     zh: {
@@ -2339,6 +2361,7 @@ window.addEventListener('hashchange', handleRoute);
       ct_label_slots: '任务名额',
       ct_label_deadline: '截止时间',
       ct_label_proof: '凭证要求',
+      ct_label_images: '任务图片',
       ct_ph_title: '请输入任务标题',
       ct_ph_desc: '请详细描述任务内容和要求',
       ct_ph_req: '请输入任务要求',
@@ -2349,8 +2372,10 @@ window.addEventListener('hashchange', handleRoute);
       ct_proof_text: '文字凭证',
       ct_proof_screenshot: '截图凭证',
       ct_stake_note: '仅 Lv.3 及以上用户可发布任务。',
-      ct_stake_hint: '发布此任务需质押 {amount} CRLM（奖励 + 押金），任务完成后押金退还。',
-      ct_stake_hint_usdt: '发布此任务需质押 {amount} USDT（奖励 + 押金），任务完成后押金退还。',
+      ct_stake_hint: '发布此任务需质押 {amount} CRLM（扣除佣金后奖励的 20% 押金），任务完成后押金退还。',
+      ct_stake_hint_usdt: '发布此任务需质押 {amount} USDT（扣除佣金后奖励的 20% 押金），任务完成后押金退还。',
+      ct_unit_price: '任务单价：约 {amount} {unit}',
+      ct_deadline_hint: '⏰ 超时审核将自动通过。若多次超时未审核，发布权限可能被暂停。',
       ct_btn_submit: '确认发布',
       ct_btn_balance: '余额不足，请先兑换 CRLM',
       ct_btn_level: '等级不足（需 Lv.3 以上）',
@@ -2359,6 +2384,10 @@ window.addEventListener('hashchange', handleRoute);
       ct_alert_success: '任务发布成功！',
       ct_alert_login: '请先登录后再发布任务',
       ct_alert_fail: '发布失败：',
+      ct_alert_max_images: '最多上传 3 张图片',
+      ct_alert_invalid_image: '仅支持 JPG、PNG、WebP 格式',
+      ct_alert_image_size: '单张图片不能超过 5MB',
+      ct_alert_upload_fail: '上传失败：',
       tag_all: '全部',
       tag_airdrop: '空投',
       tag_register: '注册',
@@ -2378,6 +2407,7 @@ window.addEventListener('hashchange', handleRoute);
       ct_label_slots: 'Task Slots',
       ct_label_deadline: 'Deadline',
       ct_label_proof: 'Proof Type',
+      ct_label_images: 'Task Images',
       ct_ph_title: 'Enter task title',
       ct_ph_desc: 'Describe the task content and requirements in detail',
       ct_ph_req: 'Enter a requirement',
@@ -2388,8 +2418,10 @@ window.addEventListener('hashchange', handleRoute);
       ct_proof_text: 'Text Proof',
       ct_proof_screenshot: 'Screenshot Proof',
       ct_stake_note: 'Only Lv.3+ users can publish tasks.',
-      ct_stake_hint: 'Publishing requires staking {amount} CRLM (reward + deposit). Deposit refunded after completion.',
-      ct_stake_hint_usdt: 'Publishing requires staking {amount} USDT (reward + deposit). Deposit refunded after completion.',
+      ct_stake_hint: 'Publishing requires staking {amount} CRLM (20% deposit after commission). Deposit refunded after completion.',
+      ct_stake_hint_usdt: 'Publishing requires staking {amount} USDT (20% deposit after commission). Deposit refunded after completion.',
+      ct_unit_price: 'Unit reward: approx. {amount} {unit}',
+      ct_deadline_hint: '⏰ Tasks will be auto-approved if review times out. Repeated timeouts may result in suspension of publishing rights.',
       ct_btn_submit: 'Confirm & Publish',
       ct_btn_balance: 'Insufficient balance, please exchange CRLM first',
       ct_btn_level: 'Level too low (Lv.3+ required)',
@@ -2398,6 +2430,10 @@ window.addEventListener('hashchange', handleRoute);
       ct_alert_success: 'Task published successfully!',
       ct_alert_login: 'Please log in before publishing a task',
       ct_alert_fail: 'Publish failed: ',
+      ct_alert_max_images: 'Maximum 3 images allowed',
+      ct_alert_invalid_image: 'Only JPG, PNG, and WebP formats are supported',
+      ct_alert_image_size: 'Each image must be 5MB or smaller',
+      ct_alert_upload_fail: 'Upload failed: ',
       tag_all: 'All',
       tag_airdrop: 'Airdrop',
       tag_register: 'Register',
@@ -2441,9 +2477,169 @@ window.addEventListener('hashchange', handleRoute);
     return isNaN(val) || val < 0 ? 0 : val;
   }
 
-  function calcStakeTotal(reward) {
-    var deposit = reward * 0.2;
-    return reward + deposit;
+  function getTaskSlots() {
+    var input = document.getElementById('ct-task-slots');
+    if (!input || !input.value.trim()) return 0;
+    var val = parseInt(input.value, 10);
+    return isNaN(val) || val <= 0 ? 0 : val;
+  }
+
+  function formatCtAmount(num) {
+    var n = Number(num) || 0;
+    return n % 1 === 0 ? String(n) : n.toFixed(2);
+  }
+
+  function getNetRewardAfterCommission(reward) {
+    return reward * (1 - CT_PLATFORM_COMMISSION);
+  }
+
+  function calcStakeDeposit(netReward) {
+    return netReward * 0.2;
+  }
+
+  function getCtImageExtension(filename) {
+    var parts = String(filename || '').toLowerCase().split('.');
+    return parts.length > 1 ? parts.pop() : '';
+  }
+
+  function validateCtImageFile(file) {
+    if (!file) return ctT('ct_alert_invalid_image');
+    if (CT_ALLOWED_IMAGE_EXTENSIONS.indexOf(getCtImageExtension(file.name)) < 0) {
+      return ctT('ct_alert_invalid_image');
+    }
+    if (file.size > CT_MAX_IMAGE_SIZE) {
+      return ctT('ct_alert_image_size');
+    }
+    return '';
+  }
+
+  function buildCtStoragePath(userId, seq) {
+    return userId + '_' + Date.now() + '_' + seq;
+  }
+
+  async function uploadCtImageFile(file) {
+    if (!window.supabase) {
+      alert(ctT('ct_alert_upload_fail') + 'Supabase unavailable');
+      return null;
+    }
+
+    var userId = await getCurrentUserId();
+    if (!userId) {
+      alert(ctT('ct_alert_login'));
+      return null;
+    }
+
+    ctImageUploadSeq += 1;
+    var storagePath = buildCtStoragePath(userId, ctImageUploadSeq);
+    var uploadResult = await window.supabase.storage
+      .from('screenshots')
+      .upload(storagePath, file, {
+        contentType: file.type || undefined,
+        upsert: false
+      });
+
+    if (uploadResult.error) {
+      alert(ctT('ct_alert_upload_fail') + uploadResult.error.message);
+      return null;
+    }
+
+    var urlResult = window.supabase.storage.from('screenshots').getPublicUrl(storagePath);
+    var publicUrl = urlResult.data && urlResult.data.publicUrl;
+    if (!publicUrl) {
+      alert(ctT('ct_alert_upload_fail'));
+      return null;
+    }
+
+    return {
+      name: file.name,
+      url: publicUrl,
+      path: storagePath
+    };
+  }
+
+  function renderCtImageList() {
+    var listEl = document.getElementById('ct-image-list');
+    if (!listEl) return;
+
+    var html = ctUploadedImages.map(function (item, index) {
+      var src = typeof resolveAvatarAssetUrl === 'function' ? resolveAvatarAssetUrl(item.url) : item.url;
+      return (
+        '<button type="button" class="ct-image-thumb" data-index="' + index + '" aria-label="Remove image">' +
+          '<img src="' + escapeHtml(src) + '" alt="">' +
+          '<span class="ct-image-remove" aria-hidden="true">&times;</span>' +
+        '</button>'
+      );
+    }).join('');
+
+    if (ctUploadedImages.length < CT_MAX_IMAGES) {
+      html += '<button type="button" id="ct-image-add-btn" class="ct-image-add-btn" aria-label="Add image">+</button>';
+    }
+
+    listEl.innerHTML = html;
+  }
+
+  async function handleCtImagesSelected(fileList) {
+    if (ctImageUploadInProgress) return;
+
+    var files = Array.from(fileList || []);
+    if (!files.length) return;
+
+    if (ctUploadedImages.length >= CT_MAX_IMAGES) {
+      alert(ctT('ct_alert_max_images'));
+      return;
+    }
+
+    var remaining = CT_MAX_IMAGES - ctUploadedImages.length;
+    if (files.length > remaining) {
+      alert(ctT('ct_alert_max_images'));
+      files = files.slice(0, remaining);
+    }
+
+    ctImageUploadInProgress = true;
+    try {
+      for (var i = 0; i < files.length; i++) {
+        if (ctUploadedImages.length >= CT_MAX_IMAGES) {
+          alert(ctT('ct_alert_max_images'));
+          break;
+        }
+
+        var file = files[i];
+        var validationError = validateCtImageFile(file);
+        if (validationError) {
+          alert(validationError);
+          continue;
+        }
+
+        var uploaded = await uploadCtImageFile(file);
+        if (uploaded) {
+          ctUploadedImages.push(uploaded);
+          renderCtImageList();
+        }
+      }
+    } finally {
+      ctImageUploadInProgress = false;
+    }
+  }
+
+  function updateUnitPriceHint() {
+    var hintEl = document.getElementById('ct-unit-price-hint');
+    if (!hintEl) return;
+
+    var reward = getRewardAmount();
+    var slots = getTaskSlots();
+    if (reward <= 0 || slots <= 0) {
+      hintEl.classList.add('hidden');
+      hintEl.textContent = '';
+      return;
+    }
+
+    var unitPrice = getNetRewardAfterCommission(reward) / slots;
+    var rewardType = getRewardType();
+    hintEl.textContent = ctT('ct_unit_price', {
+      amount: formatCtAmount(unitPrice),
+      unit: rewardType
+    });
+    hintEl.classList.remove('hidden');
   }
 
   function updateStakeHint() {
@@ -2451,8 +2647,13 @@ window.addEventListener('hashchange', handleRoute);
     if (!hintEl) return;
 
     var reward = getRewardAmount();
-    var total = reward > 0 ? calcStakeTotal(reward) : 0;
-    var amountStr = total % 1 === 0 ? String(total) : total.toFixed(2);
+    if (reward <= 0) {
+      hintEl.textContent = '';
+      return;
+    }
+
+    var deposit = calcStakeDeposit(getNetRewardAfterCommission(reward));
+    var amountStr = formatCtAmount(deposit);
     var rewardType = getRewardType();
     var key = rewardType === 'USDT' ? 'ct_stake_hint_usdt' : 'ct_stake_hint';
     hintEl.textContent = ctT(key, { amount: amountStr });
@@ -2507,6 +2708,7 @@ window.addEventListener('hashchange', handleRoute);
     });
 
     updateStakeHint();
+    updateUnitPriceHint();
     updateSubmitButtonState();
   }
 
@@ -2581,7 +2783,12 @@ window.addEventListener('hashchange', handleRoute);
     if (crlmRadio) crlmRadio.checked = true;
     if (textProof) textProof.checked = true;
 
+    ctUploadedImages = [];
+    ctImageUploadSeq = 0;
+    renderCtImageList();
+
     updateStakeHint();
+    updateUnitPriceHint();
     updateSubmitButtonState();
     applyCreateTaskI18n();
   }
@@ -2663,6 +2870,7 @@ window.addEventListener('hashchange', handleRoute);
         if (maxParticipants !== null && isNaN(maxParticipants)) maxParticipants = null;
         var deadline = document.getElementById('ct-deadline').value;
         var proofType = getProofType();
+        var imageUrl = ctUploadedImages.length ? ctUploadedImages[0].url : null;
 
         var insertResult = await window.supabase
           .from('tasks')
@@ -2675,7 +2883,8 @@ window.addEventListener('hashchange', handleRoute);
             rewardAmount: rewardAmount,
             maxParticipants: maxParticipants,
             deadline: deadline,
-            proofType: proofType
+            proofType: proofType,
+            imageUrl: imageUrl
           }));
 
         if (insertResult.error) throw insertResult.error;
@@ -2697,15 +2906,51 @@ window.addEventListener('hashchange', handleRoute);
     if (rewardInput) {
         rewardInput.addEventListener('input', function () {
             updateStakeHint();
+            updateUnitPriceHint();
             updateSubmitButtonState();
+        });
+    }
+    var slotsInput = document.getElementById('ct-task-slots');
+    if (slotsInput) {
+        slotsInput.addEventListener('input', function () {
+            updateUnitPriceHint();
         });
     }
     document.querySelectorAll('input[name="ct-reward-type"]').forEach(function (radio) {
         radio.addEventListener('change', function () {
             updateStakeHint();
+            updateUnitPriceHint();
             updateSubmitButtonState();
         });
     });
+
+    var imageList = document.getElementById('ct-image-list');
+    var imageInput = document.getElementById('ct-image-input');
+    if (imageList) {
+      imageList.addEventListener('click', function (e) {
+        var addBtn = e.target.closest('#ct-image-add-btn');
+        if (addBtn && imageInput) {
+          imageInput.click();
+          return;
+        }
+        var thumbBtn = e.target.closest('.ct-image-thumb');
+        if (!thumbBtn) return;
+        var idx = parseInt(thumbBtn.getAttribute('data-index'), 10);
+        if (isNaN(idx) || idx < 0 || idx >= ctUploadedImages.length) return;
+        ctUploadedImages.splice(idx, 1);
+        renderCtImageList();
+      });
+    }
+    if (imageInput) {
+      imageInput.addEventListener('change', function () {
+        if (imageInput.files && imageInput.files.length) {
+          handleCtImagesSelected(imageInput.files);
+        }
+        imageInput.value = '';
+      });
+    }
+
+    renderCtImageList();
     initRequirementList();
   }
 
@@ -2731,6 +2976,7 @@ window.addEventListener('hashchange', handleRoute);
     initCreateTaskEvents();
     bindSubmitButton();
     applyCreateTaskI18n();
+    updateUnitPriceHint();
     updateSubmitButtonState();
   }
 
