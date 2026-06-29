@@ -416,6 +416,12 @@
         </div>
 
         <div class="create-task-field">
+          <label class="create-task-label" data-i18n="ct_label_images">任务图片</label>
+          <input type="file" id="ct-image-input" class="ct-image-file-input" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple hidden>
+          <div id="ct-image-list" class="ct-image-list"></div>
+        </div>
+
+        <div class="create-task-field">
           <label class="create-task-label" data-i18n="ct_label_req">任务要求</label>
           <div id="ct-requirements-list" class="create-task-req-list">
             <div class="create-task-req-row">
@@ -477,12 +483,6 @@
               <span data-i18n="ct_proof_screenshot">截图凭证</span>
             </label>
           </div>
-        </div>
-
-        <div class="create-task-field">
-          <label class="create-task-label" data-i18n="ct_label_images">任务图片</label>
-          <input type="file" id="ct-image-input" class="ct-image-file-input" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple hidden>
-          <div id="ct-image-list" class="ct-image-list"></div>
         </div>
       </div>
 
@@ -1054,6 +1054,26 @@
             <div class="admin-modal-actions">
               <button type="button" id="ad-cancel-close" class="admin-secondary-btn" data-i18n="ad_btn_cancel">取消</button>
               <button type="button" id="ad-cancel-confirm" class="admin-danger-btn" data-i18n="ad_btn_confirm_cancel">确认下架</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="ad-grant-modal" class="admin-modal hidden" aria-hidden="true">
+          <div class="admin-modal-overlay"></div>
+          <div class="admin-modal-card">
+            <h3 class="admin-modal-title" data-i18n="ad_modal_grant_title">发放 CRLM</h3>
+            <input type="hidden" id="ad-grant-user-id">
+            <div class="admin-grant-user-info">
+              <p id="ad-grant-username" class="admin-grant-info-line"></p>
+              <p id="ad-grant-balance" class="admin-grant-info-line"></p>
+            </div>
+            <label class="admin-label" data-i18n="ad_label_grant_amount">发放数量</label>
+            <input type="number" id="ad-grant-amount" class="admin-input" min="1" step="1" required>
+            <label class="admin-label" data-i18n="ad_label_grant_reason">发放原因（可选）</label>
+            <input type="text" id="ad-grant-reason" class="admin-input" data-i18n-placeholder="ad_ph_grant_reason" placeholder="请输入发放原因">
+            <div class="admin-modal-actions">
+              <button type="button" id="ad-grant-cancel" class="admin-secondary-btn" data-i18n="ad_btn_cancel">取消</button>
+              <button type="button" id="ad-grant-confirm" class="admin-primary-btn" data-i18n="ad_btn_grant_confirm">确认发放</button>
             </div>
           </div>
         </div>

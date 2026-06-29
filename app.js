@@ -7372,6 +7372,16 @@ window.addEventListener('hashchange', handleRoute);
       ad_alert_required: '请填写所有必填字段',
       ad_btn_ban: '封禁',
       ad_btn_level: '调等级',
+      ad_btn_grant: '发放 CRLM',
+      ad_modal_grant_title: '发放 CRLM',
+      ad_label_grant_amount: '发放数量',
+      ad_label_grant_reason: '发放原因（可选）',
+      ad_ph_grant_reason: '请输入发放原因',
+      ad_grant_user_label: '用户：{name}',
+      ad_grant_balance_label: '当前 CRLM 余额：{amount}',
+      ad_btn_grant_confirm: '确认发放',
+      ad_grant_success: '发放成功！用户 {name} 获得 {amount} CRLM',
+      ad_grant_invalid_amount: '请输入有效的发放数量（最小 1）',
       ad_btn_del_broadcast: '删除',
       ad_empty_tasks: '暂无任务',
       ad_empty_users: '暂无用户',
@@ -7441,6 +7451,16 @@ window.addEventListener('hashchange', handleRoute);
       ad_alert_required: 'Please fill in all required fields',
       ad_btn_ban: 'Ban',
       ad_btn_level: 'Set Level',
+      ad_btn_grant: 'Grant CRLM',
+      ad_modal_grant_title: 'Grant CRLM',
+      ad_label_grant_amount: 'Amount',
+      ad_label_grant_reason: 'Reason (optional)',
+      ad_ph_grant_reason: 'Enter reason',
+      ad_grant_user_label: 'User: {name}',
+      ad_grant_balance_label: 'Current CRLM balance: {amount}',
+      ad_btn_grant_confirm: 'Confirm Grant',
+      ad_grant_success: 'Granted successfully! User {name} received {amount} CRLM',
+      ad_grant_invalid_amount: 'Please enter a valid amount (minimum 1)',
       ad_btn_del_broadcast: 'Delete',
       ad_empty_tasks: 'No tasks',
       ad_empty_users: 'No users',
@@ -7793,6 +7813,9 @@ window.addEventListener('hashchange', handleRoute);
             '</p>' +
           '</div>' +
           '<div class="admin-row-actions">' +
+            (adminAccessGranted
+              ? '<button type="button" class="admin-gold-btn-sm ad-user-grant" data-id="' + safeText(user.id) + '">' + adT('ad_btn_grant') + '</button>'
+              : '') +
             '<button type="button" class="admin-ghost-btn ad-user-level" data-id="' + safeText(user.id) + '">' + adT('ad_btn_level') + '</button>' +
             '<button type="button" class="admin-danger-btn ad-user-ban" data-id="' + safeText(user.id) + '"' + (user.is_banned ? ' disabled' : '') + '>' + adT('ad_btn_ban') + '</button>' +
           '</div>' +
@@ -7826,6 +7849,84 @@ window.addEventListener('hashchange', handleRoute);
       return;
     }
 
+    await loadAdminUsers();
+    renderUsersList();
+  }
+
+  function openGrantModal(userId) {
+    if (!adminAccessGranted) return;
+
+    var user = adminUsers.find(function (u) { return u.id === userId; });
+    if (!user) return;
+
+    var idInput = document.getElementById('ad-grant-user-id');
+    var usernameEl = document.getElementById('ad-grant-username');
+    var balanceEl = document.getElementById('ad-grant-balance');
+    var amountInput = document.getElementById('ad-grant-amount');
+    var reasonInput = document.getElementById('ad-grant-reason');
+    var modal = document.getElementById('ad-grant-modal');
+
+    if (idInput) idInput.value = userId;
+    if (usernameEl) {
+      usernameEl.textContent = adT('ad_grant_user_label', { name: displayUserLabel(user) });
+    }
+    if (balanceEl) {
+      balanceEl.textContent = adT('ad_grant_balance_label', {
+        amount: formatNumber(Number(user.crlm_balance) || 0)
+      });
+    }
+    if (amountInput) amountInput.value = '';
+    if (reasonInput) reasonInput.value = '';
+
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.setAttribute('aria-hidden', 'false');
+    }
+  }
+
+  function closeGrantModal() {
+    var modal = document.getElementById('ad-grant-modal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  async function confirmGrantCrlm() {
+    if (!adminAccessGranted || !window.supabase) return;
+
+    var userId = document.getElementById('ad-grant-user-id');
+    var amountInput = document.getElementById('ad-grant-amount');
+    if (!userId || !amountInput) return;
+
+    var amount = parseInt(amountInput.value, 10);
+    if (isNaN(amount) || amount < 1) {
+      alert(adT('ad_grant_invalid_amount'));
+      return;
+    }
+
+    var user = adminUsers.find(function (u) { return u.id === userId.value; });
+    if (!user) return;
+
+    var currentBalance = Number(user.crlm_balance) || 0;
+    var newBalance = currentBalance + amount;
+
+    var result = await window.supabase
+      .from('users')
+      .update({ crlm_balance: newBalance })
+      .eq('id', userId.value);
+
+    if (result.error) {
+      alert(adT('ad_save_fail') + result.error.message);
+      return;
+    }
+
+    alert(adT('ad_grant_success', {
+      name: displayUserLabel(user),
+      amount: formatNumber(amount)
+    }));
+
+    closeGrantModal();
     await loadAdminUsers();
     renderUsersList();
   }
@@ -7975,8 +8076,10 @@ window.addEventListener('hashchange', handleRoute);
     var usersList = document.getElementById('ad-users-list');
     if (usersList) {
       usersList.addEventListener('click', function (e) {
+        var grantBtn = e.target.closest('.ad-user-grant');
         var banBtn = e.target.closest('.ad-user-ban');
         var levelBtn = e.target.closest('.ad-user-level');
+        if (grantBtn) openGrantModal(grantBtn.getAttribute('data-id'));
         if (banBtn && !banBtn.disabled) banUser(banBtn.getAttribute('data-id'));
         if (levelBtn) setUserLevel(levelBtn.getAttribute('data-id'));
       });
@@ -7995,10 +8098,16 @@ window.addEventListener('hashchange', handleRoute);
     if (cancelClose) cancelClose.addEventListener('click', closeCancelModal);
     if (cancelConfirm) cancelConfirm.addEventListener('click', confirmCancelTask);
 
-    document.querySelectorAll('#ad-cancel-modal .admin-modal-overlay, #ad-official-modal .admin-modal-overlay').forEach(function (overlay) {
+    var grantCancel = document.getElementById('ad-grant-cancel');
+    var grantConfirm = document.getElementById('ad-grant-confirm');
+    if (grantCancel) grantCancel.addEventListener('click', closeGrantModal);
+    if (grantConfirm) grantConfirm.addEventListener('click', confirmGrantCrlm);
+
+    document.querySelectorAll('#ad-cancel-modal .admin-modal-overlay, #ad-official-modal .admin-modal-overlay, #ad-grant-modal .admin-modal-overlay').forEach(function (overlay) {
       overlay.addEventListener('click', function () {
         closeCancelModal();
         closeOfficialPublishModal();
+        closeGrantModal();
       });
     });
   }

@@ -4223,6 +4223,33 @@ img {
     cursor: pointer;
     font-size: 13px;
 }
+.admin-gold-btn-sm {
+    padding: 6px 10px;
+    background: #f0b90b;
+    color: #1a1a2e;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+}
+.admin-gold-btn-sm:hover {
+    background: #d4a009;
+}
+.admin-grant-user-info {
+    margin-bottom: 16px;
+    padding: 12px;
+    background: #f9f9f9;
+    border-radius: 8px;
+}
+.admin-grant-info-line {
+    margin: 0 0 6px;
+    font-size: 14px;
+    color: #333;
+}
+.admin-grant-info-line:last-child {
+    margin-bottom: 0;
+}
 .admin-stats-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
