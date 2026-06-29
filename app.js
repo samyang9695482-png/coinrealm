@@ -4417,9 +4417,9 @@ window.addEventListener('hashchange', handleRoute);
 
     var result = await window.supabase
       .from('submissions')
-      .select('id, task_id, user_id, status, submitted_at, reviewed_at, created_at, tasks(*)')
+      .select('id, task_id, user_id, status, submitted_at, reviewed_at, tasks(*)')
       .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+      .order('submitted_at', { ascending: false });
 
     if (result.error) {
       throw result.error;
@@ -4452,7 +4452,7 @@ window.addEventListener('hashchange', handleRoute);
       metaHtml = '<p class="my-task-meta">' + escapeHtml(mtT('mt_label_deadline')) + '：' + escapeHtml(formatMtDeadline(task.deadline)) + '</p>';
     } else if (tab === 'completed') {
       statusHtml = '<span class="my-task-status my-task-status-done">' + escapeHtml(mtT('mt_status_approved')) + '</span>';
-      var doneTime = submission.reviewed_at || submission.submitted_at || submission.created_at;
+      var doneTime = submission.reviewed_at || submission.submitted_at;
       metaHtml = '<p class="my-task-meta">' + escapeHtml(mtT('mt_label_completed')) + '：' + escapeHtml(formatMtDateTime(doneTime)) + '</p>';
     } else {
       statusHtml = '<span class="my-task-status my-task-status-expired">' + escapeHtml(item.expiredReason || mtT('mt_reason_expired')) + '</span>';
@@ -6868,7 +6868,7 @@ window.addEventListener('hashchange', handleRoute);
           '<span class="rv-username">' + escapeHtml(submission.username || 'Unknown') + '</span>' +
         '</div>' +
         '<div class="rv-content-block">' +
-          '<p class="rv-submit-time">' + escapeHtml(formatSubmissionTime(submission.submitted_at || submission.created_at)) + '</p>' +
+          '<p class="rv-submit-time">' + escapeHtml(formatSubmissionTime(submission.submitted_at)) + '</p>' +
           summaryHtml +
         '</div>' +
         actionsHtml +
@@ -6972,7 +6972,7 @@ window.addEventListener('hashchange', handleRoute);
 
     var submissionsResult = await window.supabase
       .from('submissions')
-      .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment, screenshot_urls, created_at')
+      .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment, screenshot_urls')
       .eq('task_id', selectedTaskId)
       .order('submitted_at', { ascending: false });
 
