@@ -684,6 +684,18 @@
           <a href="#create-task" class="publish-mgmt-action-btn" data-i18n="pm_btn_create">去发布任务</a>
         </div>
       </div>
+
+      <div id="pm-delete-modal" class="pm-delete-modal hidden" aria-hidden="true">
+        <div class="pm-delete-modal-overlay"></div>
+        <div class="pm-delete-modal-card">
+          <p class="pm-delete-modal-text" data-i18n="pm_delete_confirm">确定要删除该任务吗？剩余资金将退回你的账户。</p>
+          <p id="pm-delete-error" class="pm-delete-modal-error hidden"></p>
+          <div class="pm-delete-modal-actions">
+            <button type="button" id="pm-delete-cancel" class="pm-delete-cancel-btn" data-i18n="pm_btn_cancel">取消</button>
+            <button type="button" id="pm-delete-confirm" class="pm-delete-confirm-btn" data-i18n="pm_btn_confirm_delete">确定删除</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 我的分红页 — 由路由 #dividends 显示 -->

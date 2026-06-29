@@ -4658,6 +4658,9 @@ window.addEventListener('hashchange', handleRoute);
   var publishMgmtInitialized = false;
   var publishMgmtLoading = false;
   var publishedTasks = [];
+  var pendingDeleteTask = null;
+  var deleteInProgress = false;
+  var PM_PLATFORM_COMMISSION = 0.15;
 
   var publishMgmtTranslations = {
     zh: {
@@ -4666,6 +4669,14 @@ window.addEventListener('hashchange', handleRoute);
       pm_loading: '加载中...',
       pm_empty_text: '你还没有发布过任务',
       pm_btn_create: '去发布任务',
+      pm_btn_delete: '删除',
+      pm_btn_cancel: '取消',
+      pm_btn_confirm_delete: '确定删除',
+      pm_delete_confirm: '确定要删除该任务吗？剩余资金将退回你的账户。',
+      pm_delete_success_refund: '任务已删除，{unit} 已退回你的账户。退款金额：{amount}（按剩余名额计算，已扣除15%佣金）',
+      pm_delete_success_full: '任务已删除，该任务已满员，无需退款。',
+      pm_delete_success_simple: '任务已删除。',
+      pm_delete_fail: '操作失败，请稍后重试',
       pm_label_deadline: '截止时间',
       pm_label_slots: '剩余名额',
       pm_status_active: '进行中',
@@ -4680,6 +4691,14 @@ window.addEventListener('hashchange', handleRoute);
       pm_loading: 'Loading...',
       pm_empty_text: 'You have not published any tasks yet',
       pm_btn_create: 'Create a Task',
+      pm_btn_delete: 'Delete',
+      pm_btn_cancel: 'Cancel',
+      pm_btn_confirm_delete: 'Confirm Delete',
+      pm_delete_confirm: 'Delete this task? Remaining funds will be refunded to your account.',
+      pm_delete_success_refund: 'Task deleted. {amount} {unit} refunded to your account (remaining slots, 15% commission deducted).',
+      pm_delete_success_full: 'Task deleted. The task was full; no refund needed.',
+      pm_delete_success_simple: 'Task deleted.',
+      pm_delete_fail: 'Operation failed. Please try again later.',
       pm_label_deadline: 'Deadline',
       pm_label_slots: 'Slots left',
       pm_status_active: 'Active',
@@ -4719,6 +4738,54 @@ window.addEventListener('hashchange', handleRoute);
       return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日';
     }
     return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  function isPastDeadline(deadline) {
+    if (!deadline) return false;
+    var d = new Date(deadline);
+    if (Number.isNaN(d.getTime())) return false;
+    var end = new Date(d);
+    end.setHours(23, 59, 59, 999);
+    return Date.now() > end.getTime();
+  }
+
+  function canDeleteExpiredTask(task) {
+    if (!task) return false;
+    return (task.status || 'active') === 'active' && isPastDeadline(task.deadline);
+  }
+
+  function formatPmAmount(num) {
+    var n = parseFloat(num) || 0;
+    return n % 1 === 0 ? String(n) : n.toFixed(2);
+  }
+
+  function calculateDeleteRefund(task) {
+    var maxParticipantsRaw = task.max_participants;
+    if (maxParticipantsRaw == null || maxParticipantsRaw === '') {
+      return { netRefund: 0, remainingSlots: 0, noSlotsLimit: true, rewardType: task.reward_type || 'CRLM' };
+    }
+
+    var maxParticipants = parseFloat(maxParticipantsRaw);
+    var currentParticipants = parseFloat(task.current_participants) || 0;
+    if (isNaN(maxParticipants) || maxParticipants <= 0) {
+      return { netRefund: 0, remainingSlots: 0, noSlotsLimit: true, rewardType: task.reward_type || 'CRLM' };
+    }
+
+    var remainingSlots = Math.max(0, maxParticipants - currentParticipants);
+    if (remainingSlots <= 0) {
+      return { netRefund: 0, remainingSlots: 0, isFull: true, rewardType: task.reward_type || 'CRLM' };
+    }
+
+    var rewardAmount = parseFloat(task.reward_amount) || 0;
+    var perSlotReward = rewardAmount / maxParticipants;
+    var refundAmount = perSlotReward * remainingSlots;
+    var netRefund = refundAmount * (1 - PM_PLATFORM_COMMISSION);
+
+    return {
+      netRefund: netRefund,
+      remainingSlots: remainingSlots,
+      rewardType: task.reward_type || 'CRLM'
+    };
   }
 
   function formatPmReward(task) {
@@ -4777,7 +4844,9 @@ window.addEventListener('hashchange', handleRoute);
 
     if (tasksResult.error) throw tasksResult.error;
 
-    var tasks = tasksResult.data || [];
+    var tasks = (tasksResult.data || []).filter(function (task) {
+      return task.status !== 'cancelled';
+    });
     if (!tasks.length) return [];
 
     var taskIds = tasks.map(function (task) { return task.id; });
@@ -4820,6 +4889,10 @@ window.addEventListener('hashchange', handleRoute);
         '</div>'
       : '';
 
+    var deleteBtnHtml = canDeleteExpiredTask(task)
+      ? '<button type="button" class="publish-mgmt-delete-btn" data-task-id="' + taskId + '">' + escapeHtml(pmT('pm_btn_delete')) + '</button>'
+      : '';
+
     var bodyHtml =
       '<div class="publish-mgmt-card-body">' +
         '<h3 class="publish-mgmt-card-title">' + title + '</h3>' +
@@ -4831,6 +4904,7 @@ window.addEventListener('hashchange', handleRoute);
         '<p class="publish-mgmt-meta">' + escapeHtml(pmT('pm_label_slots')) + '：' + escapeHtml(slotsText) + '</p>' +
         '<p class="publish-mgmt-meta">' + escapeHtml(pmT('pm_label_deadline')) + '：' + escapeHtml(formatPmDeadline(task.deadline)) + '</p>' +
         pendingHtml +
+        (deleteBtnHtml ? '<div class="publish-mgmt-card-actions">' + deleteBtnHtml + '</div>' : '') +
       '</div>';
 
     return (
@@ -4912,6 +4986,144 @@ window.addEventListener('hashchange', handleRoute);
     window.location.hash = 'review?taskId=' + encodeURIComponent(taskId);
   }
 
+  function showDeleteModalError(message) {
+    var errorEl = document.getElementById('pm-delete-error');
+    if (!errorEl) return;
+    errorEl.textContent = message;
+    errorEl.classList.remove('hidden');
+  }
+
+  function clearDeleteModalError() {
+    var errorEl = document.getElementById('pm-delete-error');
+    if (errorEl) {
+      errorEl.textContent = '';
+      errorEl.classList.add('hidden');
+    }
+  }
+
+  function openDeleteModal(task) {
+    pendingDeleteTask = task;
+    clearDeleteModalError();
+    var modal = document.getElementById('pm-delete-modal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.setAttribute('aria-hidden', 'false');
+    }
+    applyPublishMgmtI18n();
+  }
+
+  function closeDeleteModal() {
+    pendingDeleteTask = null;
+    clearDeleteModalError();
+    var modal = document.getElementById('pm-delete-modal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+    var confirmBtn = document.getElementById('pm-delete-confirm');
+    if (confirmBtn) confirmBtn.disabled = false;
+  }
+
+  async function confirmDeleteExpiredTask() {
+    if (deleteInProgress || !pendingDeleteTask || !window.supabase) return;
+
+    var task = pendingDeleteTask;
+    var confirmBtn = document.getElementById('pm-delete-confirm');
+    deleteInProgress = true;
+    if (confirmBtn) confirmBtn.disabled = true;
+    clearDeleteModalError();
+
+    try {
+      var userId = await getCurrentUserId();
+      if (!userId) {
+        showDeleteModalError(pmT('pm_delete_fail'));
+        return;
+      }
+
+      var taskResult = await window.supabase
+        .from('tasks')
+        .select('*')
+        .eq('id', task.id)
+        .eq('publisher_id', userId)
+        .maybeSingle();
+
+      if (taskResult.error || !taskResult.data) {
+        showDeleteModalError(pmT('pm_delete_fail'));
+        return;
+      }
+
+      var freshTask = taskResult.data;
+      if (!canDeleteExpiredTask(freshTask)) {
+        showDeleteModalError(pmT('pm_delete_fail'));
+        return;
+      }
+
+      var refundInfo = calculateDeleteRefund(freshTask);
+      var rewardType = refundInfo.rewardType || 'CRLM';
+      var netRefund = parseFloat(refundInfo.netRefund) || 0;
+      var successMessage = pmT('pm_delete_success_simple');
+
+      if (refundInfo.noSlotsLimit) {
+        successMessage = pmT('pm_delete_success_simple');
+      } else if (refundInfo.isFull || refundInfo.remainingSlots <= 0) {
+        successMessage = pmT('pm_delete_success_full');
+      } else if (netRefund > 0) {
+        successMessage = pmT('pm_delete_success_refund', {
+          unit: rewardType,
+          amount: formatPmAmount(netRefund)
+        });
+      }
+
+      if (netRefund > 0) {
+        var userResult = await window.supabase
+          .from('users')
+          .select('crlm_balance, usdt_balance')
+          .eq('id', userId)
+          .single();
+
+        if (userResult.error || !userResult.data) {
+          showDeleteModalError(pmT('pm_delete_fail'));
+          return;
+        }
+
+        var balanceField = rewardType === 'USDT' ? 'usdt_balance' : 'crlm_balance';
+        var currentBalance = parseFloat(userResult.data[balanceField]) || 0;
+        var balanceUpdate = {};
+        balanceUpdate[balanceField] = currentBalance + netRefund;
+
+        var balanceResult = await window.supabase
+          .from('users')
+          .update(balanceUpdate)
+          .eq('id', userId);
+
+        if (balanceResult.error) {
+          showDeleteModalError(pmT('pm_delete_fail'));
+          return;
+        }
+      }
+
+      var taskUpdateResult = await window.supabase
+        .from('tasks')
+        .update({ status: 'cancelled' })
+        .eq('id', freshTask.id)
+        .eq('publisher_id', userId);
+
+      if (taskUpdateResult.error) {
+        showDeleteModalError(pmT('pm_delete_fail'));
+        return;
+      }
+
+      closeDeleteModal();
+      alert(successMessage);
+      await loadAndRenderPublishMgmt();
+    } finally {
+      deleteInProgress = false;
+      if (confirmBtn && pendingDeleteTask) {
+        confirmBtn.disabled = false;
+      }
+    }
+  }
+
   function initPublishMgmtEvents() {
     if (publishMgmtInitialized) return;
     publishMgmtInitialized = true;
@@ -4919,17 +5131,38 @@ window.addEventListener('hashchange', handleRoute);
     var listEl = document.getElementById('pm-task-list');
     if (listEl) {
       listEl.addEventListener('click', function (e) {
+        if (e.target.closest('.publish-mgmt-delete-btn')) {
+          e.stopPropagation();
+          var deleteBtn = e.target.closest('.publish-mgmt-delete-btn');
+          var taskId = deleteBtn.getAttribute('data-task-id');
+          var item = publishedTasks.find(function (entry) {
+            return entry.task && String(entry.task.id) === String(taskId);
+          });
+          if (item && item.task) openDeleteModal(item.task);
+          return;
+        }
         var card = e.target.closest('.publish-mgmt-card');
         if (!card || !listEl.contains(card)) return;
         navigateToReviewForTask(card.getAttribute('data-task-id'));
       });
       listEl.addEventListener('keydown', function (e) {
+        if (e.target.closest('.publish-mgmt-delete-btn')) return;
         if (e.key !== 'Enter' && e.key !== ' ') return;
         var card = e.target.closest('.publish-mgmt-card');
         if (!card || !listEl.contains(card)) return;
         e.preventDefault();
         navigateToReviewForTask(card.getAttribute('data-task-id'));
       });
+    }
+
+    var deleteCancelBtn = document.getElementById('pm-delete-cancel');
+    var deleteConfirmBtn = document.getElementById('pm-delete-confirm');
+    var deleteModal = document.getElementById('pm-delete-modal');
+    if (deleteCancelBtn) deleteCancelBtn.addEventListener('click', closeDeleteModal);
+    if (deleteConfirmBtn) deleteConfirmBtn.addEventListener('click', confirmDeleteExpiredTask);
+    if (deleteModal) {
+      var overlay = deleteModal.querySelector('.pm-delete-modal-overlay');
+      if (overlay) overlay.addEventListener('click', closeDeleteModal);
     }
   }
 
@@ -4938,6 +5171,8 @@ window.addEventListener('hashchange', handleRoute);
     if (!document.getElementById('home-page')) {
       appContentEl.innerHTML = APP_CONTENT_HTML;
       publishMgmtInitialized = false;
+      pendingDeleteTask = null;
+      deleteInProgress = false;
     }
   }
 
@@ -4954,6 +5189,7 @@ window.addEventListener('hashchange', handleRoute);
       await loadAndRenderPublishMgmt();
     } else {
       page.classList.add('hidden');
+      closeDeleteModal();
     }
   }
 
