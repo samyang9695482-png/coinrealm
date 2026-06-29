@@ -550,6 +550,67 @@ function resolveAvatarAssetUrl(url) {
     }
 }
 
+var TASK_IMAGE_PLACEHOLDER =
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Crect fill='%23f0f0f0' width='120' height='120'/%3E%3C/svg%3E";
+
+function resolveTaskImageUrl(url) {
+    return resolveAvatarAssetUrl(url);
+}
+
+function parseTaskUrlArrayField(value) {
+    if (!value) return [];
+    if (Array.isArray(value)) {
+        return value.filter(function (item) { return !!item; });
+    }
+    if (typeof value === 'string') {
+        var trimmed = value.trim();
+        if (!trimmed) return [];
+        try {
+            var parsed = JSON.parse(trimmed);
+            if (Array.isArray(parsed)) {
+                return parsed.filter(function (item) { return !!item; });
+            }
+        } catch (e) {
+            return [trimmed];
+        }
+    }
+    return [];
+}
+
+function getTaskImageUrls(task) {
+    if (!task) return [];
+
+    var urls = parseTaskUrlArrayField(task.screenshot_urls);
+    if (!urls.length) {
+        var imageUrl = getTaskField(task, ['image_url'], '');
+        if (imageUrl) urls = [imageUrl];
+    }
+
+    var seen = {};
+    var resolved = [];
+    urls.forEach(function (url) {
+        var fullUrl = resolveTaskImageUrl(url);
+        if (fullUrl && !seen[fullUrl]) {
+            seen[fullUrl] = true;
+            resolved.push(fullUrl);
+        }
+    });
+    return resolved;
+}
+
+function handleTaskImageError(imgEl) {
+    if (!imgEl) return;
+    imgEl.onerror = null;
+    imgEl.src = TASK_IMAGE_PLACEHOLDER;
+    imgEl.classList.add('task-image-placeholder');
+}
+
+function taskImageErrorAttr() {
+    return ' onerror="if(typeof window.coinrealmHandleTaskImageError===\'function\')window.coinrealmHandleTaskImageError(this)"';
+}
+
+window.coinrealmHandleTaskImageError = handleTaskImageError;
+
 function resolveAvatarDisplay(user, options) {
     options = options || {};
     var avatarUrl = user && user.avatar_url;
@@ -1062,9 +1123,11 @@ function buildOfficialRecommendCardHtml(task) {
 
     var publisherUser = getPublisherAvatarUser(task);
     var avatarHtml = buildAvatarHtml(publisherUser, 'official-card-avatar css-avatar');
+    var imageUrlRaw = getTaskField(task, ['image_url'], '');
+    var imageUrl = imageUrlRaw ? resolveTaskImageUrl(imageUrlRaw) : '';
+    var cardClass = imageUrl ? ' official-recommend-card-with-image' : '';
 
-    return (
-        '<article class="official-recommend-card" data-task-id="' + taskId + '" role="link" tabindex="0">' +
+    var cardBody =
             '<div class="official-card-top">' +
                 avatarHtml +
                 '<div class="official-card-author">' +
@@ -1076,7 +1139,16 @@ function buildOfficialRecommendCardHtml(task) {
             '<span class="official-card-type label-' + escapeHtml(category) + '" data-i18n="' + typeLabelKey + '"></span>' +
             '<div class="official-card-reward">' + reward + '</div>' +
             (description ? '<p class="official-card-desc">' + description + '</p>' : '') +
-            '<div class="official-card-slots"><span data-i18n="text_slots">剩余名额</span> ' + slotsLeft + '/' + slotsTotal + '</div>' +
+            '<div class="official-card-slots"><span data-i18n="text_slots">剩余名额</span> ' + slotsLeft + '/' + slotsTotal + '</div>';
+
+    var imageBlock = imageUrl
+        ? '<div class="official-card-media"><img class="official-card-image" src="' + escapeHtml(imageUrl) + '" alt=""' + taskImageErrorAttr() + '></div>'
+        : '';
+
+    return (
+        '<article class="official-recommend-card' + cardClass + '" data-task-id="' + taskId + '" role="link" tabindex="0">' +
+            imageBlock +
+            (imageUrl ? '<div class="official-card-body">' + cardBody + '</div>' : cardBody) +
         '</article>'
     );
 }
@@ -1622,6 +1694,7 @@ window.addEventListener('hashchange', handleRoute);
 
   var SUBMISSION_STORAGE_KEY = 'coinrealm_active_submission';
   var taskDetailInitialized = false;
+  var taskDetailImageLightboxInitialized = false;
   var currentTaskRecord = null;
   var currentPublisherRecord = null;
   var currentSubmissionRecord = null;
@@ -1632,6 +1705,7 @@ window.addEventListener('hashchange', handleRoute);
     zh: {
       td_official_badge: '官方认证',
       td_desc_title: '任务描述',
+      td_images_title: '任务图片',
       td_req_title: '任务要求',
       td_slots_label: '剩余名额',
       td_deadline_label: '截止时间',
@@ -1680,6 +1754,7 @@ window.addEventListener('hashchange', handleRoute);
     en: {
       td_official_badge: 'Official Verified',
       td_desc_title: 'Description',
+      td_images_title: 'Task Images',
       td_req_title: 'Requirements',
       td_slots_label: 'Slots Left',
       td_deadline_label: 'Deadline',
@@ -2065,6 +2140,8 @@ window.addEventListener('hashchange', handleRoute);
       }
     }
 
+    renderTaskDetailImages(currentTaskRecord);
+
     var reqEl = document.getElementById('td-task-requirements');
     if (reqEl) {
       var reqs = parseRequirements(currentTaskRecord.requirements);
@@ -2130,7 +2207,60 @@ window.addEventListener('hashchange', handleRoute);
     updatePinCard();
     applyTaskDetailI18n();
     updateBottomActionBar();
+    initTaskDetailImageLightbox();
     initTaskDetailEvents();
+  }
+
+  function renderTaskDetailImages(task) {
+    var section = document.getElementById('td-task-images-section');
+    var grid = document.getElementById('td-task-images-grid');
+    if (!section || !grid) return;
+
+    var urls = getTaskImageUrls(task);
+    if (!urls.length) {
+      section.classList.add('hidden');
+      grid.innerHTML = '';
+      return;
+    }
+
+    section.classList.remove('hidden');
+    grid.innerHTML = urls.map(function (url, index) {
+      return (
+        '<button type="button" class="td-task-image-item" data-index="' + index + '" data-url="' + escapeHtml(url) + '">' +
+          '<img src="' + escapeHtml(url) + '" alt=""' + taskImageErrorAttr() + '>' +
+        '</button>'
+      );
+    }).join('');
+  }
+
+  function initTaskDetailImageLightbox() {
+    if (taskDetailImageLightboxInitialized) return;
+    taskDetailImageLightboxInitialized = true;
+
+    var lightbox = document.getElementById('td-image-lightbox');
+    var lightboxImg = document.getElementById('td-image-lightbox-img');
+    var grid = document.getElementById('td-task-images-grid');
+    if (!lightbox || !lightboxImg || !grid) return;
+
+    grid.addEventListener('click', function (e) {
+      var item = e.target.closest('.td-task-image-item');
+      if (!item) return;
+      var url = item.getAttribute('data-url');
+      if (!url) return;
+      lightboxImg.src = url;
+      lightboxImg.onerror = function () {
+        handleTaskImageError(lightboxImg);
+      };
+      lightbox.classList.remove('hidden');
+      lightbox.setAttribute('aria-hidden', 'false');
+    });
+
+    lightbox.addEventListener('click', function () {
+      lightbox.classList.add('hidden');
+      lightbox.setAttribute('aria-hidden', 'true');
+      lightboxImg.src = '';
+      lightboxImg.classList.remove('task-image-placeholder');
+    });
   }
 
   function updatePinCard() {
@@ -2274,6 +2404,7 @@ window.addEventListener('hashchange', handleRoute);
       appContentEl.innerHTML = APP_CONTENT_HTML;
       initPinPackageSelection();
       taskDetailInitialized = false;
+      taskDetailImageLightboxInitialized = false;
     }
   }
 

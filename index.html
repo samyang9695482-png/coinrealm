@@ -324,10 +324,19 @@
           <h3 class="task-detail-section-title" data-i18n="td_desc_title">任务描述</h3>
           <div id="td-task-description" class="task-detail-desc"></div>
         </div>
+        <div id="td-task-images-section" class="task-detail-section hidden">
+          <h3 class="task-detail-section-title" data-i18n="td_images_title">任务图片</h3>
+          <div id="td-task-images-grid" class="td-task-images-grid"></div>
+        </div>
         <div class="task-detail-section">
           <h3 class="task-detail-section-title" data-i18n="td_req_title">任务要求</h3>
           <ul id="td-task-requirements" class="task-requirements-list"></ul>
         </div>
+      </div>
+
+      <div id="td-image-lightbox" class="td-image-lightbox hidden" aria-hidden="true">
+        <div class="td-image-lightbox-backdrop"></div>
+        <img id="td-image-lightbox-img" class="td-image-lightbox-img" src="" alt="">
       </div>
 
       <!-- 卡片3：任务状态信息 -->

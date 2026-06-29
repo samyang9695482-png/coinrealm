@@ -501,6 +501,37 @@ img {
     font-size: 13px;
     color: #888888;
 }
+.official-recommend-card-with-image {
+    flex-direction: row;
+    align-items: stretch;
+    padding: 16px;
+    min-height: auto;
+    gap: 14px;
+}
+.official-card-media {
+    flex-shrink: 0;
+    width: 110px;
+    height: 110px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #f0f0f0;
+}
+.official-card-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.official-recommend-card-with-image .official-card-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+.task-image-placeholder {
+    object-fit: contain !important;
+    background: #f0f0f0;
+}
 
 .task-card {
     background-color: #ffffff;
@@ -1020,6 +1051,58 @@ img {
 
 .task-detail-desc p:last-child {
     margin-bottom: 0;
+}
+
+.td-task-images-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+
+.td-task-image-item {
+    border: none;
+    padding: 0;
+    margin: 0;
+    background: #f0f0f0;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    aspect-ratio: 1;
+}
+
+.td-task-image-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.td-image-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 4000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.td-image-lightbox.hidden {
+    display: none;
+}
+
+.td-image-lightbox-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+}
+
+.td-image-lightbox-img {
+    position: relative;
+    z-index: 1;
+    max-width: 92vw;
+    max-height: 92vh;
+    border-radius: 8px;
+    object-fit: contain;
 }
 
 .task-requirements-list {
