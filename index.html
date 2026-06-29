@@ -595,7 +595,7 @@
           <span data-i18n="pf_menu_tasks">我的任务（进行中/已完成/已驳回）</span>
           <span class="profile-menu-arrow">→</span>
         </a>
-        <a href="#home" class="profile-menu-item">
+        <a href="#publish-management" class="profile-menu-item" data-route="publish-management">
           <span data-i18n="pf_menu_publish">发布管理（我发布的任务列表）</span>
           <span class="profile-menu-arrow">→</span>
         </a>
@@ -660,6 +660,28 @@
         <div id="mt-empty-state" class="my-tasks-empty hidden">
           <p id="mt-empty-text" class="my-tasks-empty-text"></p>
           <a href="#home" class="my-tasks-home-btn" data-i18n="mt_btn_home">去任务大厅</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 发布管理页 — 由路由 #publish-management 显示 -->
+    <div id="publish-management-page" class="publish-mgmt-container hidden">
+      <header class="publish-mgmt-header">
+        <a href="#profile" class="publish-mgmt-back-btn" aria-label="Back">←</a>
+        <h1 class="publish-mgmt-title" data-i18n="pm_page_title">发布管理</h1>
+      </header>
+
+      <div id="pm-login-required" class="publish-mgmt-login hidden">
+        <p data-i18n="pm_login_required">请先登录查看发布任务</p>
+        <a href="#create-task" class="publish-mgmt-action-btn" data-i18n="pm_btn_create">去发布任务</a>
+      </div>
+
+      <div id="pm-main-content" class="publish-mgmt-main hidden">
+        <div id="pm-loading" class="publish-mgmt-loading hidden" data-i18n="pm_loading">加载中...</div>
+        <div id="pm-task-list" class="publish-mgmt-list"></div>
+        <div id="pm-empty-state" class="publish-mgmt-empty hidden">
+          <p class="publish-mgmt-empty-text" data-i18n="pm_empty_text">你还没有发布过任务</p>
+          <a href="#create-task" class="publish-mgmt-action-btn" data-i18n="pm_btn_create">去发布任务</a>
         </div>
       </div>
     </div>

@@ -61,6 +61,8 @@ function switchLanguage(lang) {
 
         'my-tasks': { title: '我的任务', message: '即将上线...' },
 
+        'publish-management': { title: '发布管理', message: '即将上线...' },
+
         admin: { title: '管理后台', message: '即将上线...' }
 
       }
@@ -108,6 +110,8 @@ function switchLanguage(lang) {
         invite: { title: 'Invite Friends', message: 'Coming soon...' },
 
         'my-tasks': { title: 'My Tasks', message: 'Coming soon...' },
+
+        'publish-management': { title: 'Publish Management', message: 'Coming soon...' },
 
         admin: { title: 'Admin Panel', message: 'Coming soon...' }
 
@@ -4640,6 +4644,334 @@ window.addEventListener('hashchange', handleRoute);
 })();
 
 // ==========================================
+// 8c. 发布管理页 (#publish-management)
+// ==========================================
+(function () {
+  'use strict';
+
+  var APP_CONTENT_HTML = '';
+  var appContentEl = document.getElementById('app-content');
+  if (appContentEl) {
+    APP_CONTENT_HTML = appContentEl.innerHTML;
+  }
+
+  var publishMgmtInitialized = false;
+  var publishMgmtLoading = false;
+  var publishedTasks = [];
+
+  var publishMgmtTranslations = {
+    zh: {
+      pm_page_title: '发布管理',
+      pm_login_required: '请先登录查看发布任务',
+      pm_loading: '加载中...',
+      pm_empty_text: '你还没有发布过任务',
+      pm_btn_create: '去发布任务',
+      pm_label_deadline: '截止时间',
+      pm_label_slots: '剩余名额',
+      pm_status_active: '进行中',
+      pm_status_completed: '已完成',
+      pm_status_cancelled: '已取消',
+      pm_pending_review: '待审核 {count} 条',
+      pm_load_fail: '加载失败：'
+    },
+    en: {
+      pm_page_title: 'Publish Management',
+      pm_login_required: 'Please sign in to view your published tasks',
+      pm_loading: 'Loading...',
+      pm_empty_text: 'You have not published any tasks yet',
+      pm_btn_create: 'Create a Task',
+      pm_label_deadline: 'Deadline',
+      pm_label_slots: 'Slots left',
+      pm_status_active: 'Active',
+      pm_status_completed: 'Completed',
+      pm_status_cancelled: 'Cancelled',
+      pm_pending_review: '{count} pending review',
+      pm_load_fail: 'Load failed: '
+    }
+  };
+
+  function getLang() {
+    var saved = localStorage.getItem('coinrealm_lang');
+    return saved === 'en' ? 'en' : 'zh';
+  }
+
+  function pmT(key, vars) {
+    var dict = publishMgmtTranslations[getLang()];
+    var text = dict[key] || key;
+    if (vars) {
+      Object.keys(vars).forEach(function (k) {
+        text = text.replace('{' + k + '}', vars[k]);
+      });
+    }
+    return text;
+  }
+
+  function getRouteBase() {
+    var hash = window.location.hash.replace(/^#/, '') || 'home';
+    return hash.split('?')[0] || 'home';
+  }
+
+  function formatPmDeadline(dateStr) {
+    if (!dateStr) return '—';
+    var d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return dateStr;
+    if (getLang() === 'zh') {
+      return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日';
+    }
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  function formatPmReward(task) {
+    var amount = Number(task && task.reward_amount) || 0;
+    var unit = (task && task.reward_type) || 'CRLM';
+    return amount.toLocaleString('en-US') + ' ' + unit;
+  }
+
+  function getTaskStatusMeta(status) {
+    if (status === 'active') {
+      return { labelKey: 'pm_status_active', className: 'pm-task-status-active' };
+    }
+    if (status === 'completed') {
+      return { labelKey: 'pm_status_completed', className: 'pm-task-status-completed' };
+    }
+    if (status === 'cancelled') {
+      return { labelKey: 'pm_status_cancelled', className: 'pm-task-status-cancelled' };
+    }
+    return { labelKey: 'pm_status_active', className: 'pm-task-status-active' };
+  }
+
+  function isSubmissionPendingReview(submission) {
+    if (!submission) return false;
+    if (submission.status === 'submitted') return true;
+    if (submission.status === 'pending' && submission.submitted_at) return true;
+    return false;
+  }
+
+  async function fetchPendingReviewCounts(taskIds) {
+    var counts = {};
+    if (!taskIds.length || !window.supabase) return counts;
+
+    var result = await window.supabase
+      .from('submissions')
+      .select('id, task_id, status, submitted_at')
+      .in('task_id', taskIds);
+
+    if (result.error) return counts;
+
+    (result.data || []).forEach(function (submission) {
+      if (!isSubmissionPendingReview(submission)) return;
+      counts[submission.task_id] = (counts[submission.task_id] || 0) + 1;
+    });
+
+    return counts;
+  }
+
+  async function fetchPublishedTasks(userId) {
+    if (!window.supabase) return [];
+
+    var tasksResult = await window.supabase
+      .from('tasks')
+      .select('*')
+      .eq('publisher_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (tasksResult.error) throw tasksResult.error;
+
+    var tasks = tasksResult.data || [];
+    if (!tasks.length) return [];
+
+    var taskIds = tasks.map(function (task) { return task.id; });
+    var pendingCounts = await fetchPendingReviewCounts(taskIds);
+
+    return tasks.map(function (task) {
+      return {
+        task: task,
+        pendingReviewCount: pendingCounts[task.id] || 0
+      };
+    });
+  }
+
+  function buildPublishMgmtCardHtml(item) {
+    var task = item.task;
+    var title = escapeHtml(task.title || '');
+    var category = getTaskField(task, ['type', 'task_type', 'category'], 'other');
+    var typeLabelKey = getTypeLabelKey(task);
+    var reward = escapeHtml(formatPmReward(task));
+    var taskId = escapeHtml(task.id);
+    var statusMeta = getTaskStatusMeta(task.status || 'active');
+    var maxParticipants = task.max_participants != null ? Number(task.max_participants) : null;
+    var currentParticipants = Number(task.current_participants) || 0;
+    var slotsLeft = maxParticipants != null ? Math.max(0, maxParticipants - currentParticipants) : null;
+    var slotsText = maxParticipants != null
+      ? slotsLeft + '/' + maxParticipants
+      : String(currentParticipants);
+
+    var imageUrlRaw = getTaskField(task, ['image_url'], '');
+    var imageUrl = imageUrlRaw ? resolveTaskImageUrl(imageUrlRaw) : '';
+    var cardClass = imageUrl ? ' publish-mgmt-card-with-image' : '';
+    var imageBlock = imageUrl
+      ? '<div class="publish-mgmt-card-media"><img class="publish-mgmt-card-image" src="' + escapeHtml(imageUrl) + '" alt=""' + taskImageErrorAttr() + '></div>'
+      : '';
+
+    var pendingHtml = item.pendingReviewCount > 0
+      ? '<div class="publish-mgmt-pending">' +
+          '<span class="publish-mgmt-pending-dot" aria-hidden="true"></span>' +
+          '<span>' + escapeHtml(pmT('pm_pending_review', { count: item.pendingReviewCount })) + '</span>' +
+        '</div>'
+      : '';
+
+    var bodyHtml =
+      '<div class="publish-mgmt-card-body">' +
+        '<h3 class="publish-mgmt-card-title">' + title + '</h3>' +
+        '<div class="publish-mgmt-card-tags">' +
+          '<span class="type-label label-' + escapeHtml(category) + '" data-i18n="' + typeLabelKey + '"></span>' +
+          '<span class="publish-mgmt-task-status ' + statusMeta.className + '">' + escapeHtml(pmT(statusMeta.labelKey)) + '</span>' +
+        '</div>' +
+        '<div class="publish-mgmt-reward">' + reward + '</div>' +
+        '<p class="publish-mgmt-meta">' + escapeHtml(pmT('pm_label_slots')) + '：' + escapeHtml(slotsText) + '</p>' +
+        '<p class="publish-mgmt-meta">' + escapeHtml(pmT('pm_label_deadline')) + '：' + escapeHtml(formatPmDeadline(task.deadline)) + '</p>' +
+        pendingHtml +
+      '</div>';
+
+    return (
+      '<article class="publish-mgmt-card' + cardClass + '" data-task-id="' + taskId + '" role="button" tabindex="0">' +
+        imageBlock +
+        bodyHtml +
+      '</article>'
+    );
+  }
+
+  function renderPublishMgmtList() {
+    var listEl = document.getElementById('pm-task-list');
+    var emptyEl = document.getElementById('pm-empty-state');
+    if (!listEl || !emptyEl) return;
+
+    if (!publishedTasks.length) {
+      listEl.innerHTML = '';
+      listEl.classList.add('hidden');
+      emptyEl.classList.remove('hidden');
+      return;
+    }
+
+    emptyEl.classList.add('hidden');
+    listEl.classList.remove('hidden');
+    listEl.innerHTML = publishedTasks.map(buildPublishMgmtCardHtml).join('');
+
+    if (typeof applyLanguageStrings === 'function') {
+      applyLanguageStrings();
+    }
+  }
+
+  function setPublishMgmtLoading(loading) {
+    publishMgmtLoading = loading;
+    var loadingEl = document.getElementById('pm-loading');
+    if (loadingEl) loadingEl.classList.toggle('hidden', !loading);
+  }
+
+  function applyPublishMgmtI18n() {
+    document.querySelectorAll('#publish-management-page [data-i18n]').forEach(function (el) {
+      var key = el.getAttribute('data-i18n');
+      if (publishMgmtTranslations[getLang()][key]) {
+        el.textContent = pmT(key);
+      }
+    });
+  }
+
+  async function loadAndRenderPublishMgmt() {
+    var loginEl = document.getElementById('pm-login-required');
+    var mainEl = document.getElementById('pm-main-content');
+    var userId = await getCurrentUserId();
+
+    applyPublishMgmtI18n();
+
+    if (!userId) {
+      if (loginEl) loginEl.classList.remove('hidden');
+      if (mainEl) mainEl.classList.add('hidden');
+      return;
+    }
+
+    if (loginEl) loginEl.classList.add('hidden');
+    if (mainEl) mainEl.classList.remove('hidden');
+
+    setPublishMgmtLoading(true);
+    try {
+      publishedTasks = await fetchPublishedTasks(userId);
+      renderPublishMgmtList();
+    } catch (err) {
+      console.warn('加载发布管理失败', err);
+      alert(pmT('pm_load_fail') + (err && err.message ? err.message : String(err)));
+      publishedTasks = [];
+      renderPublishMgmtList();
+    } finally {
+      setPublishMgmtLoading(false);
+    }
+  }
+
+  function navigateToReviewForTask(taskId) {
+    if (!taskId) return;
+    window.location.hash = 'review?taskId=' + encodeURIComponent(taskId);
+  }
+
+  function initPublishMgmtEvents() {
+    if (publishMgmtInitialized) return;
+    publishMgmtInitialized = true;
+
+    var listEl = document.getElementById('pm-task-list');
+    if (listEl) {
+      listEl.addEventListener('click', function (e) {
+        var card = e.target.closest('.publish-mgmt-card');
+        if (!card || !listEl.contains(card)) return;
+        navigateToReviewForTask(card.getAttribute('data-task-id'));
+      });
+      listEl.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        var card = e.target.closest('.publish-mgmt-card');
+        if (!card || !listEl.contains(card)) return;
+        e.preventDefault();
+        navigateToReviewForTask(card.getAttribute('data-task-id'));
+      });
+    }
+  }
+
+  function restoreAppContentIfNeeded() {
+    if (!appContentEl || !APP_CONTENT_HTML) return;
+    if (!document.getElementById('home-page')) {
+      appContentEl.innerHTML = APP_CONTENT_HTML;
+      publishMgmtInitialized = false;
+    }
+  }
+
+  async function handlePublishMgmtRoute() {
+    restoreAppContentIfNeeded();
+
+    var routeBase = getRouteBase();
+    var page = document.getElementById('publish-management-page');
+    if (!page) return;
+
+    if (routeBase === 'publish-management') {
+      page.classList.remove('hidden');
+      initPublishMgmtEvents();
+      await loadAndRenderPublishMgmt();
+    } else {
+      page.classList.add('hidden');
+    }
+  }
+
+  window.addEventListener('hashchange', handlePublishMgmtRoute);
+
+  window.addEventListener('DOMContentLoaded', function () {
+    setTimeout(handlePublishMgmtRoute, 0);
+  });
+
+  var langToggleBtn = document.getElementById('lang-toggle');
+  if (langToggleBtn) {
+    langToggleBtn.addEventListener('click', function () {
+      setTimeout(handlePublishMgmtRoute, 0);
+    });
+  }
+})();
+
+// ==========================================
 // 9. 我的分红页 (#dividends) — 任务卡 #007
 // ==========================================
 (function () {
@@ -6751,6 +7083,14 @@ window.addEventListener('hashchange', handleRoute);
     return text;
   }
 
+  function getReviewTaskIdFromHash() {
+    var hash = window.location.hash.replace(/^#/, '') || '';
+    var queryIndex = hash.indexOf('?');
+    if (queryIndex < 0) return null;
+    var params = new URLSearchParams(hash.slice(queryIndex + 1));
+    return params.get('taskId') || params.get('id') || null;
+  }
+
   function getCurrentSubmissions() {
     return currentSubmissions;
   }
@@ -7019,6 +7359,12 @@ window.addEventListener('hashchange', handleRoute);
     }
 
     publisherTasks = tasksResult.data || [];
+
+    var hashTaskId = getReviewTaskIdFromHash();
+    if (hashTaskId && publisherTasks.some(function (task) { return task.id === hashTaskId; })) {
+      selectedTaskId = hashTaskId;
+    }
+
     renderTaskSelectOptions();
 
     if (!publisherTasks.length) {
@@ -7266,11 +7612,11 @@ window.addEventListener('hashchange', handleRoute);
   function handleReviewRoute() {
     restoreAppContentIfNeeded();
 
-    var route = window.location.hash.replace(/^#/, '') || 'home';
+    var routeBase = getRouteBaseFromHash();
     var reviewPage = document.getElementById('review-page');
 
     if (reviewPage) {
-      if (route === 'review') {
+      if (routeBase === 'review') {
         reviewPage.classList.remove('hidden');
         renderReviewPage();
       } else {
@@ -7278,6 +7624,11 @@ window.addEventListener('hashchange', handleRoute);
         closeRejectModal();
       }
     }
+  }
+
+  function getRouteBaseFromHash() {
+    var hash = window.location.hash.replace(/^#/, '') || 'home';
+    return hash.split('?')[0] || 'home';
   }
 
   window.addEventListener('hashchange', handleReviewRoute);

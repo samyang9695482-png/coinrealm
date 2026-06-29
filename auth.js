@@ -20,6 +20,8 @@
   var routePageMap = {
     home: 'home-page',
     profile: 'profile-page',
+    'my-tasks': 'my-tasks-page',
+    'publish-management': 'publish-management-page',
     'create-task': 'create-task-page',
     'task-detail': 'task-detail-page',
     'submit-task': 'submit-task-page',
@@ -44,6 +46,8 @@
     'create-task-page',
     'submit-task-page',
     'profile-page',
+    'my-tasks-page',
+    'publish-management-page',
     'dividends-page',
     'exchange-page',
     'leaderboard-page',
@@ -64,6 +68,7 @@
       timestampLabel: '时间戳：',
       menuProfile: '个人中心',
       menuTasks: '我的任务',
+      menuPublishManagement: '发布管理',
       menuCreate: '发布任务',
       menuDividends: '我的分红',
       menuExchange: '兑换市场',
@@ -81,6 +86,7 @@
       timestampLabel: 'Timestamp: ',
       menuProfile: 'Profile',
       menuTasks: 'My Tasks',
+      menuPublishManagement: 'Publish Management',
       menuCreate: 'Post Task',
       menuDividends: 'My Dividends',
       menuExchange: 'Exchange',
@@ -93,7 +99,8 @@
 
   var menuRoutes = [
     { key: 'menuProfile', hash: 'profile' },
-    { key: 'menuTasks', hash: 'home' },
+    { key: 'menuTasks', hash: 'my-tasks' },
+    { key: 'menuPublishManagement', hash: 'publish-management' },
     { key: 'menuCreate', hash: 'create-task' },
     { key: 'menuDividends', hash: 'dividends' },
     { key: 'menuExchange', hash: 'exchange' },
