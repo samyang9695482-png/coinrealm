@@ -1147,8 +1147,8 @@ function buildOfficialRecommendCardHtml(task) {
 
     return (
         '<article class="official-recommend-card' + cardClass + '" data-task-id="' + taskId + '" role="link" tabindex="0">' +
-            imageBlock +
             (imageUrl ? '<div class="official-card-body">' + cardBody + '</div>' : cardBody) +
+            imageBlock +
         '</article>'
     );
 }
