@@ -59,6 +59,8 @@ function switchLanguage(lang) {
 
         invite: { title: '邀请好友', message: '即将上线...' },
 
+        'my-tasks': { title: '我的任务', message: '即将上线...' },
+
         admin: { title: '管理后台', message: '即将上线...' }
 
       }
@@ -104,6 +106,8 @@ function switchLanguage(lang) {
         review: { title: 'Review Management', message: 'Coming soon...' },
 
         invite: { title: 'Invite Friends', message: 'Coming soon...' },
+
+        'my-tasks': { title: 'My Tasks', message: 'Coming soon...' },
 
         admin: { title: 'Admin Panel', message: 'Coming soon...' }
 
@@ -4191,6 +4195,446 @@ window.addEventListener('hashchange', handleRoute);
   if (langToggleBtn) {
     langToggleBtn.addEventListener('click', function () {
       setTimeout(handleProfileRoute, 0);
+    });
+  }
+})();
+
+// ==========================================
+// 8b. 我的任务页 (#my-tasks)
+// ==========================================
+(function () {
+  'use strict';
+
+  var APP_CONTENT_HTML = '';
+  var appContentEl = document.getElementById('app-content');
+  if (appContentEl) {
+    APP_CONTENT_HTML = appContentEl.innerHTML;
+  }
+
+  var myTasksInitialized = false;
+  var myTasksTab = 'active';
+  var myTasksLoading = false;
+  var myTasksData = {
+    active: [],
+    completed: [],
+    expired: []
+  };
+
+  var myTasksTranslations = {
+    zh: {
+      mt_page_title: '我的任务',
+      mt_tab_active: '进行中',
+      mt_tab_completed: '已完成',
+      mt_tab_expired: '已失效',
+      mt_login_required: '请先登录查看任务',
+      mt_loading: '加载中...',
+      mt_btn_home: '去任务大厅',
+      mt_empty_active: '暂无进行中的任务，去任务大厅看看吧~',
+      mt_empty_completed: '暂无已完成的任务，继续加油！',
+      mt_empty_expired: '暂无已失效的任务',
+      mt_status_pending: '待提交',
+      mt_status_submitted: '已提交',
+      mt_status_reviewing: '审核中',
+      mt_status_approved: '已通过',
+      mt_label_deadline: '截止时间',
+      mt_label_completed: '完成时间',
+      mt_label_reason: '失效原因',
+      mt_reason_rejected: '已驳回',
+      mt_reason_expired: '已过期',
+      mt_reason_full: '已满员',
+      mt_reason_cancelled: '已取消',
+      mt_load_fail: '加载失败：'
+    },
+    en: {
+      mt_page_title: 'My Tasks',
+      mt_tab_active: 'In Progress',
+      mt_tab_completed: 'Completed',
+      mt_tab_expired: 'Expired',
+      mt_login_required: 'Please sign in to view your tasks',
+      mt_loading: 'Loading...',
+      mt_btn_home: 'Go to Task Hall',
+      mt_empty_active: 'No tasks in progress. Check the task hall!',
+      mt_empty_completed: 'No completed tasks yet. Keep going!',
+      mt_empty_expired: 'No expired tasks',
+      mt_status_pending: 'Pending submission',
+      mt_status_submitted: 'Submitted',
+      mt_status_reviewing: 'Under review',
+      mt_status_approved: 'Approved',
+      mt_label_deadline: 'Deadline',
+      mt_label_completed: 'Completed',
+      mt_label_reason: 'Reason',
+      mt_reason_rejected: 'Rejected',
+      mt_reason_expired: 'Expired',
+      mt_reason_full: 'Full',
+      mt_reason_cancelled: 'Cancelled',
+      mt_load_fail: 'Load failed: '
+    }
+  };
+
+  function getLang() {
+    var saved = localStorage.getItem('coinrealm_lang');
+    return saved === 'en' ? 'en' : 'zh';
+  }
+
+  function mtT(key, vars) {
+    var dict = myTasksTranslations[getLang()];
+    var text = dict[key] || key;
+    if (vars) {
+      Object.keys(vars).forEach(function (k) {
+        text = text.replace('{' + k + '}', vars[k]);
+      });
+    }
+    return text;
+  }
+
+  function getRouteBase() {
+    var hash = window.location.hash.replace(/^#/, '') || 'home';
+    return hash.split('?')[0] || 'home';
+  }
+
+  function showMyTasksPageOnly() {
+    if (!appContentEl) return;
+    Array.prototype.forEach.call(appContentEl.children, function (el) {
+      if (!el.id) return;
+      if (el.id === 'my-tasks-page') {
+        el.classList.remove('hidden');
+      } else {
+        el.classList.add('hidden');
+      }
+    });
+  }
+
+  function isPastDeadline(deadline) {
+    if (!deadline) return false;
+    var d = new Date(deadline);
+    if (Number.isNaN(d.getTime())) return false;
+    var end = new Date(d);
+    end.setHours(23, 59, 59, 999);
+    return Date.now() > end.getTime();
+  }
+
+  function formatMtDeadline(dateStr) {
+    if (!dateStr) return '—';
+    var d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return dateStr;
+    if (getLang() === 'zh') {
+      return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日';
+    }
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  function formatMtDateTime(dateStr) {
+    if (!dateStr) return '—';
+    var d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return dateStr;
+    if (getLang() === 'zh') {
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  function formatMtReward(task) {
+    var amount = Number(task && task.reward_amount) || 0;
+    var unit = (task && task.reward_type) || 'CRLM';
+    return amount.toLocaleString('en-US') + ' ' + unit;
+  }
+
+  function normalizeSubmissionRows(rows) {
+    return (rows || []).map(function (row) {
+      var task = row.tasks;
+      if (Array.isArray(task)) task = task[0];
+      if (!task && row.task) task = row.task;
+      return { submission: row, task: task };
+    }).filter(function (item) {
+      return item.task && item.task.id;
+    });
+  }
+
+  function getExpiredReason(submission, task) {
+    if (submission.status === 'rejected') return mtT('mt_reason_rejected');
+    if (task.status === 'cancelled') return mtT('mt_reason_cancelled');
+    var maxP = task.max_participants != null ? Number(task.max_participants) : null;
+    var currentP = Number(task.current_participants) || 0;
+    if (task.status === 'completed') return mtT('mt_reason_full');
+    if (maxP != null && maxP > 0 && currentP >= maxP) return mtT('mt_reason_full');
+    return mtT('mt_reason_expired');
+  }
+
+  function isExpiredSubmission(submission, task) {
+    if (submission.status === 'rejected') return true;
+    if (task.status === 'cancelled') return true;
+    var maxP = task.max_participants != null ? Number(task.max_participants) : null;
+    var currentP = Number(task.current_participants) || 0;
+    if (task.status === 'completed') return true;
+    if (maxP != null && maxP > 0 && currentP >= maxP && submission.status !== 'approved') return true;
+    if (isPastDeadline(task.deadline) && submission.status !== 'approved') {
+      if (submission.status === 'pending' && !submission.submitted_at) return true;
+      if (submission.status === 'pending' || submission.status === 'submitted') return true;
+    }
+    return false;
+  }
+
+  function getActiveStatusLabel(submission) {
+    if (submission.status === 'submitted') return mtT('mt_status_reviewing');
+    if (submission.status === 'pending' && submission.submitted_at) return mtT('mt_status_submitted');
+    if (submission.status === 'pending') return mtT('mt_status_pending');
+    return submission.status || '';
+  }
+
+  function categorizeMyTasks(items) {
+    var active = [];
+    var completed = [];
+    var expired = [];
+
+    items.forEach(function (item) {
+      var sub = item.submission;
+      var task = item.task;
+
+      if (sub.status === 'approved') {
+        completed.push(item);
+        return;
+      }
+
+      if (isExpiredSubmission(sub, task)) {
+        expired.push({
+          submission: sub,
+          task: task,
+          expiredReason: getExpiredReason(sub, task)
+        });
+        return;
+      }
+
+      if (sub.status === 'pending' || sub.status === 'submitted') {
+        active.push(item);
+      }
+    });
+
+    return { active: active, completed: completed, expired: expired };
+  }
+
+  async function fetchMyTasksData(userId) {
+    if (!window.supabase) return { active: [], completed: [], expired: [] };
+
+    var result = await window.supabase
+      .from('submissions')
+      .select('id, task_id, user_id, status, submitted_at, reviewed_at, created_at, tasks(*)')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    return categorizeMyTasks(normalizeSubmissionRows(result.data));
+  }
+
+  function buildMyTaskCardHtml(item, tab) {
+    var task = item.task;
+    var submission = item.submission;
+    var title = escapeHtml(task.title || '');
+    var category = getTaskField(task, ['type', 'task_type', 'category'], 'other');
+    var typeLabelKey = getTypeLabelKey(task);
+    var reward = escapeHtml(formatMtReward(task));
+    var taskId = escapeHtml(task.id);
+
+    var imageUrlRaw = getTaskField(task, ['image_url'], '');
+    var imageUrl = imageUrlRaw ? resolveTaskImageUrl(imageUrlRaw) : '';
+    var cardClass = imageUrl ? ' my-task-card-with-image' : '';
+    var imageBlock = imageUrl
+      ? '<div class="my-task-card-media"><img class="my-task-card-image" src="' + escapeHtml(imageUrl) + '" alt=""' + taskImageErrorAttr() + '></div>'
+      : '';
+
+    var statusHtml = '';
+    var metaHtml = '';
+
+    if (tab === 'active') {
+      statusHtml = '<span class="my-task-status my-task-status-active">' + escapeHtml(getActiveStatusLabel(submission)) + '</span>';
+      metaHtml = '<p class="my-task-meta">' + escapeHtml(mtT('mt_label_deadline')) + '：' + escapeHtml(formatMtDeadline(task.deadline)) + '</p>';
+    } else if (tab === 'completed') {
+      statusHtml = '<span class="my-task-status my-task-status-done">' + escapeHtml(mtT('mt_status_approved')) + '</span>';
+      var doneTime = submission.reviewed_at || submission.submitted_at || submission.created_at;
+      metaHtml = '<p class="my-task-meta">' + escapeHtml(mtT('mt_label_completed')) + '：' + escapeHtml(formatMtDateTime(doneTime)) + '</p>';
+    } else {
+      statusHtml = '<span class="my-task-status my-task-status-expired">' + escapeHtml(item.expiredReason || mtT('mt_reason_expired')) + '</span>';
+      metaHtml = '<p class="my-task-meta">' + escapeHtml(mtT('mt_label_reason')) + '：' + escapeHtml(item.expiredReason || mtT('mt_reason_expired')) + '</p>';
+    }
+
+    return (
+      '<article class="my-task-card' + cardClass + '" data-task-id="' + taskId + '" role="button" tabindex="0">' +
+        imageBlock +
+        '<div class="my-task-card-body">' +
+          '<h3 class="my-task-card-title">' + title + '</h3>' +
+          '<div class="my-task-card-tags">' +
+            '<span class="type-label label-' + escapeHtml(category) + '" data-i18n="' + typeLabelKey + '"></span>' +
+            statusHtml +
+          '</div>' +
+          '<div class="my-task-reward">' + reward + '</div>' +
+          metaHtml +
+        '</div>' +
+      '</article>'
+    );
+  }
+
+  function getEmptyMessageKey(tab) {
+    if (tab === 'completed') return 'mt_empty_completed';
+    if (tab === 'expired') return 'mt_empty_expired';
+    return 'mt_empty_active';
+  }
+
+  function renderMyTasksList() {
+    var listEl = document.getElementById('mt-task-list');
+    var emptyEl = document.getElementById('mt-empty-state');
+    var emptyTextEl = document.getElementById('mt-empty-text');
+    if (!listEl || !emptyEl) return;
+
+    var items = myTasksData[myTasksTab] || [];
+
+    if (!items.length) {
+      listEl.innerHTML = '';
+      listEl.classList.add('hidden');
+      emptyEl.classList.remove('hidden');
+      if (emptyTextEl) emptyTextEl.textContent = mtT(getEmptyMessageKey(myTasksTab));
+      return;
+    }
+
+    emptyEl.classList.add('hidden');
+    listEl.classList.remove('hidden');
+    listEl.innerHTML = items.map(function (item) {
+      return buildMyTaskCardHtml(item, myTasksTab);
+    }).join('');
+
+    if (typeof applyLanguageStrings === 'function') {
+      applyLanguageStrings();
+    }
+  }
+
+  function updateMyTasksTabsUI() {
+    document.querySelectorAll('#my-tasks-page .my-tasks-tab').forEach(function (btn) {
+      var tab = btn.getAttribute('data-tab');
+      if (tab === myTasksTab) {
+        btn.classList.add('my-tasks-tab-active');
+      } else {
+        btn.classList.remove('my-tasks-tab-active');
+      }
+    });
+  }
+
+  function setMyTasksLoading(loading) {
+    myTasksLoading = loading;
+    var loadingEl = document.getElementById('mt-loading');
+    if (loadingEl) loadingEl.classList.toggle('hidden', !loading);
+  }
+
+  function applyMyTasksI18n() {
+    document.querySelectorAll('#my-tasks-page [data-i18n]').forEach(function (el) {
+      var key = el.getAttribute('data-i18n');
+      if (myTasksTranslations[getLang()][key]) {
+        el.textContent = mtT(key);
+      }
+    });
+  }
+
+  async function loadAndRenderMyTasks() {
+    var loginEl = document.getElementById('mt-login-required');
+    var mainEl = document.getElementById('mt-main-content');
+    var userId = await getCurrentUserId();
+
+    applyMyTasksI18n();
+    updateMyTasksTabsUI();
+
+    if (!userId) {
+      if (loginEl) loginEl.classList.remove('hidden');
+      if (mainEl) mainEl.classList.add('hidden');
+      return;
+    }
+
+    if (loginEl) loginEl.classList.add('hidden');
+    if (mainEl) mainEl.classList.remove('hidden');
+
+    setMyTasksLoading(true);
+    try {
+      myTasksData = await fetchMyTasksData(userId);
+      renderMyTasksList();
+    } catch (err) {
+      console.warn('加载我的任务失败', err);
+      alert(mtT('mt_load_fail') + (err && err.message ? err.message : String(err)));
+      myTasksData = { active: [], completed: [], expired: [] };
+      renderMyTasksList();
+    } finally {
+      setMyTasksLoading(false);
+    }
+  }
+
+  function switchMyTasksTab(tab) {
+    myTasksTab = tab;
+    updateMyTasksTabsUI();
+    renderMyTasksList();
+  }
+
+  function initMyTasksEvents() {
+    if (myTasksInitialized) return;
+    myTasksInitialized = true;
+
+    document.querySelectorAll('#my-tasks-page .my-tasks-tab').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        switchMyTasksTab(btn.getAttribute('data-tab') || 'active');
+      });
+    });
+
+    var listEl = document.getElementById('mt-task-list');
+    if (listEl) {
+      listEl.addEventListener('click', function (e) {
+        var card = e.target.closest('.my-task-card');
+        if (!card || !listEl.contains(card)) return;
+        var taskId = card.getAttribute('data-task-id');
+        if (taskId) navigateToTaskDetail(taskId);
+      });
+      listEl.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        var card = e.target.closest('.my-task-card');
+        if (!card || !listEl.contains(card)) return;
+        e.preventDefault();
+        var taskId = card.getAttribute('data-task-id');
+        if (taskId) navigateToTaskDetail(taskId);
+      });
+    }
+  }
+
+  function restoreAppContentIfNeeded() {
+    if (!appContentEl || !APP_CONTENT_HTML) return;
+    if (!document.getElementById('home-page')) {
+      appContentEl.innerHTML = APP_CONTENT_HTML;
+      myTasksInitialized = false;
+    }
+  }
+
+  async function handleMyTasksRoute() {
+    restoreAppContentIfNeeded();
+
+    var routeBase = getRouteBase();
+    var page = document.getElementById('my-tasks-page');
+
+    if (!page) return;
+
+    if (routeBase === 'my-tasks') {
+      showMyTasksPageOnly();
+      initMyTasksEvents();
+      await loadAndRenderMyTasks();
+    } else {
+      page.classList.add('hidden');
+    }
+  }
+
+  window.addEventListener('hashchange', handleMyTasksRoute);
+
+  window.addEventListener('DOMContentLoaded', function () {
+    setTimeout(handleMyTasksRoute, 0);
+  });
+
+  var langToggleBtn = document.getElementById('lang-toggle');
+  if (langToggleBtn) {
+    langToggleBtn.addEventListener('click', function () {
+      setTimeout(handleMyTasksRoute, 0);
     });
   }
 })();

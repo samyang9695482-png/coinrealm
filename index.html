@@ -591,7 +591,7 @@
 
       <!-- 功能入口列表 -->
       <div class="profile-menu-card">
-        <a href="#home" class="profile-menu-item">
+        <a href="#my-tasks" class="profile-menu-item" data-route="my-tasks">
           <span data-i18n="pf_menu_tasks">我的任务（进行中/已完成/已驳回）</span>
           <span class="profile-menu-arrow">→</span>
         </a>
@@ -633,6 +633,35 @@
         </div>
       </div>
 
+    </div>
+
+    <!-- 我的任务页 — 由路由 #my-tasks 显示 -->
+    <div id="my-tasks-page" class="my-tasks-container hidden">
+      <header class="my-tasks-header">
+        <a href="#profile" class="my-tasks-back-btn" aria-label="Back">←</a>
+        <h1 class="my-tasks-title" data-i18n="mt_page_title">我的任务</h1>
+      </header>
+
+      <div id="mt-login-required" class="my-tasks-login hidden">
+        <p data-i18n="mt_login_required">请先登录查看任务</p>
+        <a href="#home" class="my-tasks-home-btn" data-i18n="mt_btn_home">去任务大厅</a>
+      </div>
+
+      <div id="mt-main-content" class="my-tasks-main hidden">
+        <div class="my-tasks-tabs" role="tablist">
+          <button type="button" id="mt-tab-active" class="my-tasks-tab my-tasks-tab-active" data-tab="active" data-i18n="mt_tab_active">进行中</button>
+          <button type="button" id="mt-tab-completed" class="my-tasks-tab" data-tab="completed" data-i18n="mt_tab_completed">已完成</button>
+          <button type="button" id="mt-tab-expired" class="my-tasks-tab" data-tab="expired" data-i18n="mt_tab_expired">已失效</button>
+        </div>
+
+        <div id="mt-loading" class="my-tasks-loading hidden" data-i18n="mt_loading">加载中...</div>
+        <div id="mt-task-list" class="my-tasks-list"></div>
+
+        <div id="mt-empty-state" class="my-tasks-empty hidden">
+          <p id="mt-empty-text" class="my-tasks-empty-text"></p>
+          <a href="#home" class="my-tasks-home-btn" data-i18n="mt_btn_home">去任务大厅</a>
+        </div>
+      </div>
     </div>
 
     <!-- 我的分红页 — 由路由 #dividends 显示 -->
