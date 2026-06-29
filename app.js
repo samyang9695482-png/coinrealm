@@ -3038,6 +3038,7 @@ window.addEventListener('hashchange', handleRoute);
   var MAX_SCREENSHOT_FILES = 3;
   var MAX_SCREENSHOT_SIZE = 5 * 1024 * 1024;
   var ALLOWED_SCREENSHOT_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
+  var SCREENSHOTS_BUCKET = 'screenshots';
   var activeSubmitContext = null;
   var currentSubmissionRecord = null;
 
@@ -3123,6 +3124,40 @@ window.addEventListener('hashchange', handleRoute);
     return userId + '_' + Date.now() + '_' + safeName;
   }
 
+  function isScreenshotPublicUrl(url) {
+    if (!url) return false;
+    return /\/storage\/v1\/object\/public\/screenshots\//i.test(String(url));
+  }
+
+  function buildScreenshotPublicUrl(storagePath) {
+    if (!storagePath) return '';
+
+    var path = String(storagePath).replace(/^\/+/, '');
+    if (window.supabase && window.supabase.storage) {
+      var urlResult = window.supabase.storage.from(SCREENSHOTS_BUCKET).getPublicUrl(path);
+      var publicUrl = urlResult.data && urlResult.data.publicUrl;
+      if (publicUrl && isScreenshotPublicUrl(publicUrl)) {
+        return publicUrl;
+      }
+    }
+
+    var baseUrl = window.SUPABASE_URL || '';
+    if (!baseUrl) return '';
+    return baseUrl.replace(/\/$/, '') + '/storage/v1/object/public/' + SCREENSHOTS_BUCKET + '/' + path;
+  }
+
+  function normalizeScreenshotPublicUrl(value) {
+    if (!value) return '';
+    var str = String(value).trim();
+    if (!str) return '';
+
+    if (/^https?:\/\//i.test(str)) {
+      return isScreenshotPublicUrl(str) ? str : '';
+    }
+
+    return buildScreenshotPublicUrl(str);
+  }
+
   async function uploadScreenshotFile(file) {
     if (!window.supabase) {
       alert(stT('st_alert_upload_fail') + 'Supabase unavailable');
@@ -3137,7 +3172,7 @@ window.addEventListener('hashchange', handleRoute);
 
     var storagePath = buildScreenshotStoragePath(userId, file.name);
     var uploadResult = await window.supabase.storage
-      .from('screenshots')
+      .from(SCREENSHOTS_BUCKET)
       .upload(storagePath, file, {
         contentType: file.type || undefined,
         upsert: false
@@ -3148,17 +3183,17 @@ window.addEventListener('hashchange', handleRoute);
       return null;
     }
 
-    var urlResult = window.supabase.storage.from('screenshots').getPublicUrl(storagePath);
-    var publicUrl = urlResult.data && urlResult.data.publicUrl;
-    if (!publicUrl) {
-      alert(stT('st_alert_upload_fail'));
+    var uploadedPath = (uploadResult.data && uploadResult.data.path) || storagePath;
+    var publicUrl = buildScreenshotPublicUrl(uploadedPath);
+    if (!publicUrl || !isScreenshotPublicUrl(publicUrl)) {
+      alert(stT('st_alert_upload_fail') + 'Invalid public URL');
       return null;
     }
 
     return {
       name: file.name,
       url: publicUrl,
-      path: storagePath
+      path: uploadedPath
     };
   }
 
@@ -3551,7 +3586,9 @@ window.addEventListener('hashchange', handleRoute);
           }
 
           var screenshotUrls = uploadedFiles.map(function (item) {
-            return item.url;
+            return normalizeScreenshotPublicUrl(item.url || item.path);
+          }).filter(function (url) {
+            return !!url && isScreenshotPublicUrl(url);
           });
 
           var updateResult = await window.supabase
