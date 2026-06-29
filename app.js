@@ -463,7 +463,6 @@ function buildTaskInsertPayload(userId, fields) {
     var payload = {
         publisher_id: userId,
         title: fields.title,
-        task_type: fields.type,
         type: fields.type,
         description: fields.description,
         requirements: fields.requirements,
@@ -7757,7 +7756,6 @@ window.addEventListener('hashchange', handleRoute);
     var payload = {
       publisher_id: userId,
       title: title,
-      task_type: type,
       type: type,
       description: description,
       requirements: requirements,
