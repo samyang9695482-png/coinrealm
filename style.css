@@ -2607,11 +2607,14 @@ img {
     border-radius: 8px;
     padding: 20px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    cursor: pointer;
     transition: box-shadow 0.25s ease, transform 0.25s ease;
 }
 
-.publish-mgmt-card:hover {
+.publish-mgmt-card-has-pending {
+    cursor: pointer;
+}
+
+.publish-mgmt-card-has-pending:hover {
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
     transform: translateY(-1px);
 }
@@ -2682,13 +2685,23 @@ img {
 }
 
 .pm-task-status-active {
+    background: #f6ffed;
+    color: #52c41a;
+}
+
+.pm-task-status-paused {
+    background: #fff7e6;
+    color: #fa8c16;
+}
+
+.pm-task-status-completed {
     background: #e6f4ff;
     color: #1677ff;
 }
 
-.pm-task-status-completed {
-    background: #f6ffed;
-    color: #52c41a;
+.pm-task-status-promoted {
+    background: #e6f4ff;
+    color: #1677ff;
 }
 
 .pm-task-status-cancelled {
@@ -2751,7 +2764,58 @@ img {
 }
 
 .publish-mgmt-card-actions {
-    margin-top: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid #f0f0f0;
+}
+
+.pm-action-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+    border-radius: 4px;
+    border: 1px solid #d9d9d9;
+    background: #fff;
+    color: #333;
+    cursor: pointer;
+    line-height: 1.4;
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.pm-action-btn:hover {
+    border-color: #f0b90b;
+    color: #1a1a2e;
+}
+
+.pm-action-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: none;
+    background: none;
+    padding: 4px 0;
+    color: #ff4d4f;
+    font-weight: 500;
+}
+
+.pm-action-link:hover {
+    color: #cf1322;
+    border: none;
+    background: none;
+}
+
+.pm-action-delete {
+    border-color: #ffccc7;
+    color: #ff4d4f;
+}
+
+.pm-action-delete:hover {
+    background: #fff1f0;
+    border-color: #ff4d4f;
+    color: #cf1322;
 }
 
 .publish-mgmt-delete-btn {
@@ -2766,6 +2830,130 @@ img {
 
 .publish-mgmt-delete-btn:hover {
     color: #cf1322;
+}
+
+.pm-action-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 3600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pm-action-modal.hidden {
+    display: none;
+}
+
+.pm-action-modal-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+}
+
+.pm-action-modal-card {
+    position: relative;
+    z-index: 1;
+    width: min(440px, 92vw);
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+}
+
+.pm-action-modal-title {
+    margin: 0 0 8px;
+    font-size: 18px;
+    font-weight: 700;
+    color: #1a1a2e;
+}
+
+.pm-action-modal-desc {
+    margin: 0 0 16px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #666;
+}
+
+.pm-action-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border: 1px solid #d9d9d9;
+    border-radius: 8px;
+    font-size: 14px;
+    margin-bottom: 8px;
+}
+
+.pm-action-input:focus {
+    outline: none;
+    border-color: #f0b90b;
+}
+
+.pm-action-hint {
+    margin: 0 0 12px;
+    font-size: 13px;
+    color: #888;
+}
+
+.pm-action-modal-error {
+    margin: 0 0 12px;
+    font-size: 13px;
+    color: #ff4d4f;
+}
+
+.pm-action-modal-error.hidden {
+    display: none;
+}
+
+.pm-action-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.pm-action-cancel-btn,
+.pm-action-confirm-btn {
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    border: none;
+}
+
+.pm-action-cancel-btn {
+    background: #f5f5f5;
+    color: #333;
+}
+
+.pm-action-confirm-btn {
+    background: #f0b90b;
+    color: #1a1a2e;
+    font-weight: 600;
+}
+
+.pm-pin-package-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.pm-pin-package-btn {
+    flex: 1;
+    min-width: 100px;
+    padding: 12px 10px;
+    border: 1px solid #d9d9d9;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.pm-pin-package-btn.selected {
+    border-color: #f0b90b;
+    background: #fffef5;
 }
 
 .pm-delete-modal {

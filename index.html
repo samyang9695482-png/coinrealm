@@ -680,6 +680,59 @@
           </div>
         </div>
       </div>
+
+      <div id="pm-pin-modal" class="pm-action-modal hidden" aria-hidden="true">
+        <div class="pm-action-modal-overlay"></div>
+        <div class="pm-action-modal-card">
+          <h3 class="pm-action-modal-title" data-i18n="pm_pin_title">置顶任务</h3>
+          <p class="pm-action-modal-desc" data-i18n="pm_pin_desc">选择置顶套餐，支付 CRLM 后任务将展示在首页置顶区。</p>
+          <div class="pm-pin-package-group">
+            <button type="button" class="pm-pin-package-btn" data-days="1" data-price="100">
+              <span data-i18n="pm_pin_1d">1天</span> 100 CRLM
+            </button>
+            <button type="button" class="pm-pin-package-btn" data-days="7" data-price="500">
+              <span data-i18n="pm_pin_7d">7天</span> 500 CRLM
+            </button>
+            <button type="button" class="pm-pin-package-btn" data-days="30" data-price="2000">
+              <span data-i18n="pm_pin_30d">30天</span> 2000 CRLM
+            </button>
+          </div>
+          <p id="pm-pin-error" class="pm-action-modal-error hidden"></p>
+          <div class="pm-action-modal-actions">
+            <button type="button" id="pm-pin-cancel" class="pm-action-cancel-btn" data-i18n="pm_btn_cancel">取消</button>
+            <button type="button" id="pm-pin-confirm" class="pm-action-confirm-btn" data-i18n="pm_btn_confirm_pin">确认置顶</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="pm-boost-modal" class="pm-action-modal hidden" aria-hidden="true">
+        <div class="pm-action-modal-overlay"></div>
+        <div class="pm-action-modal-card">
+          <h3 class="pm-action-modal-title" data-i18n="pm_boost_title">追加奖励</h3>
+          <p class="pm-action-modal-desc" data-i18n="pm_boost_desc">输入要追加的奖励金额，系统将额外扣除 20% 作为押金。</p>
+          <input type="number" id="pm-boost-input" class="pm-action-input" min="0" step="0.01" data-placeholder="pm_boost_ph">
+          <p id="pm-boost-hint" class="pm-action-hint"></p>
+          <p id="pm-boost-error" class="pm-action-modal-error hidden"></p>
+          <div class="pm-action-modal-actions">
+            <button type="button" id="pm-boost-cancel" class="pm-action-cancel-btn" data-i18n="pm_btn_cancel">取消</button>
+            <button type="button" id="pm-boost-confirm" class="pm-action-confirm-btn" data-i18n="pm_btn_confirm">确认</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="pm-slots-modal" class="pm-action-modal hidden" aria-hidden="true">
+        <div class="pm-action-modal-overlay"></div>
+        <div class="pm-action-modal-card">
+          <h3 class="pm-action-modal-title" data-i18n="pm_slots_title">增加名额</h3>
+          <p class="pm-action-modal-desc" data-i18n="pm_slots_desc">输入要增加的名额数量（≥1）。</p>
+          <input type="number" id="pm-slots-input" class="pm-action-input" min="1" step="1" data-placeholder="pm_slots_ph">
+          <p id="pm-slots-error" class="pm-action-modal-error hidden"></p>
+          <div class="pm-action-modal-actions">
+            <button type="button" id="pm-slots-cancel" class="pm-action-cancel-btn" data-i18n="pm_btn_cancel">取消</button>
+            <button type="button" id="pm-slots-confirm" class="pm-action-confirm-btn" data-i18n="pm_btn_confirm">确认</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 我的分红页 — 由路由 #dividends 显示 -->

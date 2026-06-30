@@ -4785,7 +4785,13 @@ window.addEventListener('hashchange', handleRoute);
   var publishedTasks = [];
   var pendingDeleteTask = null;
   var deleteInProgress = false;
+  var pendingPinTask = null;
+  var selectedPinPackage = null;
+  var pendingBoostTask = null;
+  var pendingSlotsTask = null;
+  var pmActionInProgress = false;
   var PM_PLATFORM_COMMISSION = 0.15;
+  var PM_DEPOSIT_RATE = 0.2;
 
   var publishMgmtTranslations = {
     zh: {
@@ -4796,17 +4802,53 @@ window.addEventListener('hashchange', handleRoute);
       pm_btn_create: '去发布任务',
       pm_btn_delete: '删除',
       pm_btn_cancel: '取消',
+      pm_btn_confirm: '确认',
       pm_btn_confirm_delete: '确定删除',
+      pm_btn_confirm_pin: '确认置顶',
+      pm_btn_pause: '暂停',
+      pm_btn_resume: '恢复',
+      pm_btn_pin: '置顶',
+      pm_btn_unpin: '取消置顶',
+      pm_btn_boost: '加价',
+      pm_btn_add_slots: '增加名额',
       pm_delete_confirm: '确定要删除该任务吗？剩余资金将退回你的账户。',
+      pm_pause_confirm: '确定要暂停该任务吗？暂停后用户将无法继续领取。',
+      pm_resume_confirm: '确定要恢复该任务吗？恢复后用户可继续领取。',
+      pm_pin_title: '置顶任务',
+      pm_pin_desc: '选择置顶套餐，支付 CRLM 后任务将展示在首页置顶区。',
+      pm_pin_1d: '1天',
+      pm_pin_7d: '7天',
+      pm_pin_30d: '30天',
+      pm_boost_title: '追加奖励',
+      pm_boost_desc: '输入要追加的奖励金额，系统将额外扣除 20% 作为押金。',
+      pm_boost_ph: '请输入追加金额',
+      pm_boost_hint: '需扣除：{amount} {unit}（含 20% 押金）',
+      pm_slots_title: '增加名额',
+      pm_slots_desc: '输入要增加的名额数量（≥1）。',
+      pm_slots_ph: '请输入增加名额',
       pm_delete_success_refund: '任务已删除，{unit} 已退回你的账户。退款金额：{amount}（按剩余名额计算，已扣除15%佣金）',
       pm_delete_success_full: '任务已删除，该任务已满员，无需退款。',
       pm_delete_success_simple: '任务已删除。',
       pm_delete_fail: '操作失败，请稍后重试',
+      pm_action_fail: '操作失败，请稍后重试',
+      pm_action_success_pause: '任务已暂停。',
+      pm_action_success_resume: '任务已恢复。',
+      pm_action_success_pin: '置顶成功，任务将在首页置顶区展示。',
+      pm_action_success_unpin: '已取消置顶。',
+      pm_action_success_boost: '成功追加 {amount} {unit} 奖励，任务总奖励已更新。',
+      pm_action_success_slots: '成功增加 {added} 个名额，当前总名额为 {total}。',
+      pm_alert_invalid_amount: '请输入有效的追加金额',
+      pm_alert_invalid_slots: '请输入有效的名额数量（≥1）',
+      pm_alert_balance: '余额不足，请先充值',
+      pm_alert_select_pin: '请选择置顶套餐',
+      pm_alert_slots_exceed: '增加名额后单人奖励不能为 0',
       pm_label_deadline: '截止时间',
       pm_label_slots: '剩余名额',
       pm_status_active: '进行中',
+      pm_status_paused: '已暂停',
       pm_status_completed: '已完成',
       pm_status_cancelled: '已取消',
+      pm_status_promoted: '已置顶 · 剩余 {days} 天',
       pm_pending_review: '待审核 {count} 条',
       pm_load_fail: '加载失败：'
     },
@@ -4818,17 +4860,53 @@ window.addEventListener('hashchange', handleRoute);
       pm_btn_create: 'Create a Task',
       pm_btn_delete: 'Delete',
       pm_btn_cancel: 'Cancel',
+      pm_btn_confirm: 'Confirm',
       pm_btn_confirm_delete: 'Confirm Delete',
+      pm_btn_confirm_pin: 'Confirm Pin',
+      pm_btn_pause: 'Pause',
+      pm_btn_resume: 'Resume',
+      pm_btn_pin: 'Pin',
+      pm_btn_unpin: 'Unpin',
+      pm_btn_boost: 'Boost Reward',
+      pm_btn_add_slots: 'Add Slots',
       pm_delete_confirm: 'Delete this task? Remaining funds will be refunded to your account.',
+      pm_pause_confirm: 'Pause this task? Users will not be able to claim it while paused.',
+      pm_resume_confirm: 'Resume this task? Users will be able to claim it again.',
+      pm_pin_title: 'Pin Task',
+      pm_pin_desc: 'Choose a pin package. Pay CRLM to feature this task on the homepage.',
+      pm_pin_1d: '1 Day',
+      pm_pin_7d: '7 Days',
+      pm_pin_30d: '30 Days',
+      pm_boost_title: 'Boost Reward',
+      pm_boost_desc: 'Enter the additional reward amount. An extra 20% deposit will be charged.',
+      pm_boost_ph: 'Enter additional amount',
+      pm_boost_hint: 'Total charge: {amount} {unit} (includes 20% deposit)',
+      pm_slots_title: 'Add Slots',
+      pm_slots_desc: 'Enter how many slots to add (≥1).',
+      pm_slots_ph: 'Enter slots to add',
       pm_delete_success_refund: 'Task deleted. {amount} {unit} refunded to your account (remaining slots, 15% commission deducted).',
       pm_delete_success_full: 'Task deleted. The task was full; no refund needed.',
       pm_delete_success_simple: 'Task deleted.',
       pm_delete_fail: 'Operation failed. Please try again later.',
+      pm_action_fail: 'Operation failed. Please try again later.',
+      pm_action_success_pause: 'Task paused.',
+      pm_action_success_resume: 'Task resumed.',
+      pm_action_success_pin: 'Task pinned successfully.',
+      pm_action_success_unpin: 'Pin removed.',
+      pm_action_success_boost: 'Added {amount} {unit}. Total reward updated.',
+      pm_action_success_slots: 'Added {added} slots. Total slots: {total}.',
+      pm_alert_invalid_amount: 'Please enter a valid amount',
+      pm_alert_invalid_slots: 'Please enter a valid slot count (≥1)',
+      pm_alert_balance: 'Insufficient balance',
+      pm_alert_select_pin: 'Please select a pin package',
+      pm_alert_slots_exceed: 'Per-slot reward cannot be zero after adding slots',
       pm_label_deadline: 'Deadline',
       pm_label_slots: 'Slots left',
       pm_status_active: 'Active',
+      pm_status_paused: 'Paused',
       pm_status_completed: 'Completed',
       pm_status_cancelled: 'Cancelled',
+      pm_status_promoted: 'Pinned · {days} days left',
       pm_pending_review: '{count} pending review',
       pm_load_fail: 'Load failed: '
     }
@@ -4923,6 +5001,9 @@ window.addEventListener('hashchange', handleRoute);
     if (status === 'active') {
       return { labelKey: 'pm_status_active', className: 'pm-task-status-active' };
     }
+    if (status === 'paused') {
+      return { labelKey: 'pm_status_paused', className: 'pm-task-status-paused' };
+    }
     if (status === 'completed') {
       return { labelKey: 'pm_status_completed', className: 'pm-task-status-completed' };
     }
@@ -4932,10 +5013,23 @@ window.addEventListener('hashchange', handleRoute);
     return { labelKey: 'pm_status_active', className: 'pm-task-status-active' };
   }
 
+  function getPromotionDaysLeft(task) {
+    if (!task || !task.is_promoted || !task.promotion_expire_at) return 0;
+    var expire = new Date(task.promotion_expire_at);
+    if (Number.isNaN(expire.getTime())) return 0;
+    var diff = expire.getTime() - Date.now();
+    if (diff <= 0) return 0;
+    return Math.ceil(diff / (24 * 60 * 60 * 1000));
+  }
+
+  function isTaskPromoted(task) {
+    return !!(task && task.is_promoted && getPromotionDaysLeft(task) > 0);
+  }
+
   function isSubmissionPendingReview(submission) {
     if (!submission) return false;
+    if (submission.status === 'pending') return true;
     if (submission.status === 'submitted') return true;
-    if (submission.status === 'pending' && submission.submitted_at) return true;
     return false;
   }
 
@@ -4985,6 +5079,48 @@ window.addEventListener('hashchange', handleRoute);
     });
   }
 
+  function buildPublishMgmtActionsHtml(task, item) {
+    var taskId = escapeHtml(task.id);
+    var status = task.status || 'active';
+    var parts = [];
+
+    if (item.pendingReviewCount > 0) {
+      parts.push(
+        '<button type="button" class="pm-action-btn pm-action-link pm-pending-link" data-task-id="' + taskId + '">' +
+          '<span class="publish-mgmt-pending-dot" aria-hidden="true"></span>' +
+          '<span>' + escapeHtml(pmT('pm_pending_review', { count: item.pendingReviewCount })) + '</span>' +
+        '</button>'
+      );
+    }
+
+    if (status === 'active') {
+      parts.push('<button type="button" class="pm-action-btn pm-action-pause" data-task-id="' + taskId + '">' + escapeHtml(pmT('pm_btn_pause')) + '</button>');
+    } else if (status === 'paused') {
+      parts.push('<button type="button" class="pm-action-btn pm-action-resume" data-task-id="' + taskId + '">' + escapeHtml(pmT('pm_btn_resume')) + '</button>');
+    }
+
+    if (isTaskPromoted(task)) {
+      parts.push('<button type="button" class="pm-action-btn pm-action-unpin" data-task-id="' + taskId + '">' + escapeHtml(pmT('pm_btn_unpin')) + '</button>');
+    } else {
+      parts.push('<button type="button" class="pm-action-btn pm-action-pin" data-task-id="' + taskId + '">' + escapeHtml(pmT('pm_btn_pin')) + '</button>');
+    }
+
+    if (status === 'active' || status === 'paused') {
+      parts.push('<button type="button" class="pm-action-btn pm-action-boost" data-task-id="' + taskId + '">' + escapeHtml(pmT('pm_btn_boost')) + '</button>');
+    }
+
+    if ((status === 'active' || status === 'paused') && task.max_participants != null && task.max_participants !== '') {
+      parts.push('<button type="button" class="pm-action-btn pm-action-slots" data-task-id="' + taskId + '">' + escapeHtml(pmT('pm_btn_add_slots')) + '</button>');
+    }
+
+    if (canDeleteExpiredTask(task)) {
+      parts.push('<button type="button" class="pm-action-btn pm-action-delete publish-mgmt-delete-btn" data-task-id="' + taskId + '">' + escapeHtml(pmT('pm_btn_delete')) + '</button>');
+    }
+
+    if (!parts.length) return '';
+    return '<div class="publish-mgmt-card-actions">' + parts.join('') + '</div>';
+  }
+
   function buildPublishMgmtCardHtml(item) {
     var task = item.task;
     var title = escapeHtml(task.title || '');
@@ -5007,16 +5143,14 @@ window.addEventListener('hashchange', handleRoute);
       ? '<div class="publish-mgmt-card-media"><img class="publish-mgmt-card-image" src="' + escapeHtml(imageUrl) + '" alt=""' + taskImageErrorAttr() + '></div>'
       : '';
 
-    var pendingHtml = item.pendingReviewCount > 0
-      ? '<div class="publish-mgmt-pending">' +
-          '<span class="publish-mgmt-pending-dot" aria-hidden="true"></span>' +
-          '<span>' + escapeHtml(pmT('pm_pending_review', { count: item.pendingReviewCount })) + '</span>' +
-        '</div>'
+    var promotedBadge = isTaskPromoted(task)
+      ? '<span class="publish-mgmt-task-status pm-task-status-promoted">' +
+          escapeHtml(pmT('pm_status_promoted', { days: getPromotionDaysLeft(task) })) +
+        '</span>'
       : '';
 
-    var deleteBtnHtml = canDeleteExpiredTask(task)
-      ? '<button type="button" class="publish-mgmt-delete-btn" data-task-id="' + taskId + '">' + escapeHtml(pmT('pm_btn_delete')) + '</button>'
-      : '';
+    var cardClickableClass = item.pendingReviewCount > 0 ? ' publish-mgmt-card-has-pending' : '';
+    var actionsHtml = buildPublishMgmtActionsHtml(task, item);
 
     var bodyHtml =
       '<div class="publish-mgmt-card-body">' +
@@ -5024,16 +5158,17 @@ window.addEventListener('hashchange', handleRoute);
         '<div class="publish-mgmt-card-tags">' +
           '<span class="type-label label-' + escapeHtml(category) + '" data-i18n="' + typeLabelKey + '"></span>' +
           '<span class="publish-mgmt-task-status ' + statusMeta.className + '">' + escapeHtml(pmT(statusMeta.labelKey)) + '</span>' +
+          promotedBadge +
         '</div>' +
         '<div class="publish-mgmt-reward">' + reward + '</div>' +
         '<p class="publish-mgmt-meta">' + escapeHtml(pmT('pm_label_slots')) + '：' + escapeHtml(slotsText) + '</p>' +
         '<p class="publish-mgmt-meta">' + escapeHtml(pmT('pm_label_deadline')) + '：' + escapeHtml(formatPmDeadline(task.deadline)) + '</p>' +
-        pendingHtml +
-        (deleteBtnHtml ? '<div class="publish-mgmt-card-actions">' + deleteBtnHtml + '</div>' : '') +
+        actionsHtml +
       '</div>';
 
     return (
-      '<article class="publish-mgmt-card' + cardClass + '" data-task-id="' + taskId + '" role="button" tabindex="0">' +
+      '<article class="publish-mgmt-card' + cardClass + cardClickableClass + '" data-task-id="' + taskId + '"' +
+        (item.pendingReviewCount > 0 ? ' tabindex="0"' : '') + '>' +
         imageBlock +
         bodyHtml +
       '</article>'
@@ -5072,6 +5207,12 @@ window.addEventListener('hashchange', handleRoute);
       var key = el.getAttribute('data-i18n');
       if (publishMgmtTranslations[getLang()][key]) {
         el.textContent = pmT(key);
+      }
+    });
+    document.querySelectorAll('#publish-management-page [data-placeholder]').forEach(function (el) {
+      var key = el.getAttribute('data-placeholder');
+      if (publishMgmtTranslations[getLang()][key]) {
+        el.setAttribute('placeholder', pmT(key));
       }
     });
   }
@@ -5249,6 +5390,529 @@ window.addEventListener('hashchange', handleRoute);
     }
   }
 
+  function findPublishedTaskEntry(taskId) {
+    return publishedTasks.find(function (entry) {
+      return entry.task && String(entry.task.id) === String(taskId);
+    });
+  }
+
+  async function fetchOwnedTask(taskId, userId) {
+    if (!window.supabase || !taskId || !userId) return null;
+    var result = await window.supabase
+      .from('tasks')
+      .select('*')
+      .eq('id', taskId)
+      .eq('publisher_id', userId)
+      .maybeSingle();
+    if (result.error || !result.data) return null;
+    return result.data;
+  }
+
+  function showPmModalError(errorElId, message) {
+    var errorEl = document.getElementById(errorElId);
+    if (!errorEl) return;
+    errorEl.textContent = message;
+    errorEl.classList.remove('hidden');
+  }
+
+  function clearPmModalError(errorElId) {
+    var errorEl = document.getElementById(errorElId);
+    if (errorEl) {
+      errorEl.textContent = '';
+      errorEl.classList.add('hidden');
+    }
+  }
+
+  function closeAllPmModals() {
+    closeDeleteModal();
+    closePinModal();
+    closeBoostModal();
+    closeSlotsModal();
+  }
+
+  async function pauseTask(taskId) {
+    if (pmActionInProgress || !window.confirm(pmT('pm_pause_confirm'))) return;
+
+    pmActionInProgress = true;
+    try {
+      var userId = await getCurrentUserId();
+      if (!userId) {
+        alert(pmT('pm_login_required'));
+        return;
+      }
+
+      var task = await fetchOwnedTask(taskId, userId);
+      if (!task || (task.status || 'active') !== 'active') {
+        alert(pmT('pm_action_fail'));
+        return;
+      }
+
+      var updateResult = await window.supabase
+        .from('tasks')
+        .update({ status: 'paused' })
+        .eq('id', taskId)
+        .eq('publisher_id', userId);
+
+      if (updateResult.error) {
+        alert(pmT('pm_action_fail'));
+        return;
+      }
+
+      alert(pmT('pm_action_success_pause'));
+      await loadAndRenderPublishMgmt();
+    } finally {
+      pmActionInProgress = false;
+    }
+  }
+
+  async function resumeTask(taskId) {
+    if (pmActionInProgress || !window.confirm(pmT('pm_resume_confirm'))) return;
+
+    pmActionInProgress = true;
+    try {
+      var userId = await getCurrentUserId();
+      if (!userId) {
+        alert(pmT('pm_login_required'));
+        return;
+      }
+
+      var task = await fetchOwnedTask(taskId, userId);
+      if (!task || task.status !== 'paused') {
+        alert(pmT('pm_action_fail'));
+        return;
+      }
+
+      var updateResult = await window.supabase
+        .from('tasks')
+        .update({ status: 'active' })
+        .eq('id', taskId)
+        .eq('publisher_id', userId);
+
+      if (updateResult.error) {
+        alert(pmT('pm_action_fail'));
+        return;
+      }
+
+      alert(pmT('pm_action_success_resume'));
+      await loadAndRenderPublishMgmt();
+    } finally {
+      pmActionInProgress = false;
+    }
+  }
+
+  function openPinModal(task) {
+    pendingPinTask = task;
+    selectedPinPackage = null;
+    clearPmModalError('pm-pin-error');
+
+    document.querySelectorAll('#pm-pin-modal .pm-pin-package-btn').forEach(function (btn) {
+      btn.classList.remove('selected');
+    });
+
+    var modal = document.getElementById('pm-pin-modal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.setAttribute('aria-hidden', 'false');
+    }
+    applyPublishMgmtI18n();
+  }
+
+  function closePinModal() {
+    pendingPinTask = null;
+    selectedPinPackage = null;
+    clearPmModalError('pm-pin-error');
+    var modal = document.getElementById('pm-pin-modal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+    var confirmBtn = document.getElementById('pm-pin-confirm');
+    if (confirmBtn) confirmBtn.disabled = false;
+  }
+
+  async function confirmPinTask() {
+    if (pmActionInProgress || !pendingPinTask || !window.supabase) return;
+    if (!selectedPinPackage) {
+      showPmModalError('pm-pin-error', pmT('pm_alert_select_pin'));
+      return;
+    }
+
+    pmActionInProgress = true;
+    var confirmBtn = document.getElementById('pm-pin-confirm');
+    if (confirmBtn) confirmBtn.disabled = true;
+    clearPmModalError('pm-pin-error');
+
+    try {
+      var userId = await getCurrentUserId();
+      if (!userId) {
+        showPmModalError('pm-pin-error', pmT('pm_login_required'));
+        return;
+      }
+
+      var task = await fetchOwnedTask(pendingPinTask.id, userId);
+      if (!task) {
+        showPmModalError('pm-pin-error', pmT('pm_action_fail'));
+        return;
+      }
+
+      var price = Number(selectedPinPackage.price) || 0;
+      var days = Number(selectedPinPackage.days) || 0;
+      if (price <= 0 || days <= 0) {
+        showPmModalError('pm-pin-error', pmT('pm_alert_select_pin'));
+        return;
+      }
+
+      var userResult = await window.supabase
+        .from('users')
+        .select('crlm_balance')
+        .eq('id', userId)
+        .single();
+
+      if (userResult.error || !userResult.data) {
+        showPmModalError('pm-pin-error', pmT('pm_action_fail'));
+        return;
+      }
+
+      var currentBalance = parseFloat(userResult.data.crlm_balance) || 0;
+      if (currentBalance < price) {
+        showPmModalError('pm-pin-error', pmT('pm_alert_balance'));
+        return;
+      }
+
+      var expireAt = new Date();
+      expireAt.setDate(expireAt.getDate() + days);
+
+      var balanceResult = await window.supabase
+        .from('users')
+        .update({ crlm_balance: currentBalance - price })
+        .eq('id', userId);
+
+      if (balanceResult.error) {
+        showPmModalError('pm-pin-error', pmT('pm_action_fail'));
+        return;
+      }
+
+      var taskUpdateResult = await window.supabase
+        .from('tasks')
+        .update({
+          is_promoted: true,
+          promotion_expire_at: expireAt.toISOString()
+        })
+        .eq('id', task.id)
+        .eq('publisher_id', userId);
+
+      if (taskUpdateResult.error) {
+        await window.supabase
+          .from('users')
+          .update({ crlm_balance: currentBalance })
+          .eq('id', userId);
+        showPmModalError('pm-pin-error', pmT('pm_action_fail'));
+        return;
+      }
+
+      closePinModal();
+      alert(pmT('pm_action_success_pin'));
+      await loadAndRenderPublishMgmt();
+    } finally {
+      pmActionInProgress = false;
+      if (confirmBtn && pendingPinTask) {
+        confirmBtn.disabled = false;
+      }
+    }
+  }
+
+  async function unpinTask(taskId) {
+    if (pmActionInProgress) return;
+
+    pmActionInProgress = true;
+    try {
+      var userId = await getCurrentUserId();
+      if (!userId) {
+        alert(pmT('pm_login_required'));
+        return;
+      }
+
+      var task = await fetchOwnedTask(taskId, userId);
+      if (!task) {
+        alert(pmT('pm_action_fail'));
+        return;
+      }
+
+      var updateResult = await window.supabase
+        .from('tasks')
+        .update({
+          is_promoted: false,
+          promotion_expire_at: null
+        })
+        .eq('id', taskId)
+        .eq('publisher_id', userId);
+
+      if (updateResult.error) {
+        alert(pmT('pm_action_fail'));
+        return;
+      }
+
+      alert(pmT('pm_action_success_unpin'));
+      await loadAndRenderPublishMgmt();
+    } finally {
+      pmActionInProgress = false;
+    }
+  }
+
+  function openBoostModal(task) {
+    pendingBoostTask = task;
+    clearPmModalError('pm-boost-error');
+    var input = document.getElementById('pm-boost-input');
+    var hint = document.getElementById('pm-boost-hint');
+    if (input) input.value = '';
+    if (hint) hint.textContent = '';
+    var modal = document.getElementById('pm-boost-modal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.setAttribute('aria-hidden', 'false');
+    }
+    applyPublishMgmtI18n();
+  }
+
+  function closeBoostModal() {
+    pendingBoostTask = null;
+    clearPmModalError('pm-boost-error');
+    var modal = document.getElementById('pm-boost-modal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+    var confirmBtn = document.getElementById('pm-boost-confirm');
+    if (confirmBtn) confirmBtn.disabled = false;
+  }
+
+  function updateBoostHint() {
+    var hint = document.getElementById('pm-boost-hint');
+    var input = document.getElementById('pm-boost-input');
+    if (!hint || !input || !pendingBoostTask) return;
+
+    var appendAmount = parseFloat(input.value);
+    if (!appendAmount || appendAmount <= 0) {
+      hint.textContent = '';
+      return;
+    }
+
+    var unit = pendingBoostTask.reward_type || 'CRLM';
+    var totalCharge = appendAmount * (1 + PM_DEPOSIT_RATE);
+    hint.textContent = pmT('pm_boost_hint', {
+      amount: formatPmAmount(totalCharge),
+      unit: unit
+    });
+  }
+
+  async function confirmBoostTask() {
+    if (pmActionInProgress || !pendingBoostTask || !window.supabase) return;
+
+    pmActionInProgress = true;
+    var confirmBtn = document.getElementById('pm-boost-confirm');
+    if (confirmBtn) confirmBtn.disabled = true;
+    clearPmModalError('pm-boost-error');
+
+    try {
+      var input = document.getElementById('pm-boost-input');
+      var appendAmount = parseFloat(input && input.value);
+      if (!appendAmount || appendAmount <= 0) {
+        showPmModalError('pm-boost-error', pmT('pm_alert_invalid_amount'));
+        return;
+      }
+
+      var userId = await getCurrentUserId();
+      if (!userId) {
+        showPmModalError('pm-boost-error', pmT('pm_login_required'));
+        return;
+      }
+
+      var task = await fetchOwnedTask(pendingBoostTask.id, userId);
+      if (!task) {
+        showPmModalError('pm-boost-error', pmT('pm_action_fail'));
+        return;
+      }
+
+      var status = task.status || 'active';
+      if (status !== 'active' && status !== 'paused') {
+        showPmModalError('pm-boost-error', pmT('pm_action_fail'));
+        return;
+      }
+
+      var rewardType = task.reward_type || 'CRLM';
+      var balanceField = rewardType === 'USDT' ? 'usdt_balance' : 'crlm_balance';
+      var additionalDeposit = appendAmount * PM_DEPOSIT_RATE;
+      var totalCharge = appendAmount + additionalDeposit;
+
+      var userResult = await window.supabase
+        .from('users')
+        .select('crlm_balance, usdt_balance')
+        .eq('id', userId)
+        .single();
+
+      if (userResult.error || !userResult.data) {
+        showPmModalError('pm-boost-error', pmT('pm_action_fail'));
+        return;
+      }
+
+      var currentBalance = parseFloat(userResult.data[balanceField]) || 0;
+      if (currentBalance < totalCharge) {
+        showPmModalError('pm-boost-error', pmT('pm_alert_balance'));
+        return;
+      }
+
+      var oldReward = parseFloat(task.reward_amount) || 0;
+      var oldDeposit = parseFloat(task.deposit_amount) || 0;
+      var newReward = oldReward + appendAmount;
+      var newDeposit = oldDeposit + additionalDeposit;
+      var balanceUpdate = {};
+      balanceUpdate[balanceField] = currentBalance - totalCharge;
+
+      var balanceResult = await window.supabase
+        .from('users')
+        .update(balanceUpdate)
+        .eq('id', userId);
+
+      if (balanceResult.error) {
+        showPmModalError('pm-boost-error', pmT('pm_action_fail'));
+        return;
+      }
+
+      var taskUpdatePayload = {
+        reward_amount: newReward,
+        deposit_amount: newDeposit
+      };
+      if (task.stake_amount != null) {
+        taskUpdatePayload.stake_amount = newReward + newDeposit;
+      }
+
+      var taskUpdateResult = await window.supabase
+        .from('tasks')
+        .update(taskUpdatePayload)
+        .eq('id', task.id)
+        .eq('publisher_id', userId);
+
+      if (taskUpdateResult.error) {
+        var rollbackUpdate = {};
+        rollbackUpdate[balanceField] = currentBalance;
+        await window.supabase.from('users').update(rollbackUpdate).eq('id', userId);
+        showPmModalError('pm-boost-error', pmT('pm_action_fail'));
+        return;
+      }
+
+      closeBoostModal();
+      alert(pmT('pm_action_success_boost', {
+        amount: formatPmAmount(appendAmount),
+        unit: rewardType
+      }));
+      await loadAndRenderPublishMgmt();
+    } finally {
+      pmActionInProgress = false;
+      if (confirmBtn && pendingBoostTask) {
+        confirmBtn.disabled = false;
+      }
+    }
+  }
+
+  function openSlotsModal(task) {
+    pendingSlotsTask = task;
+    clearPmModalError('pm-slots-error');
+    var input = document.getElementById('pm-slots-input');
+    if (input) input.value = '';
+    var modal = document.getElementById('pm-slots-modal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.setAttribute('aria-hidden', 'false');
+    }
+    applyPublishMgmtI18n();
+  }
+
+  function closeSlotsModal() {
+    pendingSlotsTask = null;
+    clearPmModalError('pm-slots-error');
+    var modal = document.getElementById('pm-slots-modal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+    var confirmBtn = document.getElementById('pm-slots-confirm');
+    if (confirmBtn) confirmBtn.disabled = false;
+  }
+
+  async function confirmAddSlots() {
+    if (pmActionInProgress || !pendingSlotsTask || !window.supabase) return;
+
+    pmActionInProgress = true;
+    var confirmBtn = document.getElementById('pm-slots-confirm');
+    if (confirmBtn) confirmBtn.disabled = true;
+    clearPmModalError('pm-slots-error');
+
+    try {
+      var input = document.getElementById('pm-slots-input');
+      var addedSlots = parseInt(input && input.value, 10);
+      if (!addedSlots || addedSlots < 1) {
+        showPmModalError('pm-slots-error', pmT('pm_alert_invalid_slots'));
+        return;
+      }
+
+      var userId = await getCurrentUserId();
+      if (!userId) {
+        showPmModalError('pm-slots-error', pmT('pm_login_required'));
+        return;
+      }
+
+      var task = await fetchOwnedTask(pendingSlotsTask.id, userId);
+      if (!task) {
+        showPmModalError('pm-slots-error', pmT('pm_action_fail'));
+        return;
+      }
+
+      var status = task.status || 'active';
+      if (status !== 'active' && status !== 'paused') {
+        showPmModalError('pm-slots-error', pmT('pm_action_fail'));
+        return;
+      }
+
+      if (task.max_participants == null || task.max_participants === '') {
+        showPmModalError('pm-slots-error', pmT('pm_action_fail'));
+        return;
+      }
+
+      var oldMax = parseInt(task.max_participants, 10);
+      var rewardAmount = parseFloat(task.reward_amount) || 0;
+      var newMax = oldMax + addedSlots;
+      var perSlot = rewardAmount / newMax;
+
+      if (!oldMax || newMax <= 0 || perSlot <= 0) {
+        showPmModalError('pm-slots-error', pmT('pm_alert_slots_exceed'));
+        return;
+      }
+
+      var updateResult = await window.supabase
+        .from('tasks')
+        .update({ max_participants: newMax })
+        .eq('id', task.id)
+        .eq('publisher_id', userId);
+
+      if (updateResult.error) {
+        showPmModalError('pm-slots-error', pmT('pm_action_fail'));
+        return;
+      }
+
+      closeSlotsModal();
+      alert(pmT('pm_action_success_slots', {
+        added: addedSlots,
+        total: newMax
+      }));
+      await loadAndRenderPublishMgmt();
+    } finally {
+      pmActionInProgress = false;
+      if (confirmBtn && pendingSlotsTask) {
+        confirmBtn.disabled = false;
+      }
+    }
+  }
+
   function initPublishMgmtEvents() {
     if (publishMgmtInitialized) return;
     publishMgmtInitialized = true;
@@ -5256,24 +5920,65 @@ window.addEventListener('hashchange', handleRoute);
     var listEl = document.getElementById('pm-task-list');
     if (listEl) {
       listEl.addEventListener('click', function (e) {
-        if (e.target.closest('.publish-mgmt-delete-btn')) {
+        if (e.target.closest('.publish-mgmt-card-actions')) {
+          var actionBtn = e.target.closest('.pm-action-btn');
+          if (!actionBtn) return;
+
           e.stopPropagation();
-          var deleteBtn = e.target.closest('.publish-mgmt-delete-btn');
-          var taskId = deleteBtn.getAttribute('data-task-id');
-          var item = publishedTasks.find(function (entry) {
-            return entry.task && String(entry.task.id) === String(taskId);
-          });
-          if (item && item.task) openDeleteModal(item.task);
+          var taskId = actionBtn.getAttribute('data-task-id');
+          var entry = findPublishedTaskEntry(taskId);
+          if (!entry || !entry.task) return;
+
+          if (actionBtn.classList.contains('pm-pending-link')) {
+            navigateToReviewForTask(taskId);
+            return;
+          }
+          if (actionBtn.classList.contains('pm-action-pause')) {
+            pauseTask(taskId);
+            return;
+          }
+          if (actionBtn.classList.contains('pm-action-resume')) {
+            resumeTask(taskId);
+            return;
+          }
+          if (actionBtn.classList.contains('pm-action-pin')) {
+            openPinModal(entry.task);
+            return;
+          }
+          if (actionBtn.classList.contains('pm-action-unpin')) {
+            unpinTask(taskId);
+            return;
+          }
+          if (actionBtn.classList.contains('pm-action-boost')) {
+            openBoostModal(entry.task);
+            return;
+          }
+          if (actionBtn.classList.contains('pm-action-slots')) {
+            openSlotsModal(entry.task);
+            return;
+          }
+          if (actionBtn.classList.contains('publish-mgmt-delete-btn')) {
+            openDeleteModal(entry.task);
+          }
           return;
         }
-        var card = e.target.closest('.publish-mgmt-card');
-        if (!card || !listEl.contains(card)) return;
-        navigateToReviewForTask(card.getAttribute('data-task-id'));
+
+        var pendingLink = e.target.closest('.pm-pending-link');
+        if (pendingLink) {
+          navigateToReviewForTask(pendingLink.getAttribute('data-task-id'));
+          return;
+        }
+
+        var card = e.target.closest('.publish-mgmt-card-has-pending');
+        if (card && listEl.contains(card)) {
+          navigateToReviewForTask(card.getAttribute('data-task-id'));
+        }
       });
+
       listEl.addEventListener('keydown', function (e) {
-        if (e.target.closest('.publish-mgmt-delete-btn')) return;
         if (e.key !== 'Enter' && e.key !== ' ') return;
-        var card = e.target.closest('.publish-mgmt-card');
+        if (e.target.closest('.publish-mgmt-card-actions')) return;
+        var card = e.target.closest('.publish-mgmt-card-has-pending');
         if (!card || !listEl.contains(card)) return;
         e.preventDefault();
         navigateToReviewForTask(card.getAttribute('data-task-id'));
@@ -5286,8 +5991,52 @@ window.addEventListener('hashchange', handleRoute);
     if (deleteCancelBtn) deleteCancelBtn.addEventListener('click', closeDeleteModal);
     if (deleteConfirmBtn) deleteConfirmBtn.addEventListener('click', confirmDeleteExpiredTask);
     if (deleteModal) {
-      var overlay = deleteModal.querySelector('.pm-delete-modal-overlay');
-      if (overlay) overlay.addEventListener('click', closeDeleteModal);
+      var deleteOverlay = deleteModal.querySelector('.pm-delete-modal-overlay');
+      if (deleteOverlay) deleteOverlay.addEventListener('click', closeDeleteModal);
+    }
+
+    var pinCancelBtn = document.getElementById('pm-pin-cancel');
+    var pinConfirmBtn = document.getElementById('pm-pin-confirm');
+    var pinModal = document.getElementById('pm-pin-modal');
+    if (pinCancelBtn) pinCancelBtn.addEventListener('click', closePinModal);
+    if (pinConfirmBtn) pinConfirmBtn.addEventListener('click', confirmPinTask);
+    if (pinModal) {
+      var pinOverlay = pinModal.querySelector('.pm-action-modal-overlay');
+      if (pinOverlay) pinOverlay.addEventListener('click', closePinModal);
+      pinModal.querySelectorAll('.pm-pin-package-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          pinModal.querySelectorAll('.pm-pin-package-btn').forEach(function (b) {
+            b.classList.remove('selected');
+          });
+          btn.classList.add('selected');
+          selectedPinPackage = {
+            days: btn.getAttribute('data-days'),
+            price: btn.getAttribute('data-price')
+          };
+        });
+      });
+    }
+
+    var boostCancelBtn = document.getElementById('pm-boost-cancel');
+    var boostConfirmBtn = document.getElementById('pm-boost-confirm');
+    var boostInput = document.getElementById('pm-boost-input');
+    var boostModal = document.getElementById('pm-boost-modal');
+    if (boostCancelBtn) boostCancelBtn.addEventListener('click', closeBoostModal);
+    if (boostConfirmBtn) boostConfirmBtn.addEventListener('click', confirmBoostTask);
+    if (boostInput) boostInput.addEventListener('input', updateBoostHint);
+    if (boostModal) {
+      var boostOverlay = boostModal.querySelector('.pm-action-modal-overlay');
+      if (boostOverlay) boostOverlay.addEventListener('click', closeBoostModal);
+    }
+
+    var slotsCancelBtn = document.getElementById('pm-slots-cancel');
+    var slotsConfirmBtn = document.getElementById('pm-slots-confirm');
+    var slotsModal = document.getElementById('pm-slots-modal');
+    if (slotsCancelBtn) slotsCancelBtn.addEventListener('click', closeSlotsModal);
+    if (slotsConfirmBtn) slotsConfirmBtn.addEventListener('click', confirmAddSlots);
+    if (slotsModal) {
+      var slotsOverlay = slotsModal.querySelector('.pm-action-modal-overlay');
+      if (slotsOverlay) slotsOverlay.addEventListener('click', closeSlotsModal);
     }
   }
 
@@ -5297,7 +6046,12 @@ window.addEventListener('hashchange', handleRoute);
       appContentEl.innerHTML = APP_CONTENT_HTML;
       publishMgmtInitialized = false;
       pendingDeleteTask = null;
+      pendingPinTask = null;
+      selectedPinPackage = null;
+      pendingBoostTask = null;
+      pendingSlotsTask = null;
       deleteInProgress = false;
+      pmActionInProgress = false;
     }
   }
 
@@ -5314,7 +6068,7 @@ window.addEventListener('hashchange', handleRoute);
       await loadAndRenderPublishMgmt();
     } else {
       page.classList.add('hidden');
-      closeDeleteModal();
+      closeAllPmModals();
     }
   }
 
