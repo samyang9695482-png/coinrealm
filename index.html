@@ -264,24 +264,8 @@
 
       <!-- 8. 右下角悬浮按钮群 -->
       <div class="floating-actions">
-        <button type="button" id="daily-checkin-btn" class="float-btn checkin-btn" title="每日签到">签</button>
         <button type="button" class="float-btn post-task-btn" title="发布任务">+</button>
         <button id="back-to-top-btn" class="float-btn back-to-top hidden" title="回到顶部">↑</button>
-      </div>
-
-      <!-- 签到成功弹窗 -->
-      <div id="checkin-modal" class="checkin-modal hidden" aria-hidden="true">
-        <div class="checkin-modal-overlay"></div>
-        <div class="checkin-modal-card">
-          <div class="checkin-coin-fall" aria-hidden="true">🪙</div>
-          <h3 class="checkin-modal-title" data-i18n="checkin_success_title">签到成功</h3>
-          <p class="checkin-reward-line">
-            <span data-i18n="checkin_reward_label">获得奖励</span>
-            <strong id="checkin-reward-value" class="checkin-reward-value">0 CRLM</strong>
-          </p>
-          <p id="checkin-streak-line" class="checkin-streak-line"></p>
-          <button type="button" id="checkin-modal-close" class="checkin-modal-close" data-i18n="checkin_close">太棒了</button>
-        </div>
       </div>
 
       <!-- 9. 底部页脚 -->
@@ -970,6 +954,23 @@
           <button type="button" class="invite-share-btn invite-share-telegram" data-share="telegram">✈️ Telegram</button>
           <button type="button" class="invite-share-btn invite-share-discord" data-share="discord">👾 Discord</button>
         </div>
+      </div>
+
+      <!-- 每日挖矿 -->
+      <div class="invite-mining-section">
+        <div class="invite-mining-wrap">
+          <span id="invite-mining-halo" class="invite-mining-halo" aria-hidden="true"></span>
+          <button type="button" id="invite-mining-btn" class="invite-mining-btn">
+            <span id="invite-mining-label" data-i18n="iv_mining">挖矿</span>
+          </button>
+          <div id="invite-mining-particles" class="invite-mining-particles" aria-hidden="true"></div>
+        </div>
+        <p class="invite-mining-hint" data-i18n="iv_mining_hint">每日可挖矿一次，获得随机 CRLM 奖励</p>
+      </div>
+
+      <div id="mining-reward-toast" class="mining-reward-toast hidden" aria-hidden="true" role="status">
+        <p id="mining-reward-amount" class="mining-reward-amount">+500 CRLM</p>
+        <p id="mining-reward-streak" class="mining-reward-streak"></p>
       </div>
 
       <!-- 分红加成进度条 -->

@@ -380,7 +380,8 @@ const translations = {
         checkin_close: "太棒了",
         checkin_already: "今日已签到，已连续签到 {days} 天",
         checkin_login_required: "请先登录后再签到",
-        checkin_fail: "签到失败："
+        checkin_fail: "签到失败：",
+        mining_streak: "连续挖矿第 {days} 天"
     },
     en: {
         ads_banner: "Advertising Space (Web3 Ads)",
@@ -416,7 +417,8 @@ const translations = {
         checkin_close: "Awesome",
         checkin_already: "Already checked in today. Streak: {days} days",
         checkin_login_required: "Please sign in before checking in",
-        checkin_fail: "Check-in failed: "
+        checkin_fail: "Check-in failed: ",
+        mining_streak: "Mining streak: day {days}"
     }
 };
 
@@ -1217,6 +1219,8 @@ function renderTaskCards(tasks) {
 }
 
 var checkinInProgress = false;
+var miningCooldownUntil = 0;
+var miningToastTimer = null;
 
 function getLocalDateString(dayOffset) {
     var d = new Date();
@@ -1240,47 +1244,188 @@ function formatCheckinText(key, vars) {
     return text;
 }
 
-function showCheckinSuccessModal(rewardAmount, consecutiveDays) {
-    var modal = document.getElementById('checkin-modal');
-    var rewardEl = document.getElementById('checkin-reward-value');
-    var streakEl = document.getElementById('checkin-streak-line');
-    if (!modal || !rewardEl || !streakEl) return;
+function showMiningRewardToast(rewardAmount, consecutiveDays) {
+    var toast = document.getElementById('mining-reward-toast');
+    var rewardEl = document.getElementById('mining-reward-amount');
+    var streakEl = document.getElementById('mining-reward-streak');
+    if (!toast || !rewardEl || !streakEl) return;
 
-    rewardEl.textContent = rewardAmount.toLocaleString() + ' CRLM';
-    var streakText = formatCheckinText('checkin_streak', { days: consecutiveDays });
-    if (consecutiveDays >= 7) {
-        streakText += ' · ' + formatCheckinText('checkin_streak_bonus');
+    rewardEl.textContent = '+' + rewardAmount.toLocaleString() + ' CRLM';
+    streakEl.textContent = formatCheckinText('mining_streak', { days: consecutiveDays });
+
+    toast.classList.remove('hidden');
+    toast.setAttribute('aria-hidden', 'false');
+
+    if (miningToastTimer) {
+        clearTimeout(miningToastTimer);
     }
-    streakEl.textContent = streakText;
+    miningToastTimer = setTimeout(function () {
+        toast.classList.add('hidden');
+        toast.setAttribute('aria-hidden', 'true');
+    }, 2000);
+}
 
-    rewardEl.style.animation = 'none';
-    void rewardEl.offsetWidth;
-    rewardEl.style.animation = '';
+function resetMiningButtonAvailable() {
+    var btn = document.getElementById('invite-mining-btn');
+    var label = document.getElementById('invite-mining-label');
+    var halo = document.getElementById('invite-mining-halo');
+    if (!btn) return;
 
-    modal.classList.remove('hidden');
-    modal.setAttribute('aria-hidden', 'false');
-    applyLanguageStrings();
+    btn.classList.remove('invite-mining-done');
+    btn.disabled = false;
+    if (halo) {
+        halo.classList.remove('hidden');
+    }
+    if (label) {
+        label.setAttribute('data-i18n', 'iv_mining');
+        if (typeof window.getInviteText === 'function') {
+            label.textContent = window.getInviteText('iv_mining');
+        } else {
+            label.textContent = '挖矿';
+        }
+    }
+}
+
+function setMiningButtonMined(streak) {
+    var btn = document.getElementById('invite-mining-btn');
+    var label = document.getElementById('invite-mining-label');
+    var halo = document.getElementById('invite-mining-halo');
+    if (!btn) return;
+
+    btn.classList.add('invite-mining-done');
+    btn.disabled = true;
+    if (halo) {
+        halo.classList.add('hidden');
+    }
+    if (label) {
+        label.removeAttribute('data-i18n');
+        if (typeof window.getInviteText === 'function') {
+            label.textContent = window.getInviteText('iv_mined');
+        } else {
+            label.textContent = '已挖矿';
+        }
+    }
+}
+
+async function refreshMiningButtonState() {
+    var btn = document.getElementById('invite-mining-btn');
+    if (!btn) return;
+
+    resetMiningButtonAvailable();
+
+    if (!window.supabase) return;
+
+    var userId = await getCurrentUserId();
+    if (!userId) return;
+
+    try {
+        var today = getLocalDateString(0);
+        var todayResult = await window.supabase
+            .from('checkins')
+            .select('*')
+            .eq('user_id', userId)
+            .gte('checkin_date', today);
+
+        if (todayResult.error) return;
+
+        var todayRecords = (todayResult.data || []).filter(function (row) {
+            return String(row.checkin_date).slice(0, 10) === today;
+        });
+
+        if (todayRecords.length) {
+            setMiningButtonMined(todayRecords[0].consecutive_days || 1);
+        }
+    } catch (e) {
+        /* ignore */
+    }
+}
+
+function spawnMiningParticles() {
+    var container = document.getElementById('invite-mining-particles');
+    if (!container) return;
+
+    container.innerHTML = '';
+    var count = Math.floor(Math.random() * 4) + 5;
+    var colors = ['#f0b90b', '#f7a600', '#ff9800', '#ffd54f'];
+
+    for (var i = 0; i < count; i++) {
+        (function () {
+            var particle = document.createElement('span');
+            particle.className = 'mining-particle';
+            var angle = Math.random() * Math.PI * 2;
+            var distance = 100 + Math.random() * 50;
+            var size = 4 + Math.random() * 4;
+            particle.style.width = size + 'px';
+            particle.style.height = size + 'px';
+            particle.style.background = colors[Math.floor(Math.random() * colors.length)];
+            particle.style.setProperty('--tx', (Math.cos(angle) * distance).toFixed(1) + 'px');
+            particle.style.setProperty('--ty', (Math.sin(angle) * distance).toFixed(1) + 'px');
+            container.appendChild(particle);
+            setTimeout(function () {
+                if (particle.parentNode) {
+                    particle.parentNode.removeChild(particle);
+                }
+            }, 1000);
+        })();
+    }
+}
+
+function playMiningPressAnimation() {
+    var btn = document.getElementById('invite-mining-btn');
+    if (!btn) return;
+    btn.classList.remove('invite-mining-press');
+    void btn.offsetWidth;
+    btn.classList.add('invite-mining-press');
+    setTimeout(function () {
+        btn.classList.remove('invite-mining-press');
+    }, 400);
+}
+
+async function handleMiningButtonClick() {
+    var btn = document.getElementById('invite-mining-btn');
+    if (!btn || btn.disabled || btn.classList.contains('invite-mining-done')) return;
+    if (Date.now() < miningCooldownUntil) return;
+
+    miningCooldownUntil = Date.now() + 1500;
+    playMiningPressAnimation();
+
+    var result = await handleDailyCheckin();
+    if (result && result.ok) {
+        spawnMiningParticles();
+    }
+}
+
+function bindMiningEvents() {
+    var miningBtn = document.getElementById('invite-mining-btn');
+    if (miningBtn && !miningBtn.dataset.bound) {
+        miningBtn.dataset.bound = 'true';
+        miningBtn.addEventListener('click', handleMiningButtonClick);
+    }
+}
+
+function showCheckinSuccessModal(rewardAmount, consecutiveDays) {
+    showMiningRewardToast(rewardAmount, consecutiveDays);
 }
 
 function hideCheckinModal() {
-    var modal = document.getElementById('checkin-modal');
-    if (!modal) return;
-    modal.classList.add('hidden');
-    modal.setAttribute('aria-hidden', 'true');
+    var toast = document.getElementById('mining-reward-toast');
+    if (!toast) return;
+    toast.classList.add('hidden');
+    toast.setAttribute('aria-hidden', 'true');
 }
 
 async function handleDailyCheckin() {
-    if (checkinInProgress) return;
+    if (checkinInProgress) return { ok: false };
 
     if (!window.supabase) {
         alert(formatCheckinText('checkin_login_required'));
-        return;
+        return { ok: false };
     }
 
     var userId = await getCurrentUserId();
     if (!userId) {
         alert(formatCheckinText('checkin_login_required'));
-        return;
+        return { ok: false };
     }
 
     checkinInProgress = true;
@@ -1295,7 +1440,7 @@ async function handleDailyCheckin() {
 
         if (todayResult.error) {
             alert(formatCheckinText('checkin_fail') + todayResult.error.message);
-            return;
+            return { ok: false };
         }
 
         var todayRecords = (todayResult.data || []).filter(function (row) {
@@ -1304,8 +1449,8 @@ async function handleDailyCheckin() {
 
         if (todayRecords.length) {
             var existingStreak = todayRecords[0].consecutive_days || 1;
-            alert(formatCheckinText('checkin_already', { days: existingStreak }));
-            return;
+            setMiningButtonMined(existingStreak);
+            return { ok: false, already: true };
         }
 
         var baseReward = Math.floor(Math.random() * 401) + 100;
@@ -1335,7 +1480,7 @@ async function handleDailyCheckin() {
 
         if (userResult.error || !userResult.data) {
             alert(formatCheckinText('checkin_fail') + (userResult.error ? userResult.error.message : '无法读取用户余额'));
-            return;
+            return { ok: false };
         }
 
         var newBalance = (Number(userResult.data.crlm_balance) || 0) + finalReward;
@@ -1349,7 +1494,7 @@ async function handleDailyCheckin() {
 
         if (insertResult.error) {
             alert(formatCheckinText('checkin_fail') + insertResult.error.message);
-            return;
+            return { ok: false };
         }
 
         var updateResult = await window.supabase
@@ -1359,43 +1504,25 @@ async function handleDailyCheckin() {
 
         if (updateResult.error) {
             alert(formatCheckinText('checkin_fail') + updateResult.error.message);
-            return;
+            return { ok: false };
         }
 
-        showCheckinSuccessModal(finalReward, consecutiveDays);
+        showMiningRewardToast(finalReward, consecutiveDays);
+        setMiningButtonMined(consecutiveDays);
         writeBroadcast({
             user_id: userId,
             event_type: 'checkin',
             description: '完成每日签到，获得',
             reward_amount: finalReward
         });
+        return { ok: true, reward: finalReward, streak: consecutiveDays };
     } finally {
         checkinInProgress = false;
     }
 }
 
 function bindCheckinEvents() {
-    var checkinBtn = document.getElementById('daily-checkin-btn');
-    if (checkinBtn && !checkinBtn.dataset.bound) {
-        checkinBtn.dataset.bound = 'true';
-        checkinBtn.addEventListener('click', function () {
-            handleDailyCheckin();
-        });
-    }
-
-    var modal = document.getElementById('checkin-modal');
-    var closeBtn = document.getElementById('checkin-modal-close');
-    if (closeBtn && !closeBtn.dataset.bound) {
-        closeBtn.dataset.bound = 'true';
-        closeBtn.addEventListener('click', hideCheckinModal);
-    }
-    if (modal && !modal.dataset.bound) {
-        modal.dataset.bound = 'true';
-        var overlay = modal.querySelector('.checkin-modal-overlay');
-        if (overlay) {
-            overlay.addEventListener('click', hideCheckinModal);
-        }
-    }
+    bindMiningEvents();
 }
 
 function applyFiltersAndSort() {
@@ -1610,8 +1737,6 @@ function initHomePageLogic() {
                 });
             });
         }
-
-        bindCheckinEvents();
 
         var officialGrid = document.getElementById('official-recommend-grid');
         if (officialGrid) {
@@ -7933,7 +8058,10 @@ window.addEventListener('hashchange', handleRoute);
       iv_alert_poster: '海报生成功能即将上线！',
       iv_login_required: '请先登录查看邀请信息',
       iv_loading: '加载中...',
-      iv_no_friends: '暂无邀请好友'
+      iv_no_friends: '暂无邀请好友',
+      iv_mining: '挖矿',
+      iv_mined: '已挖矿',
+      iv_mining_hint: '每日可挖矿一次，获得随机 CRLM 奖励'
     },
     en: {
       iv_page_title: 'Invite Friends',
@@ -7967,7 +8095,10 @@ window.addEventListener('hashchange', handleRoute);
       iv_alert_poster: 'Poster generation coming soon!',
       iv_login_required: 'Please sign in to view invite info',
       iv_loading: 'Loading...',
-      iv_no_friends: 'No invited friends yet'
+      iv_no_friends: 'No invited friends yet',
+      iv_mining: 'Mine',
+      iv_mined: 'Mined',
+      iv_mining_hint: 'Mine once daily for a random CRLM reward'
     }
   };
 
@@ -7986,6 +8117,8 @@ window.addEventListener('hashchange', handleRoute);
     }
     return text;
   }
+
+  window.getInviteText = ivT;
 
   function formatNumber(num) {
     return String(num).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -8021,6 +8154,12 @@ window.addEventListener('hashchange', handleRoute);
         el.textContent = ivT(key);
       }
     });
+
+    var miningBtn = document.getElementById('invite-mining-btn');
+    var miningLabel = document.getElementById('invite-mining-label');
+    if (miningBtn && miningLabel && miningBtn.classList.contains('invite-mining-done')) {
+      miningLabel.textContent = ivT('iv_mined');
+    }
   }
 
   function calcInviteBonus(count) {
@@ -8421,6 +8560,8 @@ window.addEventListener('hashchange', handleRoute);
         alert(ivT('iv_alert_poster'));
       });
     }
+
+    bindMiningEvents();
   }
 
   function renderInvitePage() {
@@ -8428,6 +8569,9 @@ window.addEventListener('hashchange', handleRoute);
     applyInviteI18n();
     updateSortTabsUI();
     updateRulesUI();
+    refreshMiningButtonState().then(function () {
+      applyInviteI18n();
+    });
 
     if (inviteDataLoading && !inviteDataLoaded) {
       var codeEl = document.getElementById('iv-invite-code');
