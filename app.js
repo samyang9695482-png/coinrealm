@@ -353,7 +353,25 @@ const translations = {
         broadcast_empty: "暂无动态",
         guide_text: "欢迎来到 CoinRealm！选择一个任务，开始赚取 CRLM 吧。",
         search_placeholder: "搜索任务...",
+        nav_simple_tasks: "⚡ 简单任务",
+        simple_view_all: "查看更多 →",
+        st_page_title: "⚡ 简单任务",
+        st_page_subtitle: "一键完成，快速赚取 CRLM",
+        st_loading: "加载中...",
+        st_empty: "暂无简单任务，稍后再来看看吧",
+        st_btn_create: "发布简单任务",
+        st_btn_claim: "一键领取",
+        st_btn_claimed: "已领取",
+        st_btn_full: "已满员",
+        st_label_slots: "剩余名额",
+        st_label_deadline: "截止时间",
+        st_claim_success: "领取成功！等待系统自动验证。",
+        st_login_required: "请先登录后再领取",
+        st_already_claimed: "你已领取过该任务",
+        st_task_full: "任务名额已满",
+        st_claim_fail: "领取失败：",
         tag_all: "全部",
+        tag_simple: "简单",
         tag_official: "官方",
         tag_airdrop: "空投",
         tag_register: "注册",
@@ -367,6 +385,7 @@ const translations = {
         sort_rewards: "奖励最多",
         badge_official: "官方",
         badge_promo: "推广",
+        badge_simple_fast: "快速任务",
         text_slots: "剩余名额",
         text_days: "天后",
         btn_claim: "领取",
@@ -390,7 +409,25 @@ const translations = {
         broadcast_empty: "No activity yet",
         guide_text: "Welcome to CoinRealm! Select a task and start earning CRLM.",
         search_placeholder: "Search tasks...",
+        nav_simple_tasks: "⚡ Simple Tasks",
+        simple_view_all: "View all →",
+        st_page_title: "⚡ Simple Tasks",
+        st_page_subtitle: "Complete in one tap, earn CRLM fast",
+        st_loading: "Loading...",
+        st_empty: "No simple tasks yet. Check back later.",
+        st_btn_create: "Post a Simple Task",
+        st_btn_claim: "Claim Now",
+        st_btn_claimed: "Claimed",
+        st_btn_full: "Full",
+        st_label_slots: "Slots left",
+        st_label_deadline: "Deadline",
+        st_claim_success: "Claimed! Awaiting automatic verification.",
+        st_login_required: "Please sign in before claiming",
+        st_already_claimed: "You have already claimed this task",
+        st_task_full: "This task is full",
+        st_claim_fail: "Claim failed: ",
         tag_all: "All",
+        tag_simple: "Simple",
         tag_official: "Official",
         tag_airdrop: "Airdrop",
         tag_register: "Register",
@@ -404,6 +441,7 @@ const translations = {
         sort_rewards: "Most Rewards",
         badge_official: "Official",
         badge_promo: "Promo",
+        badge_simple_fast: "Quick Task",
         text_slots: "Slots left",
         text_days: "days left",
         btn_claim: "Claim",
@@ -485,6 +523,9 @@ function buildTaskInsertPayload(userId, fields) {
     };
     if (fields.imageUrl) {
         payload.image_url = fields.imageUrl;
+    }
+    if (fields.autoReview) {
+        payload.auto_review = true;
     }
     return payload;
 }
@@ -1001,6 +1042,7 @@ function getTypeLabelKey(task) {
     const type = getTaskField(task, ['task_type', 'type', 'category'], 'other');
     const map = {
         official: 'tag_official',
+        simple: 'tag_simple',
         airdrop: 'tag_airdrop',
         register: 'tag_register',
         trade: 'tag_trade',
@@ -1070,12 +1112,16 @@ function buildTaskCardHtml(task) {
     const daysLeft = calcDaysLeft(getTaskField(task, ['deadline', 'end_date', 'ends_at'], null));
     const isOfficial = !!task.is_official;
     const isPromo = !!task.is_promo;
+    const isSimple = category === 'simple';
 
     let badgeHtml = '';
+    if (isSimple) {
+        badgeHtml = '<span class="badge simple-task-badge" aria-hidden="true">⚡</span>';
+    }
     if (isOfficial) {
-        badgeHtml = '<span class="badge official-badge" data-i18n="badge_official">官方</span>';
+        badgeHtml += '<span class="badge official-badge" data-i18n="badge_official">官方</span>';
     } else if (isPromo) {
-        badgeHtml = '<span class="badge promo-badge" data-i18n="badge_promo">推广</span>';
+        badgeHtml += '<span class="badge promo-badge" data-i18n="badge_promo">推广</span>';
     }
 
     const publisherUser = getPublisherAvatarUser(task);
@@ -2627,7 +2673,10 @@ window.addEventListener('hashchange', handleRoute);
       ct_label_images: '任务图片',
       ct_ph_title: '请输入任务标题',
       ct_ph_desc: '请详细描述任务内容和要求',
+      ct_ph_desc_simple: '请描述简单的任务内容，如“关注XX账号”',
       ct_ph_req: '请输入任务要求',
+      ct_ph_req_simple: '请输入任务要求（纯文字）',
+      ct_type_simple: '简单任务',
       ct_ph_reward: '请输入奖励金额',
       ct_ph_slots: '请输入名额（留空则不限）',
       ct_type_other: '其他',
@@ -2652,6 +2701,7 @@ window.addEventListener('hashchange', handleRoute);
       ct_alert_image_size: '单张图片不能超过 5MB',
       ct_alert_upload_fail: '上传失败：',
       tag_all: '全部',
+      tag_simple: '简单',
       tag_airdrop: '空投',
       tag_register: '注册',
       tag_trade: '交易',
@@ -2673,7 +2723,10 @@ window.addEventListener('hashchange', handleRoute);
       ct_label_images: 'Task Images',
       ct_ph_title: 'Enter task title',
       ct_ph_desc: 'Describe the task content and requirements in detail',
+      ct_ph_desc_simple: 'Describe a simple task, e.g. "Follow @XX account"',
       ct_ph_req: 'Enter a requirement',
+      ct_ph_req_simple: 'Enter a text-only requirement',
+      ct_type_simple: 'Simple Task',
       ct_ph_reward: 'Enter reward amount',
       ct_ph_slots: 'Enter slots (leave empty for unlimited)',
       ct_type_other: 'Other',
@@ -2698,6 +2751,7 @@ window.addEventListener('hashchange', handleRoute);
       ct_alert_image_size: 'Each image must be 5MB or smaller',
       ct_alert_upload_fail: 'Upload failed: ',
       tag_all: 'All',
+      tag_simple: 'Simple',
       tag_airdrop: 'Airdrop',
       tag_register: 'Register',
       tag_trade: 'Trade',
@@ -3012,6 +3066,97 @@ window.addEventListener('hashchange', handleRoute);
     }
   }
 
+  function isSimpleTaskTypeSelected() {
+    var type = document.getElementById('ct-task-type');
+    return !!(type && type.value === 'simple');
+  }
+
+  function ensureDefaultRequirementRows() {
+    var list = document.getElementById('ct-requirements-list');
+    if (!list) return;
+
+    var rows = list.querySelectorAll('.create-task-req-row');
+    if (rows.length >= 3) {
+      rows.forEach(function (row) {
+        var deleteBtn = row.querySelector('.create-task-req-delete');
+        if (deleteBtn) deleteBtn.classList.remove('hidden');
+      });
+      return;
+    }
+
+    list.innerHTML = '';
+    for (var i = 0; i < 3; i++) {
+      var row = document.createElement('div');
+      row.className = 'create-task-req-row';
+      row.innerHTML =
+        '<input type="text" class="create-task-input create-task-req-input" data-placeholder="ct_ph_req" placeholder="' + ctT('ct_ph_req') + '">' +
+        '<button type="button" class="create-task-req-delete" aria-label="Delete">&times;</button>';
+      list.appendChild(row);
+      bindRequirementRow(row);
+    }
+  }
+
+  function simplifyRequirementListForSimple() {
+    var list = document.getElementById('ct-requirements-list');
+    if (!list) return;
+
+    var firstValue = '';
+    var firstInput = list.querySelector('.create-task-req-input');
+    if (firstInput) firstValue = firstInput.value;
+
+    list.innerHTML = '';
+    var row = document.createElement('div');
+    row.className = 'create-task-req-row create-task-req-row-simple';
+    row.innerHTML =
+      '<input type="text" class="create-task-input create-task-req-input" data-placeholder="ct_ph_req_simple" placeholder="' + ctT('ct_ph_req_simple') + '">' +
+      '<button type="button" class="create-task-req-delete hidden" aria-label="Delete">&times;</button>';
+    list.appendChild(row);
+    bindRequirementRow(row);
+
+    var input = row.querySelector('.create-task-req-input');
+    if (input && firstValue) input.value = firstValue;
+  }
+
+  function updateCreateTaskTemplate() {
+    var simple = isSimpleTaskTypeSelected();
+    var formCard = document.querySelector('#create-task-page .create-task-form-card');
+    if (formCard) {
+      formCard.classList.toggle('create-task-form-simple', simple);
+    }
+
+    ['ct-field-images', 'ct-field-reward-type', 'ct-field-proof'].forEach(function (fieldId) {
+      var field = document.getElementById(fieldId);
+      if (field) field.classList.toggle('hidden', simple);
+    });
+
+    var addReqBtn = document.getElementById('ct-add-req-btn');
+    if (addReqBtn) addReqBtn.classList.toggle('hidden', simple);
+
+    var deadlineHint = document.querySelector('.create-task-deadline-hint');
+    if (deadlineHint) deadlineHint.classList.toggle('hidden', simple);
+
+    var desc = document.getElementById('ct-task-desc');
+    if (desc) {
+      var descKey = simple ? 'ct_ph_desc_simple' : 'ct_ph_desc';
+      desc.setAttribute('data-placeholder', descKey);
+      desc.placeholder = ctT(descKey);
+    }
+
+    if (simple) {
+      simplifyRequirementListForSimple();
+      var crlmRadio = document.querySelector('input[name="ct-reward-type"][value="CRLM"]');
+      if (crlmRadio) crlmRadio.checked = true;
+      ctUploadedImages = [];
+      renderCtImageList();
+    } else {
+      ensureDefaultRequirementRows();
+    }
+
+    updateStakeHint();
+    updateUnitPriceHint();
+    updateSubmitButtonState();
+  }
+
   function resetCreateTaskForm() {
     var title = document.getElementById('ct-task-title');
     var type = document.getElementById('ct-task-type');
@@ -3053,6 +3198,7 @@ window.addEventListener('hashchange', handleRoute);
     updateStakeHint();
     updateUnitPriceHint();
     updateSubmitButtonState();
+    updateCreateTaskTemplate();
     applyCreateTaskI18n();
   }
 
@@ -3063,9 +3209,10 @@ window.addEventListener('hashchange', handleRoute);
     var reward = document.getElementById('ct-reward-amount');
     var deadline = document.getElementById('ct-deadline');
     var reqInputs = document.querySelectorAll('#ct-requirements-list .create-task-req-input');
+    var simple = isSimpleTaskTypeSelected();
 
     if (!title || !title.value.trim()) return false;
-    if (!type || !type.value) return false;
+    if (!type || !type.value || type.value === 'all') return false;
     if (!desc || !desc.value.trim()) return false;
     if (!reward || !reward.value.trim() || parseFloat(reward.value) <= 0) return false;
     if (!deadline || !deadline.value) return false;
@@ -3080,6 +3227,7 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   function getProofType() {
+    if (isSimpleTaskTypeSelected()) return 'none';
     var checked = document.querySelector('input[name="ct-proof-type"]:checked');
     return checked ? checked.value : 'text';
   }
@@ -3123,17 +3271,19 @@ window.addEventListener('hashchange', handleRoute);
         }
 
         var title = document.getElementById('ct-task-title').value.trim();
-        var type = document.getElementById('ct-task-type').value;
+        var typeSelect = document.getElementById('ct-task-type');
+        var simpleTask = typeSelect && typeSelect.value === 'simple';
+        var type = simpleTask ? 'simple' : typeSelect.value;
         var description = document.getElementById('ct-task-desc').value.trim();
         var requirements = collectRequirements();
-        var rewardType = getRewardType();
+        var rewardType = simpleTask ? 'CRLM' : getRewardType();
         var rewardAmount = parseFloat(document.getElementById('ct-reward-amount').value);
         var slotsVal = document.getElementById('ct-task-slots').value.trim();
         var maxParticipants = slotsVal ? parseInt(slotsVal, 10) : null;
         if (maxParticipants !== null && isNaN(maxParticipants)) maxParticipants = null;
         var deadline = document.getElementById('ct-deadline').value;
         var proofType = getProofType();
-        var imageUrl = ctUploadedImages.length ? ctUploadedImages[0].url : null;
+        var imageUrl = simpleTask ? null : (ctUploadedImages.length ? ctUploadedImages[0].url : null);
 
         var insertResult = await window.supabase
           .from('tasks')
@@ -3147,7 +3297,8 @@ window.addEventListener('hashchange', handleRoute);
             maxParticipants: maxParticipants,
             deadline: deadline,
             proofType: proofType,
-            imageUrl: imageUrl
+            imageUrl: imageUrl,
+            autoReview: simpleTask
           }));
 
         if (insertResult.error) throw insertResult.error;
@@ -3186,6 +3337,14 @@ window.addEventListener('hashchange', handleRoute);
             updateSubmitButtonState();
         });
     });
+
+    var typeSelect = document.getElementById('ct-task-type');
+    if (typeSelect) {
+      typeSelect.addEventListener('change', function () {
+        updateCreateTaskTemplate();
+        applyCreateTaskI18n();
+      });
+    }
 
     var imageList = document.getElementById('ct-image-list');
     var imageInput = document.getElementById('ct-image-input');
@@ -3239,6 +3398,7 @@ window.addEventListener('hashchange', handleRoute);
     initCreateTaskEvents();
     bindSubmitButton();
     applyCreateTaskI18n();
+    updateCreateTaskTemplate();
     updateUnitPriceHint();
     updateSubmitButtonState();
   }
@@ -10262,6 +10422,430 @@ window.addEventListener('hashchange', handleRoute);
   if (langToggleBtn) {
     langToggleBtn.addEventListener('click', function () {
       setTimeout(handleAdminRoute, 0);
+    });
+  }
+})();
+
+// ==========================================
+// 17. 简单任务页 (#simple-tasks)
+// ==========================================
+(function () {
+  'use strict';
+
+  var APP_CONTENT_HTML = '';
+  var appContentEl = document.getElementById('app-content');
+  if (appContentEl) {
+    APP_CONTENT_HTML = appContentEl.innerHTML;
+  }
+
+  var simpleTasksInitialized = false;
+  var simpleTasksLoading = false;
+  var simpleTasksList = [];
+  var userSimpleSubmissionMap = {};
+  var claimInProgress = false;
+
+  var simpleTasksTranslations = {
+    zh: {
+      st_page_title: '⚡ 简单任务',
+      st_page_subtitle: '一键完成，快速赚取 CRLM',
+      st_loading: '加载中...',
+      st_empty: '暂无简单任务，稍后再来看看吧',
+      st_btn_create: '发布简单任务',
+      st_btn_claim: '一键领取',
+      st_btn_claimed: '已领取',
+      st_btn_full: '已满员',
+      st_label_slots: '剩余名额',
+      st_label_deadline: '截止时间',
+      st_claim_success: '领取成功！等待系统自动验证。',
+      st_login_required: '请先登录后再领取',
+      st_already_claimed: '你已领取过该任务',
+      st_task_full: '任务名额已满',
+      st_claim_fail: '领取失败：'
+    },
+    en: {
+      st_page_title: '⚡ Simple Tasks',
+      st_page_subtitle: 'Complete in one tap, earn CRLM fast',
+      st_loading: 'Loading...',
+      st_empty: 'No simple tasks yet. Check back later.',
+      st_btn_create: 'Post a Simple Task',
+      st_btn_claim: 'Claim Now',
+      st_btn_claimed: 'Claimed',
+      st_btn_full: 'Full',
+      st_label_slots: 'Slots left',
+      st_label_deadline: 'Deadline',
+      st_claim_success: 'Claimed! Awaiting automatic verification.',
+      st_login_required: 'Please sign in before claiming',
+      st_already_claimed: 'You have already claimed this task',
+      st_task_full: 'This task is full',
+      st_claim_fail: 'Claim failed: '
+    }
+  };
+
+  function getLang() {
+    var saved = localStorage.getItem('coinrealm_lang');
+    return saved === 'en' ? 'en' : 'zh';
+  }
+
+  function stT(key, vars) {
+    var dict = simpleTasksTranslations[getLang()];
+    var text = dict[key] || (translations[getLang()] && translations[getLang()][key]) || key;
+    if (vars) {
+      Object.keys(vars).forEach(function (k) {
+        text = text.replace('{' + k + '}', vars[k]);
+      });
+    }
+    return text;
+  }
+
+  function getRouteBase() {
+    var hash = window.location.hash.replace(/^#/, '') || 'home';
+    return hash.split('?')[0] || 'home';
+  }
+
+  function formatStDeadline(dateStr) {
+    if (!dateStr) return '—';
+    var d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return dateStr;
+    if (getLang() === 'zh') {
+      return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日';
+    }
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  function formatStReward(task) {
+    var amount = Number(task && task.reward_amount) || 0;
+    var unit = (task && task.reward_type) || 'CRLM';
+    return amount.toLocaleString('en-US') + ' ' + unit;
+  }
+
+  function hideOtherPagesForSimpleTasks() {
+    if (!appContentEl) return;
+    Array.prototype.forEach.call(appContentEl.children, function (child) {
+      if (!child.id) return;
+      if (child.id === 'simple-tasks-page') {
+        child.classList.remove('hidden');
+      } else {
+        child.classList.add('hidden');
+      }
+    });
+  }
+
+  function applySimpleTasksI18n() {
+    document.querySelectorAll('#simple-tasks-page [data-i18n]').forEach(function (el) {
+      var key = el.getAttribute('data-i18n');
+      if (simpleTasksTranslations[getLang()][key]) {
+        el.textContent = stT(key);
+      } else if (translations[getLang()] && translations[getLang()][key]) {
+        el.textContent = translations[getLang()][key];
+      }
+    });
+  }
+
+  function getTaskSlotsText(task) {
+    var maxParticipants = task.max_participants != null ? Number(task.max_participants) : null;
+    var currentParticipants = Number(task.current_participants) || 0;
+    if (maxParticipants != null) {
+      var left = Math.max(0, maxParticipants - currentParticipants);
+      return left + '/' + maxParticipants;
+    }
+    return String(currentParticipants);
+  }
+
+  function isTaskFull(task) {
+    var max = task.max_participants != null ? Number(task.max_participants) : null;
+    var current = Number(task.current_participants) || 0;
+    return max != null && current >= max;
+  }
+
+  function buildSimpleTaskCardHtml(task) {
+    var taskId = escapeHtml(task.id);
+    var title = escapeHtml(task.title || '');
+    var reward = escapeHtml(formatStReward(task));
+    var slots = escapeHtml(getTaskSlotsText(task));
+    var deadline = escapeHtml(formatStDeadline(task.deadline));
+    var hasSubmission = !!userSimpleSubmissionMap[task.id];
+    var full = isTaskFull(task);
+
+    var btnClass = 'simple-task-claim-btn';
+    var btnText = stT('st_btn_claim');
+    var btnDisabled = '';
+
+    if (hasSubmission) {
+      btnClass += ' simple-task-claim-btn-done';
+      btnText = stT('st_btn_claimed');
+      btnDisabled = ' disabled';
+    } else if (full) {
+      btnClass += ' simple-task-claim-btn-disabled';
+      btnText = stT('st_btn_full');
+      btnDisabled = ' disabled';
+    }
+
+    return (
+      '<article class="simple-task-card" data-task-id="' + taskId + '">' +
+        '<div class="simple-task-card-badge" aria-hidden="true">⚡</div>' +
+        '<h3 class="simple-task-card-title">' + title + '</h3>' +
+        '<div class="simple-task-card-reward">' + reward + '</div>' +
+        '<p class="simple-task-card-meta">' + escapeHtml(stT('st_label_slots')) + '：' + slots + '</p>' +
+        '<p class="simple-task-card-meta">' + escapeHtml(stT('st_label_deadline')) + '：' + deadline + '</p>' +
+        '<button type="button" class="' + btnClass + '" data-task-id="' + taskId + '"' + btnDisabled + '>' +
+          escapeHtml(btnText) +
+        '</button>' +
+      '</article>'
+    );
+  }
+
+  function renderSimpleTasksGrid() {
+    var gridEl = document.getElementById('st-task-grid');
+    var emptyEl = document.getElementById('st-empty-state');
+    if (!gridEl || !emptyEl) return;
+
+    if (!simpleTasksList.length) {
+      gridEl.innerHTML = '';
+      gridEl.classList.add('hidden');
+      emptyEl.classList.remove('hidden');
+      return;
+    }
+
+    emptyEl.classList.add('hidden');
+    gridEl.classList.remove('hidden');
+    gridEl.innerHTML = simpleTasksList.map(buildSimpleTaskCardHtml).join('');
+  }
+
+  function setSimpleTasksLoading(loading) {
+    simpleTasksLoading = loading;
+    var loadingEl = document.getElementById('st-loading');
+    if (loadingEl) loadingEl.classList.toggle('hidden', !loading);
+  }
+
+  async function loadUserSimpleSubmissions(userId, taskIds) {
+    userSimpleSubmissionMap = {};
+    if (!userId || !taskIds.length || !window.supabase) return;
+
+    var result = await window.supabase
+      .from('submissions')
+      .select('id, task_id, status')
+      .eq('user_id', userId)
+      .in('task_id', taskIds);
+
+    if (result.error) return;
+
+    (result.data || []).forEach(function (row) {
+      userSimpleSubmissionMap[row.task_id] = row;
+    });
+  }
+
+  async function fetchSimpleTasks() {
+    if (!window.supabase) return [];
+
+    var result = await window.supabase
+      .from('tasks')
+      .select('*')
+      .eq('type', 'simple')
+      .eq('status', 'active')
+      .order('created_at', { ascending: false });
+
+    if (result.error) throw result.error;
+    return result.data || [];
+  }
+
+  async function loadAndRenderSimpleTasks() {
+    applySimpleTasksI18n();
+    setSimpleTasksLoading(true);
+
+    try {
+      simpleTasksList = await fetchSimpleTasks();
+      var userId = await getCurrentUserId();
+      var taskIds = simpleTasksList.map(function (task) { return task.id; });
+      await loadUserSimpleSubmissions(userId, taskIds);
+      renderSimpleTasksGrid();
+    } catch (err) {
+      console.warn('加载简单任务失败', err);
+      simpleTasksList = [];
+      userSimpleSubmissionMap = {};
+      renderSimpleTasksGrid();
+    } finally {
+      setSimpleTasksLoading(false);
+      applySimpleTasksI18n();
+    }
+  }
+
+  async function performSimpleTaskClaim(taskId) {
+    if (claimInProgress || !taskId || !window.supabase) return;
+
+    var userId = await getCurrentUserId();
+    if (!userId) {
+      alert(stT('st_login_required'));
+      return;
+    }
+
+    if (userSimpleSubmissionMap[taskId]) {
+      alert(stT('st_already_claimed'));
+      return;
+    }
+
+    var task = simpleTasksList.find(function (item) {
+      return String(item.id) === String(taskId);
+    });
+    if (!task) {
+      await loadAndRenderSimpleTasks();
+      return;
+    }
+
+    if (isTaskFull(task)) {
+      alert(stT('st_task_full'));
+      return;
+    }
+
+    claimInProgress = true;
+
+    try {
+      var freshResult = await window.supabase
+        .from('tasks')
+        .select('*')
+        .eq('id', taskId)
+        .eq('type', 'simple')
+        .eq('status', 'active')
+        .maybeSingle();
+
+      if (freshResult.error || !freshResult.data) {
+        alert(stT('st_claim_fail') + (freshResult.error ? freshResult.error.message : ''));
+        return;
+      }
+
+      var freshTask = freshResult.data;
+      var current = Number(freshTask.current_participants) || 0;
+      var max = freshTask.max_participants != null ? Number(freshTask.max_participants) : null;
+
+      if (max != null && current >= max) {
+        alert(stT('st_task_full'));
+        await loadAndRenderSimpleTasks();
+        return;
+      }
+
+      var existingResult = await window.supabase
+        .from('submissions')
+        .select('id')
+        .eq('task_id', taskId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (existingResult.error) {
+        alert(stT('st_claim_fail') + existingResult.error.message);
+        return;
+      }
+
+      if (existingResult.data) {
+        userSimpleSubmissionMap[taskId] = existingResult.data;
+        alert(stT('st_already_claimed'));
+        renderSimpleTasksGrid();
+        return;
+      }
+
+      var nowIso = new Date().toISOString();
+      var insertResult = await window.supabase
+        .from('submissions')
+        .insert({
+          task_id: taskId,
+          user_id: userId,
+          status: 'submitted',
+          submitted_at: nowIso
+        })
+        .select()
+        .single();
+
+      if (insertResult.error) {
+        alert(stT('st_claim_fail') + insertResult.error.message);
+        return;
+      }
+
+      var nextCount = current + 1;
+      var updateResult = await window.supabase
+        .from('tasks')
+        .update({ current_participants: nextCount })
+        .eq('id', taskId);
+
+      if (updateResult.error) {
+        alert(stT('st_claim_fail') + updateResult.error.message);
+        return;
+      }
+
+      userSimpleSubmissionMap[taskId] = insertResult.data;
+      task.current_participants = nextCount;
+
+      var listTask = simpleTasksList.find(function (item) {
+        return String(item.id) === String(taskId);
+      });
+      if (listTask) listTask.current_participants = nextCount;
+
+      renderSimpleTasksGrid();
+      alert(stT('st_claim_success'));
+
+      if (typeof writeBroadcast === 'function') {
+        writeBroadcast({
+          user_id: userId,
+          event_type: 'task_claim',
+          description: '领取了简单任务「' + (typeof buildTaskBroadcastTitle === 'function'
+            ? buildTaskBroadcastTitle(freshTask.title)
+            : freshTask.title) + '」',
+          reward_amount: Number(freshTask.reward_amount) || 0
+        });
+      }
+    } finally {
+      claimInProgress = false;
+    }
+  }
+
+  function initSimpleTasksEvents() {
+    if (simpleTasksInitialized) return;
+    simpleTasksInitialized = true;
+
+    var gridEl = document.getElementById('st-task-grid');
+    if (gridEl) {
+      gridEl.addEventListener('click', function (e) {
+        var btn = e.target.closest('.simple-task-claim-btn');
+        if (!btn || btn.disabled || !gridEl.contains(btn)) return;
+        e.preventDefault();
+        performSimpleTaskClaim(btn.getAttribute('data-task-id'));
+      });
+    }
+  }
+
+  function restoreAppContentIfNeeded() {
+    if (!appContentEl || !APP_CONTENT_HTML) return;
+    if (!document.getElementById('home-page')) {
+      appContentEl.innerHTML = APP_CONTENT_HTML;
+      simpleTasksInitialized = false;
+      simpleTasksList = [];
+      userSimpleSubmissionMap = {};
+    }
+  }
+
+  async function handleSimpleTasksRoute() {
+    restoreAppContentIfNeeded();
+
+    var routeBase = getRouteBase();
+    var page = document.getElementById('simple-tasks-page');
+    if (!page) return;
+
+    if (routeBase === 'simple-tasks') {
+      hideOtherPagesForSimpleTasks();
+      initSimpleTasksEvents();
+      await loadAndRenderSimpleTasks();
+    } else {
+      page.classList.add('hidden');
+    }
+  }
+
+  window.addEventListener('hashchange', handleSimpleTasksRoute);
+
+  window.addEventListener('DOMContentLoaded', function () {
+    setTimeout(handleSimpleTasksRoute, 0);
+  });
+
+  var langToggleBtn = document.getElementById('lang-toggle');
+  if (langToggleBtn) {
+    langToggleBtn.addEventListener('click', function () {
+      setTimeout(handleSimpleTasksRoute, 0);
     });
   }
 })();

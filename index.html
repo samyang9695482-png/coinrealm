@@ -72,7 +72,12 @@
   <!-- ==================== 顶部导航栏（保持不变） ==================== -->
   <header class="navbar">
     <div class="navbar-inner">
-      <a href="#home" class="logo" id="logo" data-i18n="CoinRealm">CoinRealm</a>
+      <div class="navbar-start">
+        <a href="#home" class="logo" id="logo" data-i18n="CoinRealm">CoinRealm</a>
+        <nav class="navbar-nav">
+          <a href="#simple-tasks" class="navbar-link" data-i18n="nav_simple_tasks">⚡ 简单任务</a>
+        </nav>
+      </div>
       <div class="navbar-actions">
         <button type="button" class="btn btn-secondary btn-lang" id="lang-toggle" aria-label="Switch language">
           <span id="lang-label">中文</span>
@@ -132,6 +137,8 @@
         </div>
         <div class="filter-tags" id="filter-tags">
           <button class="tag-btn active" data-type="all" data-i18n="tag_all">全部</button>
+          <button class="tag-btn tag-btn-simple" data-type="simple" data-i18n="tag_simple">简单</button>
+          <a href="#simple-tasks" class="simple-tasks-more-link" data-i18n="simple_view_all">查看更多 →</a>
           <button class="tag-btn" data-type="official" data-i18n="tag_official">官方</button>
           <button class="tag-btn" data-type="airdrop" data-i18n="tag_airdrop">空投</button>
           <button class="tag-btn" data-type="register" data-i18n="tag_register">注册</button>
@@ -393,6 +400,7 @@
           <label class="create-task-label" data-i18n="ct_label_type">任务类型</label>
           <select id="ct-task-type" class="create-task-input">
             <option value="all" data-i18n="tag_all">全部</option>
+            <option value="simple" data-i18n="ct_type_simple">简单任务</option>
             <option value="airdrop" data-i18n="tag_airdrop">空投</option>
             <option value="register" data-i18n="tag_register">注册</option>
             <option value="trade" data-i18n="tag_trade">交易</option>
@@ -408,13 +416,13 @@
           <textarea id="ct-task-desc" class="create-task-textarea" data-placeholder="ct_ph_desc" placeholder="请详细描述任务内容和要求"></textarea>
         </div>
 
-        <div class="create-task-field">
+        <div id="ct-field-images" class="create-task-field">
           <label class="create-task-label" data-i18n="ct_label_images">任务图片</label>
           <input type="file" id="ct-image-input" class="ct-image-file-input" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple hidden>
           <div id="ct-image-list" class="ct-image-list"></div>
         </div>
 
-        <div class="create-task-field">
+        <div id="ct-field-req" class="create-task-field">
           <label class="create-task-label" data-i18n="ct_label_req">任务要求</label>
           <div id="ct-requirements-list" class="create-task-req-list">
             <div class="create-task-req-row">
@@ -433,7 +441,7 @@
           <button type="button" id="ct-add-req-btn" class="create-task-add-req" data-i18n="ct_add_req">+ 添加要求</button>
         </div>
 
-        <div class="create-task-field">
+        <div id="ct-field-reward-type" class="create-task-field">
           <label class="create-task-label" data-i18n="ct_label_reward_type">奖励类型</label>
           <div class="create-task-radio-group">
             <label class="create-task-radio-label">
@@ -464,7 +472,7 @@
           <p class="create-task-orange-hint create-task-deadline-hint" data-i18n="ct_deadline_hint">⏰ 超时审核将自动通过。若多次超时未审核，发布权限可能被暂停。</p>
         </div>
 
-        <div class="create-task-field">
+        <div id="ct-field-proof" class="create-task-field">
           <label class="create-task-label" data-i18n="ct_label_proof">凭证要求</label>
           <div class="create-task-radio-group">
             <label class="create-task-radio-label">
@@ -644,6 +652,23 @@
         <div id="mt-empty-state" class="my-tasks-empty hidden">
           <p id="mt-empty-text" class="my-tasks-empty-text"></p>
           <a href="#home" class="my-tasks-home-btn" data-i18n="mt_btn_home">去任务大厅</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 简单任务页 — 由路由 #simple-tasks 显示 -->
+    <div id="simple-tasks-page" class="simple-tasks-container hidden">
+      <section class="simple-tasks-banner">
+        <a href="#home" class="simple-tasks-back" aria-label="Back">←</a>
+        <h1 class="simple-tasks-banner-title" data-i18n="st_page_title">⚡ 简单任务</h1>
+        <p class="simple-tasks-banner-subtitle" data-i18n="st_page_subtitle">一键完成，快速赚取 CRLM</p>
+      </section>
+      <div class="simple-tasks-main">
+        <div id="st-loading" class="simple-tasks-loading hidden" data-i18n="st_loading">加载中...</div>
+        <div id="st-task-grid" class="simple-tasks-grid"></div>
+        <div id="st-empty-state" class="simple-tasks-empty hidden">
+          <p class="simple-tasks-empty-text" data-i18n="st_empty">暂无简单任务，稍后再来看看吧</p>
+          <a href="#create-task" class="simple-tasks-action-btn" data-i18n="st_btn_create">发布简单任务</a>
         </div>
       </div>
     </div>

@@ -88,6 +88,31 @@ img {
   opacity: 0.85;
 }
 
+.navbar-start {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-width: 0;
+}
+
+.navbar-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.navbar-link {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  white-space: nowrap;
+  transition: color 0.2s ease;
+}
+
+.navbar-link:hover {
+  color: var(--color-accent);
+}
+
 .navbar-actions {
   display: flex;
   align-items: center;
@@ -353,6 +378,31 @@ img {
     color: #1a1a2e;
     font-weight: bold;
 }
+.tag-btn[data-type="simple"] {
+    border-color: #ffd591;
+    color: #fa8c16;
+}
+.tag-btn[data-type="simple"].active {
+    background-color: #fff7e6;
+    border-color: #fa8c16;
+    color: #d46b08;
+}
+
+.simple-tasks-more-link {
+    display: inline-flex;
+    align-items: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: #13c2c2;
+    white-space: nowrap;
+    padding: 8px 4px;
+    flex-shrink: 0;
+}
+
+.simple-tasks-more-link:hover {
+    color: #08979c;
+}
+
 .sort-dropdown-wrapper select {
     padding: 10px 16px;
     border: 1px solid #dddddd;
@@ -630,6 +680,17 @@ img {
 .label-trade { background-color: #fff0f6; color: #eb2f96; border: 1px solid #ffadd2; }
 .label-game { background-color: #f9f0ff; color: #722ed1; border: 1px solid #d3adf7; }
 .label-test { background-color: #e6fffb; color: #13c2c2; border: 1px solid #87e8de; }
+.label-simple { background-color: #fff7e6; color: #fa8c16; border: 1px solid #ffd591; }
+.label-content { background-color: #f0f5ff; color: #597ef7; border: 1px solid #adc6ff; }
+.simple-task-badge {
+    background: linear-gradient(135deg, #fff7e6 0%, #ffe7ba 100%);
+    color: #fa8c16;
+    font-size: 14px;
+    line-height: 1;
+    padding: 3px 7px;
+    border-radius: 6px;
+    border: 1px solid #ffd591;
+}
 
 .info-text {
     font-size: 12px;
@@ -1576,6 +1637,10 @@ img {
 
 .create-task-deadline-hint {
     font-size: 13px;
+}
+
+.create-task-form-simple .create-task-req-row-simple .create-task-req-delete {
+    display: none;
 }
 
 .ct-image-list {
@@ -5362,5 +5427,211 @@ img {
     to {
         opacity: 1;
         transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+/* ==================== 简单任务页 (#simple-tasks) ==================== */
+
+.simple-tasks-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 16px 88px;
+}
+
+.simple-tasks-banner {
+    position: relative;
+    margin: 0 -16px 24px;
+    padding: 40px 24px 36px;
+    border-radius: 0 0 20px 20px;
+    background: linear-gradient(135deg, #fa8c16 0%, #13c2c2 100%);
+    color: #ffffff;
+    text-align: center;
+    box-shadow: 0 8px 24px rgba(250, 140, 22, 0.25);
+}
+
+.simple-tasks-back {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+    font-size: 18px;
+    transition: background 0.2s ease;
+}
+
+.simple-tasks-back:hover {
+    background: rgba(255, 255, 255, 0.32);
+}
+
+.simple-tasks-banner-title {
+    margin: 0 0 10px;
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1.2;
+}
+
+.simple-tasks-banner-subtitle {
+    margin: 0;
+    font-size: 15px;
+    opacity: 0.95;
+}
+
+.simple-tasks-main {
+    min-height: 240px;
+}
+
+.simple-tasks-loading {
+    text-align: center;
+    padding: 32px;
+    color: #888;
+    font-size: 14px;
+}
+
+.simple-tasks-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+}
+
+.simple-tasks-grid.hidden {
+    display: none;
+}
+
+.simple-task-card {
+    position: relative;
+    background: #fff;
+    border: 2px solid #ffd591;
+    border-radius: 12px;
+    padding: 20px 18px 18px;
+    box-shadow: 0 4px 14px rgba(250, 140, 22, 0.1);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.simple-task-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(19, 194, 194, 0.15);
+    border-color: #13c2c2;
+}
+
+.simple-task-card-badge {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #fff7e6, #ffe7ba);
+    border: 1px solid #ffd591;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    line-height: 1;
+}
+
+.simple-task-card-title {
+    margin: 0 32px 12px 0;
+    font-size: 16px;
+    font-weight: 700;
+    color: #1a1a2e;
+    line-height: 1.45;
+}
+
+.simple-task-card-reward {
+    font-size: 22px;
+    font-weight: 700;
+    color: #fa8c16;
+    margin-bottom: 10px;
+}
+
+.simple-task-card-meta {
+    margin: 0 0 6px;
+    font-size: 13px;
+    color: #888;
+}
+
+.simple-task-claim-btn {
+    width: 100%;
+    margin-top: 14px;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #fa8c16, #f0b90b);
+    color: #1a1a2e;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity 0.2s ease, transform 0.15s ease;
+}
+
+.simple-task-claim-btn:hover:not(:disabled) {
+    opacity: 0.92;
+    transform: scale(1.01);
+}
+
+.simple-task-claim-btn-done,
+.simple-task-claim-btn-disabled {
+    background: #f5f5f5;
+    color: #999;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.simple-tasks-empty {
+    text-align: center;
+    padding: 48px 16px;
+}
+
+.simple-tasks-empty-text {
+    margin: 0 0 20px;
+    font-size: 15px;
+    color: #666;
+}
+
+.simple-tasks-action-btn {
+    display: inline-block;
+    padding: 10px 24px;
+    background: linear-gradient(135deg, #fa8c16, #13c2c2);
+    color: #fff;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.simple-tasks-action-btn:hover {
+    opacity: 0.92;
+}
+
+@media (max-width: 992px) {
+    .simple-tasks-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 640px) {
+    .navbar-start {
+        gap: 12px;
+    }
+
+    .navbar-link {
+        font-size: 12px;
+    }
+
+    .simple-tasks-banner-title {
+        font-size: 22px;
+    }
+
+    .simple-tasks-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .simple-tasks-more-link {
+        font-size: 12px;
     }
 }
