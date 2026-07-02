@@ -1359,6 +1359,95 @@ img {
     color: #ffffff;
 }
 
+.td-twitter-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 3600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.td-twitter-modal.hidden {
+    display: none;
+}
+
+.td-twitter-modal-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+}
+
+.td-twitter-modal-card {
+    position: relative;
+    z-index: 1;
+    width: min(420px, 92vw);
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+}
+
+.td-twitter-modal-title {
+    margin: 0 0 8px;
+    font-size: 18px;
+    font-weight: 700;
+    color: #1a1a2e;
+}
+
+.td-twitter-modal-text,
+.td-twitter-modal-desc {
+    margin: 0 0 20px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #666;
+}
+
+.td-twitter-token-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border: 1px solid #d9d9d9;
+    border-radius: 8px;
+    font-size: 14px;
+    margin-bottom: 8px;
+}
+
+.td-twitter-modal-error {
+    margin: 0 0 12px;
+    font-size: 13px;
+    color: #ff4d4f;
+}
+
+.td-twitter-modal-error.hidden {
+    display: none;
+}
+
+.td-twitter-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.td-twitter-modal-btn {
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    border: none;
+}
+
+.td-twitter-modal-cancel {
+    background: #f5f5f5;
+    color: #333;
+}
+
+.td-twitter-modal-primary {
+    background: #f0b90b;
+    color: #1a1a2e;
+    font-weight: 600;
+}
+
 .td-btn-disabled {
     background-color: #f0f0f0;
     color: #999;
@@ -2569,6 +2658,33 @@ img {
 .my-task-status-expired {
     background: #f5f5f5;
     color: #999;
+}
+
+.my-task-status-verifying {
+    background: #e6f4ff;
+    color: #1677ff;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.my-task-status-rejected {
+    background: #fff1f0;
+    color: #ff4d4f;
+}
+
+.my-task-verify-spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(22, 119, 255, 0.25);
+    border-top-color: #1677ff;
+    border-radius: 50%;
+    animation: myTaskVerifySpin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes myTaskVerifySpin {
+    to { transform: rotate(360deg); }
 }
 
 .my-tasks-empty,

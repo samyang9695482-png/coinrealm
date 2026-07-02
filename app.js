@@ -530,6 +530,76 @@ function buildTaskInsertPayload(userId, fields) {
     return payload;
 }
 
+var TWITTER_VERIFY_WORKER_URL = 'WORKER_URL_PLACEHOLDER';
+
+function isSimpleTaskType(task) {
+    return getTaskField(task, ['type', 'task_type', 'category'], '') === 'simple';
+}
+
+function isTwitterVerificationTask(task) {
+    return isSimpleTaskType(task) && getTaskField(task, ['verification_type'], '') === 'twitter';
+}
+
+async function verifyTwitterTask(taskId, userId) {
+    if (!window.supabase || !taskId || !userId) {
+        return { success: false, error: 'missing params' };
+    }
+
+    try {
+        var workerResult = null;
+
+        if (TWITTER_VERIFY_WORKER_URL && TWITTER_VERIFY_WORKER_URL !== 'WORKER_URL_PLACEHOLDER') {
+            var response = await fetch(TWITTER_VERIFY_WORKER_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ task_id: taskId, user_id: userId })
+            });
+
+            if (!response.ok) {
+                throw new Error('Worker request failed: ' + response.status);
+            }
+
+            workerResult = await response.json();
+        } else {
+            workerResult = { success: true, status: 'approved' };
+        }
+
+        var newStatus = 'verifying';
+        if (workerResult.status === 'approved') {
+            newStatus = 'approved';
+        } else if (workerResult.status === 'rejected') {
+            newStatus = 'rejected';
+        } else if (workerResult.success === false) {
+            newStatus = 'rejected';
+        }
+
+        var updatePayload = { status: newStatus };
+        if (newStatus === 'approved' || newStatus === 'rejected') {
+            updatePayload.reviewed_at = new Date().toISOString();
+        }
+        if (workerResult.reason || workerResult.review_comment) {
+            updatePayload.review_comment = workerResult.reason || workerResult.review_comment;
+        } else if (newStatus === 'rejected' && workerResult.error) {
+            updatePayload.review_comment = String(workerResult.error);
+        }
+
+        var updateResult = await window.supabase
+            .from('submissions')
+            .update(updatePayload)
+            .eq('task_id', taskId)
+            .eq('user_id', userId);
+
+        if (updateResult.error) {
+            return { success: false, error: updateResult.error.message };
+        }
+
+        return Object.assign({}, workerResult, { status: newStatus });
+    } catch (err) {
+        console.warn('verifyTwitterTask failed', err);
+        return { success: false, error: err && err.message ? err.message : String(err) };
+    }
+}
+
 async function getUserInfo() {
     if (!window.supabase) return null;
 
@@ -1879,6 +1949,7 @@ window.addEventListener('hashchange', handleRoute);
   var currentSubmissionRecord = null;
   var currentUserId = null;
   var detailActionState = 'loading';
+  var twitterClaimInProgress = false;
 
   var taskDetailTranslations = {
     zh: {
@@ -1903,6 +1974,7 @@ window.addEventListener('hashchange', handleRoute);
       td_btn_claim_now: '立即领取',
       td_btn_simple_claim: '一键领取',
       td_btn_simple_done: '已完成',
+      td_btn_simple_verifying: '验证中',
       td_btn_submit: '去提交',
       td_btn_manage: '管理任务',
       td_btn_login: '请先登录',
@@ -1928,10 +2000,20 @@ window.addEventListener('hashchange', handleRoute);
       td_type_all: '全部',
       td_alert_claim_ok: '领取成功！',
       td_alert_simple_claim_ok: '领取成功！请按照任务要求完成操作。',
+      td_alert_simple_verifying: '任务已领取，正在验证中...',
       td_alert_claim_fail: '领取失败：',
       td_alert_already_claimed: '您已经领取过该任务',
       td_alert_task_full: '任务名额已满',
-      td_alert_login: '请先登录后再领取任务'
+      td_alert_login: '请先登录后再领取任务',
+      td_twitter_auth_msg: '此任务需要授权你的 Twitter 账号才能自动验证。',
+      td_twitter_token_title: '绑定 Twitter（测试）',
+      td_twitter_token_desc: '请粘贴你的 Twitter Access Token（测试用，正式上线后将改为 OAuth 授权）。',
+      td_twitter_token_ph: '粘贴 Twitter Access Token',
+      td_twitter_btn_cancel: '取消',
+      td_twitter_btn_authorize: '去授权',
+      td_twitter_btn_save: '保存并继续',
+      td_twitter_token_required: '请输入 Access Token',
+      td_twitter_save_fail: '保存失败：'
     },
     en: {
       td_official_badge: 'Official Verified',
@@ -1955,6 +2037,7 @@ window.addEventListener('hashchange', handleRoute);
       td_btn_claim_now: 'Claim Now',
       td_btn_simple_claim: 'Claim Now',
       td_btn_simple_done: 'Completed',
+      td_btn_simple_verifying: 'Verifying',
       td_btn_submit: 'Submit Proof',
       td_btn_manage: 'Manage Task',
       td_btn_login: 'Please sign in first',
@@ -1980,10 +2063,20 @@ window.addEventListener('hashchange', handleRoute);
       td_type_all: 'All',
       td_alert_claim_ok: 'Task claimed successfully!',
       td_alert_simple_claim_ok: 'Claimed! Please complete the task as required.',
+      td_alert_simple_verifying: 'Task claimed. Verification in progress...',
       td_alert_claim_fail: 'Claim failed: ',
       td_alert_already_claimed: 'You have already claimed this task',
       td_alert_task_full: 'No slots left for this task',
-      td_alert_login: 'Please sign in before claiming'
+      td_alert_login: 'Please sign in before claiming',
+      td_twitter_auth_msg: 'This task requires Twitter authorization for automatic verification.',
+      td_twitter_token_title: 'Connect Twitter (Test)',
+      td_twitter_token_desc: 'Paste your Twitter Access Token (for testing; OAuth will replace this later).',
+      td_twitter_token_ph: 'Paste Twitter Access Token',
+      td_twitter_btn_cancel: 'Cancel',
+      td_twitter_btn_authorize: 'Authorize',
+      td_twitter_btn_save: 'Save & Continue',
+      td_twitter_token_required: 'Please enter an Access Token',
+      td_twitter_save_fail: 'Save failed: '
     }
   };
 
@@ -2054,6 +2147,10 @@ window.addEventListener('hashchange', handleRoute);
     return getTaskField(task, ['type', 'task_type', 'category'], '') === 'simple';
   }
 
+  function isTwitterSimpleTask(task) {
+    return isSimpleTaskRecord(task) && getTaskField(task, ['verification_type'], '') === 'twitter';
+  }
+
   function resolveDetailActionState(task, submission, userId) {
     var max = task.max_participants != null ? Number(task.max_participants) : null;
     var current = Number(task.current_participants) || 0;
@@ -2066,6 +2163,8 @@ window.addEventListener('hashchange', handleRoute);
       if (!userId) return 'not_logged_in';
       if (userId === task.publisher_id) return 'manage_task';
       if (!submission) return 'simple_can_claim';
+      if (submission.status === 'verifying') return 'simple_verifying';
+      if (submission.status === 'rejected') return 'simple_rejected';
       return 'simple_completed';
     }
 
@@ -2169,22 +2268,107 @@ window.addEventListener('hashchange', handleRoute);
     });
   }
 
-  async function performSimpleTaskClaim() {
-    if (!window.supabase || !currentTaskRecord || !isSimpleTaskRecord(currentTaskRecord)) return;
+  async function fetchUserTwitterToken(userId) {
+    if (!window.supabase || !userId) return '';
 
-    var taskId = currentTaskRecord.id;
+    var result = await window.supabase
+      .from('users')
+      .select('twitter_token')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (result.error || !result.data || !result.data.twitter_token) return '';
+    return String(result.data.twitter_token).trim();
+  }
+
+  function showTwitterModal(modalId) {
+    var modal = document.getElementById(modalId);
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    applyTaskDetailI18n();
+  }
+
+  function hideTwitterModal(modalId) {
+    var modal = document.getElementById(modalId);
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+
+  function hideAllTwitterModals() {
+    hideTwitterModal('td-twitter-auth-modal');
+    hideTwitterModal('td-twitter-token-modal');
+    var errorEl = document.getElementById('td-twitter-token-error');
+    if (errorEl) {
+      errorEl.textContent = '';
+      errorEl.classList.add('hidden');
+    }
+  }
+
+  function openTwitterAuthModal() {
+    hideAllTwitterModals();
+    showTwitterModal('td-twitter-auth-modal');
+  }
+
+  function openTwitterTokenModal() {
+    hideTwitterModal('td-twitter-auth-modal');
+    var input = document.getElementById('td-twitter-token-input');
+    if (input) input.value = '';
+    showTwitterModal('td-twitter-token-modal');
+  }
+
+  async function saveTwitterTokenAndClaim() {
+    if (twitterClaimInProgress || !window.supabase || !currentTaskRecord) return;
+
     var userId = await getAuthenticatedUserId();
-
     if (!userId) {
       alert(tdT('td_alert_login'));
       return;
     }
 
-    if (currentSubmissionRecord) {
-      alert(tdT('td_alert_already_claimed'));
+    var input = document.getElementById('td-twitter-token-input');
+    var token = input && input.value.trim();
+    var errorEl = document.getElementById('td-twitter-token-error');
+
+    if (!token) {
+      if (errorEl) {
+        errorEl.textContent = tdT('td_twitter_token_required');
+        errorEl.classList.remove('hidden');
+      }
       return;
     }
 
+    twitterClaimInProgress = true;
+    var saveBtn = document.getElementById('td-twitter-token-save');
+    if (saveBtn) saveBtn.disabled = true;
+
+    try {
+      var updateResult = await window.supabase
+        .from('users')
+        .update({ twitter_token: token })
+        .eq('id', userId);
+
+      if (updateResult.error) {
+        if (errorEl) {
+          errorEl.textContent = tdT('td_twitter_save_fail') + updateResult.error.message;
+          errorEl.classList.remove('hidden');
+        }
+        return;
+      }
+
+      hideAllTwitterModals();
+      await completeSimpleTaskClaim(userId, true);
+    } finally {
+      twitterClaimInProgress = false;
+      if (saveBtn) saveBtn.disabled = false;
+    }
+  }
+
+  async function completeSimpleTaskClaim(userId, isTwitterTask) {
+    if (!window.supabase || !currentTaskRecord || !userId) return;
+
+    var taskId = currentTaskRecord.id;
     var max = currentTaskRecord.max_participants != null ? Number(currentTaskRecord.max_participants) : null;
     var current = Number(currentTaskRecord.current_participants) || 0;
 
@@ -2194,12 +2378,14 @@ window.addEventListener('hashchange', handleRoute);
     }
 
     var nowIso = new Date().toISOString();
+    var submissionStatus = isTwitterTask ? 'verifying' : 'submitted';
+
     var insertResult = await window.supabase
       .from('submissions')
       .insert({
         task_id: taskId,
         user_id: userId,
-        status: 'submitted',
+        status: submissionStatus,
         submitted_at: nowIso
       })
       .select()
@@ -2224,15 +2410,78 @@ window.addEventListener('hashchange', handleRoute);
     currentTaskRecord.current_participants = nextCount;
     currentSubmissionRecord = insertResult.data;
     currentUserId = userId;
-    detailActionState = resolveDetailActionState(currentTaskRecord, currentSubmissionRecord, currentUserId);
-    updateBottomActionBar();
-    alert(tdT('td_alert_simple_claim_ok'));
+
+    if (isTwitterTask) {
+      detailActionState = 'simple_verifying';
+      updateBottomActionBar();
+      alert(tdT('td_alert_simple_verifying'));
+      verifyTwitterTask(taskId, userId).then(function (result) {
+        if (currentSubmissionRecord && currentTaskRecord && String(currentTaskRecord.id) === String(taskId)) {
+          window.supabase
+            .from('submissions')
+            .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment')
+            .eq('task_id', taskId)
+            .eq('user_id', userId)
+            .maybeSingle()
+            .then(function (subResult) {
+              if (!subResult.error && subResult.data) {
+                currentSubmissionRecord = subResult.data;
+                detailActionState = resolveDetailActionState(currentTaskRecord, currentSubmissionRecord, currentUserId);
+                updateBottomActionBar();
+              }
+            });
+        }
+      });
+    } else {
+      detailActionState = resolveDetailActionState(currentTaskRecord, currentSubmissionRecord, currentUserId);
+      updateBottomActionBar();
+      alert(tdT('td_alert_simple_claim_ok'));
+    }
+
     writeBroadcast({
       user_id: userId,
       event_type: 'task_claim',
       description: '领取了简单任务「' + buildTaskBroadcastTitle(currentTaskRecord.title) + '」',
       reward_amount: Number(currentTaskRecord.reward_amount) || 0
     });
+  }
+
+  async function performSimpleTaskClaim() {
+    if (twitterClaimInProgress || !window.supabase || !currentTaskRecord || !isSimpleTaskRecord(currentTaskRecord)) return;
+
+    var userId = await getAuthenticatedUserId();
+
+    if (!userId) {
+      alert(tdT('td_alert_login'));
+      return;
+    }
+
+    if (currentSubmissionRecord) {
+      alert(tdT('td_alert_already_claimed'));
+      return;
+    }
+
+    if (isTwitterSimpleTask(currentTaskRecord)) {
+      var twitterToken = await fetchUserTwitterToken(userId);
+      if (!twitterToken) {
+        openTwitterAuthModal();
+        return;
+      }
+      twitterClaimInProgress = true;
+      try {
+        await completeSimpleTaskClaim(userId, true);
+      } finally {
+        twitterClaimInProgress = false;
+      }
+      return;
+    }
+
+    twitterClaimInProgress = true;
+    try {
+      await completeSimpleTaskClaim(userId, false);
+    } finally {
+      twitterClaimInProgress = false;
+    }
   }
 
   function getLang() {
@@ -2256,6 +2505,12 @@ window.addEventListener('hashchange', handleRoute);
       var key = el.getAttribute('data-i18n');
       if (taskDetailTranslations[getLang()][key]) {
         el.textContent = tdT(key);
+      }
+    });
+    document.querySelectorAll('#task-detail-page [data-placeholder]').forEach(function (el) {
+      var key = el.getAttribute('data-placeholder');
+      if (taskDetailTranslations[getLang()][key]) {
+        el.setAttribute('placeholder', tdT(key));
       }
     });
   }
@@ -2302,7 +2557,7 @@ window.addEventListener('hashchange', handleRoute);
       currentUserId = userId;
       var subResult = await window.supabase
         .from('submissions')
-        .select('id, task_id, user_id, status, description, submitted_at')
+        .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment')
         .eq('task_id', taskId)
         .eq('user_id', currentUserId)
         .maybeSingle();
@@ -2582,9 +2837,23 @@ window.addEventListener('hashchange', handleRoute);
           disabled: false
         });
         break;
+      case 'simple_verifying':
+        configureActionButton(buttons.claim, {
+          styleClass: 'td-btn-blue',
+          text: tdT('td_btn_simple_verifying'),
+          disabled: true
+        });
+        break;
       case 'simple_completed':
         configureActionButton(buttons.claim, {
           styleClass: 'td-btn-green',
+          text: tdT('td_btn_simple_done'),
+          disabled: true
+        });
+        break;
+      case 'simple_rejected':
+        configureActionButton(buttons.ended, {
+          styleClass: 'td-btn-disabled',
           text: tdT('td_btn_simple_done'),
           disabled: true
         });
@@ -2665,6 +2934,33 @@ window.addEventListener('hashchange', handleRoute);
         window.location.hash = 'review';
       });
     }
+
+    var twitterAuthCancel = document.getElementById('td-twitter-auth-cancel');
+    var twitterAuthGo = document.getElementById('td-twitter-auth-go');
+    var twitterTokenCancel = document.getElementById('td-twitter-token-cancel');
+    var twitterTokenSave = document.getElementById('td-twitter-token-save');
+
+    if (twitterAuthCancel) {
+      twitterAuthCancel.addEventListener('click', hideAllTwitterModals);
+    }
+    if (twitterAuthGo) {
+      twitterAuthGo.addEventListener('click', openTwitterTokenModal);
+    }
+    if (twitterTokenCancel) {
+      twitterTokenCancel.addEventListener('click', hideAllTwitterModals);
+    }
+    if (twitterTokenSave) {
+      twitterTokenSave.addEventListener('click', saveTwitterTokenAndClaim);
+    }
+
+    ['td-twitter-auth-modal', 'td-twitter-token-modal'].forEach(function (modalId) {
+      var modal = document.getElementById(modalId);
+      if (!modal) return;
+      var overlay = modal.querySelector('.td-twitter-modal-overlay');
+      if (overlay) {
+        overlay.addEventListener('click', hideAllTwitterModals);
+      }
+    });
   }
 
   function initPinPackageSelection() {
@@ -4608,6 +4904,9 @@ window.addEventListener('hashchange', handleRoute);
     completed: [],
     expired: []
   };
+  var verifyPollTimer = null;
+  var VERIFY_POLL_MS = 30000;
+  var myTasksUserId = null;
 
   var myTasksTranslations = {
     zh: {
@@ -4624,7 +4923,9 @@ window.addEventListener('hashchange', handleRoute);
       mt_status_pending: '待提交',
       mt_status_submitted: '已提交',
       mt_status_reviewing: '审核中',
+      mt_status_verifying: '验证中',
       mt_status_approved: '已通过',
+      mt_status_rejected: '未通过',
       mt_label_deadline: '截止时间',
       mt_label_completed: '完成时间',
       mt_label_reason: '失效原因',
@@ -4648,7 +4949,9 @@ window.addEventListener('hashchange', handleRoute);
       mt_status_pending: 'Pending submission',
       mt_status_submitted: 'Submitted',
       mt_status_reviewing: 'Under review',
+      mt_status_verifying: 'Verifying',
       mt_status_approved: 'Approved',
+      mt_status_rejected: 'Rejected',
       mt_label_deadline: 'Deadline',
       mt_label_completed: 'Completed',
       mt_label_reason: 'Reason',
@@ -4757,6 +5060,7 @@ window.addEventListener('hashchange', handleRoute);
     if (task.status === 'completed') return true;
     if (maxP != null && maxP > 0 && currentP >= maxP && submission.status !== 'approved') return true;
     if (isPastDeadline(task.deadline) && submission.status !== 'approved') {
+      if (submission.status === 'verifying') return false;
       if (submission.status === 'pending' && !submission.submitted_at) return true;
       if (submission.status === 'pending' || submission.status === 'submitted') return true;
     }
@@ -4764,10 +5068,83 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   function getActiveStatusLabel(submission) {
+    if (submission.status === 'verifying') return mtT('mt_status_verifying');
     if (submission.status === 'submitted') return mtT('mt_status_reviewing');
     if (submission.status === 'pending' && submission.submitted_at) return mtT('mt_status_submitted');
     if (submission.status === 'pending') return mtT('mt_status_pending');
     return submission.status || '';
+  }
+
+  function buildActiveStatusHtml(submission) {
+    if (submission.status === 'verifying') {
+      return (
+        '<span class="my-task-status my-task-status-verifying">' +
+          '<span class="my-task-verify-spinner" aria-hidden="true"></span>' +
+          escapeHtml(mtT('mt_status_verifying')) +
+        '</span>'
+      );
+    }
+    return '<span class="my-task-status my-task-status-active">' + escapeHtml(getActiveStatusLabel(submission)) + '</span>';
+  }
+
+  function hasVerifyingTasks() {
+    return (myTasksData.active || []).some(function (item) {
+      return item.submission && item.submission.status === 'verifying';
+    });
+  }
+
+  function stopVerifyingPoll() {
+    if (verifyPollTimer) {
+      clearInterval(verifyPollTimer);
+      verifyPollTimer = null;
+    }
+  }
+
+  function startVerifyingPoll() {
+    stopVerifyingPoll();
+    if (!hasVerifyingTasks() || !myTasksUserId) return;
+
+    verifyPollTimer = setInterval(function () {
+      pollVerifyingSubmissions();
+    }, VERIFY_POLL_MS);
+  }
+
+  async function pollVerifyingSubmissions() {
+    if (!window.supabase || !myTasksUserId) return;
+
+    var verifyingItems = (myTasksData.active || []).filter(function (item) {
+      return item.submission && item.submission.status === 'verifying';
+    });
+
+    if (!verifyingItems.length) {
+      stopVerifyingPoll();
+      return;
+    }
+
+    var ids = verifyingItems.map(function (item) { return item.submission.id; });
+    var result = await window.supabase
+      .from('submissions')
+      .select('id, status, reviewed_at, review_comment')
+      .in('id', ids);
+
+    if (result.error) return;
+
+    var changed = false;
+    (result.data || []).forEach(function (row) {
+      if (row.status === 'approved' || row.status === 'rejected') {
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      myTasksData = await fetchMyTasksData(myTasksUserId);
+      renderMyTasksList();
+      if (hasVerifyingTasks()) {
+        startVerifyingPoll();
+      } else {
+        stopVerifyingPoll();
+      }
+    }
   }
 
   function categorizeMyTasks(items) {
@@ -4793,7 +5170,7 @@ window.addEventListener('hashchange', handleRoute);
         return;
       }
 
-      if (sub.status === 'pending' || sub.status === 'submitted') {
+      if (sub.status === 'verifying' || sub.status === 'pending' || sub.status === 'submitted') {
         active.push(item);
       }
     });
@@ -4806,7 +5183,7 @@ window.addEventListener('hashchange', handleRoute);
 
     var result = await window.supabase
       .from('submissions')
-      .select('id, task_id, user_id, status, submitted_at, reviewed_at, tasks(*)')
+      .select('id, task_id, user_id, status, submitted_at, reviewed_at, review_comment, tasks(*)')
       .eq('user_id', userId)
       .order('submitted_at', { ascending: false });
 
@@ -4837,15 +5214,23 @@ window.addEventListener('hashchange', handleRoute);
     var metaHtml = '';
 
     if (tab === 'active') {
-      statusHtml = '<span class="my-task-status my-task-status-active">' + escapeHtml(getActiveStatusLabel(submission)) + '</span>';
+      statusHtml = buildActiveStatusHtml(submission);
       metaHtml = '<p class="my-task-meta">' + escapeHtml(mtT('mt_label_deadline')) + '：' + escapeHtml(formatMtDeadline(task.deadline)) + '</p>';
     } else if (tab === 'completed') {
       statusHtml = '<span class="my-task-status my-task-status-done">' + escapeHtml(mtT('mt_status_approved')) + '</span>';
       var doneTime = submission.reviewed_at || submission.submitted_at;
       metaHtml = '<p class="my-task-meta">' + escapeHtml(mtT('mt_label_completed')) + '：' + escapeHtml(formatMtDateTime(doneTime)) + '</p>';
     } else {
-      statusHtml = '<span class="my-task-status my-task-status-expired">' + escapeHtml(item.expiredReason || mtT('mt_reason_expired')) + '</span>';
-      metaHtml = '<p class="my-task-meta">' + escapeHtml(mtT('mt_label_reason')) + '：' + escapeHtml(item.expiredReason || mtT('mt_reason_expired')) + '</p>';
+      if (submission.status === 'rejected') {
+        statusHtml = '<span class="my-task-status my-task-status-rejected">' + escapeHtml(mtT('mt_status_rejected')) + '</span>';
+      } else {
+        statusHtml = '<span class="my-task-status my-task-status-expired">' + escapeHtml(item.expiredReason || mtT('mt_reason_expired')) + '</span>';
+      }
+      var reasonText = item.expiredReason || mtT('mt_reason_expired');
+      if (submission.status === 'rejected' && submission.review_comment) {
+        reasonText = submission.review_comment;
+      }
+      metaHtml = '<p class="my-task-meta">' + escapeHtml(mtT('mt_label_reason')) + '：' + escapeHtml(reasonText) + '</p>';
     }
 
     return (
@@ -4934,8 +5319,12 @@ window.addEventListener('hashchange', handleRoute);
     if (!userId) {
       if (loginEl) loginEl.classList.remove('hidden');
       if (mainEl) mainEl.classList.add('hidden');
+      myTasksUserId = null;
+      stopVerifyingPoll();
       return;
     }
+
+    myTasksUserId = userId;
 
     if (loginEl) loginEl.classList.add('hidden');
     if (mainEl) mainEl.classList.remove('hidden');
@@ -4944,11 +5333,13 @@ window.addEventListener('hashchange', handleRoute);
     try {
       myTasksData = await fetchMyTasksData(userId);
       renderMyTasksList();
+      startVerifyingPoll();
     } catch (err) {
       console.warn('加载我的任务失败', err);
       alert(mtT('mt_load_fail') + (err && err.message ? err.message : String(err)));
       myTasksData = { active: [], completed: [], expired: [] };
       renderMyTasksList();
+      stopVerifyingPoll();
     } finally {
       setMyTasksLoading(false);
     }
@@ -5011,6 +5402,7 @@ window.addEventListener('hashchange', handleRoute);
       await loadAndRenderMyTasks();
     } else {
       page.classList.add('hidden');
+      stopVerifyingPoll();
     }
   }
 

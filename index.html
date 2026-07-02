@@ -383,6 +383,31 @@
         <button type="button" id="td-btn-ended" class="td-action-btn td-btn-disabled hidden" disabled data-i18n="td_btn_ended">已结束</button>
       </div>
 
+      <div id="td-twitter-auth-modal" class="td-twitter-modal hidden" aria-hidden="true">
+        <div class="td-twitter-modal-overlay"></div>
+        <div class="td-twitter-modal-card">
+          <p class="td-twitter-modal-text" data-i18n="td_twitter_auth_msg">此任务需要授权你的 Twitter 账号才能自动验证。</p>
+          <div class="td-twitter-modal-actions">
+            <button type="button" id="td-twitter-auth-cancel" class="td-twitter-modal-btn td-twitter-modal-cancel" data-i18n="td_twitter_btn_cancel">取消</button>
+            <button type="button" id="td-twitter-auth-go" class="td-twitter-modal-btn td-twitter-modal-primary" data-i18n="td_twitter_btn_authorize">去授权</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="td-twitter-token-modal" class="td-twitter-modal hidden" aria-hidden="true">
+        <div class="td-twitter-modal-overlay"></div>
+        <div class="td-twitter-modal-card">
+          <h3 class="td-twitter-modal-title" data-i18n="td_twitter_token_title">绑定 Twitter（测试）</h3>
+          <p class="td-twitter-modal-desc" data-i18n="td_twitter_token_desc">请粘贴你的 Twitter Access Token（测试用，正式上线后将改为 OAuth 授权）。</p>
+          <input type="text" id="td-twitter-token-input" class="td-twitter-token-input" data-placeholder="td_twitter_token_ph" autocomplete="off">
+          <p id="td-twitter-token-error" class="td-twitter-modal-error hidden"></p>
+          <div class="td-twitter-modal-actions">
+            <button type="button" id="td-twitter-token-cancel" class="td-twitter-modal-btn td-twitter-modal-cancel" data-i18n="td_twitter_btn_cancel">取消</button>
+            <button type="button" id="td-twitter-token-save" class="td-twitter-modal-btn td-twitter-modal-primary" data-i18n="td_twitter_btn_save">保存并继续</button>
+          </div>
+        </div>
+      </div>
+
     </div>
 
     <!-- 发布任务页 — 由路由 #create-task 显示 -->
