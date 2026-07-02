@@ -524,8 +524,8 @@ function buildTaskInsertPayload(userId, fields) {
     if (fields.imageUrl) {
         payload.image_url = fields.imageUrl;
     }
-    if (fields.autoReview) {
-        payload.auto_review = true;
+    if (fields.verificationType) {
+        payload.verification_type = fields.verificationType;
     }
     return payload;
 }
@@ -3694,7 +3694,7 @@ window.addEventListener('hashchange', handleRoute);
             deadline: deadline,
             proofType: proofType,
             imageUrl: imageUrl,
-            autoReview: simpleTask
+            verificationType: simpleTask ? 'simple' : null
           }));
 
         if (insertResult.error) throw insertResult.error;
