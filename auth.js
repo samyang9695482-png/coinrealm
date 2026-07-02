@@ -12,6 +12,7 @@
   var hideTimer = null;
   var testLoginModalReady = false;
   var testLoginSubmitting = false;
+  var WALLET_AUTH_WORKER_URL = 'https://coinrealm-wallet-auth.samyang9695482.workers.dev';
 
   // 在 app.js 执行前缓存 #app-content 完整 HTML，供菜单跳转时恢复真实页面
   var authAppContentHtml = (function () {
@@ -72,6 +73,7 @@
       testLoginRequired: '请输入邮箱和密码',
       testLoginFail: '登录失败：',
       connectWallet: '连接钱包',
+      walletConnectFail: '钱包登录失败：',
       metamaskNotInstalled: '请安装 MetaMask 浏览器插件',
       welcomeSignMessage: '欢迎来到 CoinRealm！签名以验证你的身份。',
       walletAddressLabel: '钱包地址：',
@@ -98,6 +100,7 @@
       testLoginRequired: 'Please enter email and password',
       testLoginFail: 'Sign in failed: ',
       connectWallet: 'Connect Wallet',
+      walletConnectFail: 'Wallet sign-in failed: ',
       metamaskNotInstalled: 'Please install the MetaMask browser extension',
       welcomeSignMessage: 'Welcome to CoinRealm! Sign to verify your identity.',
       walletAddressLabel: 'Wallet address: ',
@@ -228,10 +231,7 @@
 
   // 登录成功后异步同步用户到 public.users 表（不阻塞 UI）
   function syncUserToSupabase() {
-    if (!window.supabase || !isLoggedIn()) return;
-
-    // 钱包登录无 Supabase Auth 会话，暂时跳过同步
-    if (!currentUser) return;
+    if (!window.supabase || !isLoggedIn() || !currentUser) return;
 
     window.supabase.auth.getSession()
       .then(function (sessionResult) {
@@ -271,80 +271,107 @@
     localStorage.removeItem('coinrealm_user_id');
   }
 
-  // 钱包登录：建立 Supabase Auth 会话，并同步 public.users（id 必须与 auth.uid() 一致）
-  function upsertWalletUserRecord(address, authId) {
-    var now = new Date().toISOString();
+  function isWalletAuthUser(user) {
+    if (!user) return false;
+    if (user.user_metadata && user.user_metadata.wallet_address) return true;
+    var email = user.email || '';
+    return email.indexOf('@wallet.coinrealm.local') !== -1;
+  }
 
-    return window.supabase
-      .from('users')
-      .select('id, username, level, reputation_score, crlm_balance, usdt_balance')
-      .eq('wallet_address', address)
-      .maybeSingle()
-      .then(function (result) {
-        if (result.error) throw result.error;
+  function getWalletAddressFromUser(user) {
+    if (!user) return walletAddress || '';
+    if (user.user_metadata && user.user_metadata.wallet_address) {
+      return user.user_metadata.wallet_address;
+    }
+    if (walletAddress) return walletAddress;
+    var email = user.email || '';
+    if (email.indexOf('@wallet.coinrealm.local') !== -1) {
+      return '0x' + email.split('@')[0];
+    }
+    return '';
+  }
 
-        var existing = result.data;
-        var payload = {
-          id: authId,
-          wallet_address: address,
-          username: existing && existing.username ? existing.username : address.slice(0, 10),
-          level: existing && existing.level != null ? existing.level : 0,
-          reputation_score: existing && existing.reputation_score != null ? existing.reputation_score : 100,
-          crlm_balance: existing && existing.crlm_balance != null ? existing.crlm_balance : 0,
-          usdt_balance: existing && existing.usdt_balance != null ? existing.usdt_balance : 0,
-          updated_at: now
-        };
-
-        return window.supabase
-          .from('users')
-          .upsert(payload, { onConflict: 'wallet_address' })
-          .select('id')
-          .single();
-      })
-      .then(function (upsertResult) {
-        if (upsertResult.error) throw upsertResult.error;
-        return upsertResult.data.id;
-      });
+  function applyWalletStateFromUser(user) {
+    var address = getWalletAddressFromUser(user);
+    if (!address) return false;
+    walletAddress = address;
+    localStorage.setItem('coinrealm_wallet', address);
+    return true;
   }
 
   function ensureWalletAuthSession() {
-    if (!window.supabase || !walletAddress) {
+    if (!window.supabase) {
       return Promise.resolve(null);
     }
 
     return window.supabase.auth.getSession().then(function (sessionResult) {
       var session = sessionResult.data && sessionResult.data.session;
-      if (session && session.user && session.user.id) {
-        return upsertWalletUserRecord(walletAddress, session.user.id).then(function (userId) {
-          localStorage.setItem('coinrealm_user_id', userId);
-          return userId;
-        });
+      if (!session || !session.user || !session.user.id) {
+        return null;
       }
 
-      return window.supabase.auth.signInAnonymously().then(function (authResult) {
-        if (authResult.error) throw authResult.error;
-        if (!authResult.data || !authResult.data.user || !authResult.data.user.id) {
-          throw new Error('Anonymous auth failed');
-        }
-        return upsertWalletUserRecord(walletAddress, authResult.data.user.id).then(function (userId) {
-          localStorage.setItem('coinrealm_user_id', userId);
-          return userId;
-        });
-      });
+      if (isWalletAuthUser(session.user)) {
+        applyWalletStateFromUser(session.user);
+      }
+
+      localStorage.setItem('coinrealm_user_id', session.user.id);
+      sessionStorage.setItem('coinrealm_user_id', session.user.id);
+      return session.user.id;
     });
   }
 
-  function syncWalletUser(address) {
-    if (!window.supabase || !address) {
+  function authenticateWalletWithWorker(address, signature, message) {
+    if (!window.supabase) {
       return Promise.reject(new Error('Supabase unavailable'));
     }
 
-    walletAddress = address;
-    localStorage.setItem('coinrealm_wallet', address);
-    return ensureWalletAuthSession();
+    return fetch(WALLET_AUTH_WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        wallet_address: address,
+        signature: signature,
+        message: message
+      })
+    })
+      .then(function (response) {
+        return response.json().then(function (data) {
+          if (!response.ok) {
+            throw new Error((data && data.error) || ('HTTP ' + response.status));
+          }
+          if (!data.access_token || !data.refresh_token) {
+            throw new Error('Invalid wallet auth response');
+          }
+          return data;
+        });
+      })
+      .then(function (data) {
+        return window.supabase.auth.setSession({
+          access_token: data.access_token,
+          refresh_token: data.refresh_token
+        }).then(function (result) {
+          if (result.error) throw result.error;
+
+          walletAddress = address;
+          localStorage.setItem('coinrealm_wallet', address);
+
+          var userId = data.user_id ||
+            (data.user && data.user.id) ||
+            (result.data && result.data.user && result.data.user.id) ||
+            null;
+
+          if (userId) {
+            localStorage.setItem('coinrealm_user_id', userId);
+            sessionStorage.setItem('coinrealm_user_id', userId);
+          }
+
+          updateUI(result.data && result.data.user ? result.data.user : null);
+          return result.data;
+        });
+      });
   }
 
-  // 页面加载时从 localStorage 恢复钱包登录态
+  // 页面加载时从 localStorage / Supabase 会话恢复钱包登录态
   function restoreWalletSession(callback) {
     var savedWallet = localStorage.getItem('coinrealm_wallet');
     if (!savedWallet || !window.supabase) {
@@ -354,12 +381,19 @@
 
     walletAddress = savedWallet;
 
-    ensureWalletAuthSession()
-      .then(function (userId) {
-        if (!userId) {
-          clearWalletStorage();
-          walletAddress = null;
+    window.supabase.auth.getSession()
+      .then(function (result) {
+        var session = result.data && result.data.session;
+        if (session && session.user) {
+          applyWalletStateFromUser(session.user);
+          localStorage.setItem('coinrealm_user_id', session.user.id);
+          sessionStorage.setItem('coinrealm_user_id', session.user.id);
+          callback();
+          return;
         }
+
+        clearWalletStorage();
+        walletAddress = null;
         callback();
       })
       .catch(function () {
@@ -393,16 +427,13 @@
         return window.ethereum.request({
           method: 'personal_sign',
           params: [message, address]
-        }).then(function () {
-          walletAddress = address;
-          localStorage.setItem('coinrealm_wallet', address);
-          return syncWalletUser(address);
-        }).then(function () {
-          renderAuthArea();
+        }).then(function (signature) {
+          return authenticateWalletWithWorker(address, signature, message);
         });
       })
       .catch(function (err) {
         console.warn('钱包连接失败', err);
+        alert(t('walletConnectFail') + (err && err.message ? err.message : String(err)));
         walletAddress = null;
         clearWalletStorage();
         renderAuthArea();
@@ -412,6 +443,10 @@
   // 获取当前登录状态的展示名称（谷歌用户名或钱包地址）
   function getDisplayInfo() {
     if (currentUser) {
+      var wallet = getWalletAddressFromUser(currentUser);
+      if (wallet) {
+        return { name: truncateWalletAddress(wallet), title: wallet };
+      }
       var name = (currentUser.user_metadata && currentUser.user_metadata.full_name) || currentUser.email || '';
       if (name.length > 15) name = name.slice(0, 15);
       return { name: name, title: currentUser.email || '' };
@@ -534,7 +569,8 @@
     walletAddress = null;
     clearWalletStorage();
     sessionStorage.removeItem('coinrealm_user_id');
-    if (currentUser && window.supabase) {
+
+    if (window.supabase) {
       window.supabase.auth.signOut().then(function () {
         updateUI(null);
       }).catch(function () {
@@ -542,6 +578,7 @@
       });
       return;
     }
+
     updateUI(null);
   }
 
@@ -842,12 +879,17 @@
   // 更新谷歌登录用户状态并刷新导航栏（不影响钱包状态）
   function updateUI(user) {
     currentUser = user;
-    renderAuthArea();
     if (currentUser) {
+      if (!applyWalletStateFromUser(currentUser)) {
+        walletAddress = null;
+        localStorage.removeItem('coinrealm_wallet');
+      }
       scheduleUserSync();
-    } else if (!walletAddress) {
+    } else {
+      walletAddress = null;
       sessionStorage.removeItem('coinrealm_user_id');
     }
+    renderAuthArea();
   }
 
   // 启动
@@ -867,21 +909,22 @@
           var session = result.data && result.data.session;
           if (session && session.user) {
             updateUI(session.user);
-          } else if (walletAddress) {
-            renderAuthArea();
           } else {
             updateUI(null);
           }
         }).catch(function () {
-          if (walletAddress) {
-            renderAuthArea();
-          } else {
-            updateUI(null);
-          }
+          updateUI(null);
         });
 
         window.supabase.auth.onAuthStateChange(function (event, session) {
-          updateUI(session ? session.user : null);
+          if (session && session.user) {
+            updateUI(session.user);
+            return;
+          }
+          walletAddress = null;
+          clearWalletStorage();
+          sessionStorage.removeItem('coinrealm_user_id');
+          updateUI(null);
         });
       });
     });
