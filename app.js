@@ -530,7 +530,7 @@ function buildTaskInsertPayload(userId, fields) {
     return payload;
 }
 
-var TWITTER_VERIFY_WORKER_URL = 'WORKER_URL_PLACEHOLDER';
+var TWITTER_VERIFY_WORKER_URL = 'https://coinrealm-twitter-verify.samyang9695482.workers.dev';
 
 function isSimpleTaskType(task) {
     return getTaskField(task, ['type', 'task_type', 'category'], '') === 'simple';
