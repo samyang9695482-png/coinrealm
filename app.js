@@ -365,13 +365,13 @@ const translations = {
         st_btn_full: "已满员",
         st_label_slots: "剩余名额",
         st_label_deadline: "截止时间",
-        st_claim_success: "领取成功！等待系统自动验证。",
+        st_claim_success: "领取成功！请按照任务要求完成操作。",
         st_login_required: "请先登录后再领取",
         st_already_claimed: "你已领取过该任务",
         st_task_full: "任务名额已满",
         st_claim_fail: "领取失败：",
         tag_all: "全部",
-        tag_simple: "简单",
+        tag_simple: "⚡ 简单任务",
         tag_official: "官方",
         tag_airdrop: "空投",
         tag_register: "注册",
@@ -421,13 +421,13 @@ const translations = {
         st_btn_full: "Full",
         st_label_slots: "Slots left",
         st_label_deadline: "Deadline",
-        st_claim_success: "Claimed! Awaiting automatic verification.",
+        st_claim_success: "Claimed! Please complete the task as required.",
         st_login_required: "Please sign in before claiming",
         st_already_claimed: "You have already claimed this task",
         st_task_full: "This task is full",
         st_claim_fail: "Claim failed: ",
         tag_all: "All",
-        tag_simple: "Simple",
+        tag_simple: "⚡ Simple Tasks",
         tag_official: "Official",
         tag_airdrop: "Airdrop",
         tag_register: "Register",
@@ -1901,6 +1901,8 @@ window.addEventListener('hashchange', handleRoute);
       td_risk_content: 'CoinRealm 不对该任务的真实性做背书。请自行判断项目风险，切勿投入超出你承受能力的资金。如任务要求转账、提供私钥或助记词，请立即举报。',
       td_btn_claim: '领取任务',
       td_btn_claim_now: '立即领取',
+      td_btn_simple_claim: '一键领取',
+      td_btn_simple_done: '已完成',
       td_btn_submit: '去提交',
       td_btn_manage: '管理任务',
       td_btn_login: '请先登录',
@@ -1925,6 +1927,7 @@ window.addEventListener('hashchange', handleRoute);
       td_type_other: '其他',
       td_type_all: '全部',
       td_alert_claim_ok: '领取成功！',
+      td_alert_simple_claim_ok: '领取成功！请按照任务要求完成操作。',
       td_alert_claim_fail: '领取失败：',
       td_alert_already_claimed: '您已经领取过该任务',
       td_alert_task_full: '任务名额已满',
@@ -1950,6 +1953,8 @@ window.addEventListener('hashchange', handleRoute);
       td_risk_content: 'CoinRealm does not endorse the authenticity of this task. Assess project risks yourself and never invest more than you can afford to lose. Report immediately if the task asks for transfers, private keys, or seed phrases.',
       td_btn_claim: 'Claim Task',
       td_btn_claim_now: 'Claim Now',
+      td_btn_simple_claim: 'Claim Now',
+      td_btn_simple_done: 'Completed',
       td_btn_submit: 'Submit Proof',
       td_btn_manage: 'Manage Task',
       td_btn_login: 'Please sign in first',
@@ -1974,6 +1979,7 @@ window.addEventListener('hashchange', handleRoute);
       td_type_other: 'Other',
       td_type_all: 'All',
       td_alert_claim_ok: 'Task claimed successfully!',
+      td_alert_simple_claim_ok: 'Claimed! Please complete the task as required.',
       td_alert_claim_fail: 'Claim failed: ',
       td_alert_already_claimed: 'You have already claimed this task',
       td_alert_task_full: 'No slots left for this task',
@@ -2044,12 +2050,24 @@ window.addEventListener('hashchange', handleRoute);
     }));
   }
 
+  function isSimpleTaskRecord(task) {
+    return getTaskField(task, ['type', 'task_type', 'category'], '') === 'simple';
+  }
+
   function resolveDetailActionState(task, submission, userId) {
     var max = task.max_participants != null ? Number(task.max_participants) : null;
     var current = Number(task.current_participants) || 0;
     var deadline = task.deadline ? new Date(task.deadline) : null;
     var isFull = max != null && current >= max;
     var isExpired = deadline && !Number.isNaN(deadline.getTime()) && deadline.getTime() < Date.now();
+
+    if (isSimpleTaskRecord(task)) {
+      if (isFull || isExpired) return 'ended';
+      if (!userId) return 'not_logged_in';
+      if (userId === task.publisher_id) return 'manage_task';
+      if (!submission) return 'simple_can_claim';
+      return 'simple_completed';
+    }
 
     if (isFull || isExpired) return 'ended';
     if (!userId) return 'not_logged_in';
@@ -2147,6 +2165,72 @@ window.addEventListener('hashchange', handleRoute);
       user_id: userId,
       event_type: 'task_claim',
       description: '领取了任务「' + buildTaskBroadcastTitle(currentTaskRecord.title) + '」',
+      reward_amount: Number(currentTaskRecord.reward_amount) || 0
+    });
+  }
+
+  async function performSimpleTaskClaim() {
+    if (!window.supabase || !currentTaskRecord || !isSimpleTaskRecord(currentTaskRecord)) return;
+
+    var taskId = currentTaskRecord.id;
+    var userId = await getAuthenticatedUserId();
+
+    if (!userId) {
+      alert(tdT('td_alert_login'));
+      return;
+    }
+
+    if (currentSubmissionRecord) {
+      alert(tdT('td_alert_already_claimed'));
+      return;
+    }
+
+    var max = currentTaskRecord.max_participants != null ? Number(currentTaskRecord.max_participants) : null;
+    var current = Number(currentTaskRecord.current_participants) || 0;
+
+    if (max != null && current >= max) {
+      alert(tdT('td_alert_task_full'));
+      return;
+    }
+
+    var nowIso = new Date().toISOString();
+    var insertResult = await window.supabase
+      .from('submissions')
+      .insert({
+        task_id: taskId,
+        user_id: userId,
+        status: 'submitted',
+        submitted_at: nowIso
+      })
+      .select()
+      .single();
+
+    if (insertResult.error) {
+      alert(tdT('td_alert_claim_fail') + insertResult.error.message);
+      return;
+    }
+
+    var nextCount = current + 1;
+    var updateResult = await window.supabase
+      .from('tasks')
+      .update({ current_participants: nextCount })
+      .eq('id', taskId);
+
+    if (updateResult.error) {
+      alert(tdT('td_alert_claim_fail') + updateResult.error.message);
+      return;
+    }
+
+    currentTaskRecord.current_participants = nextCount;
+    currentSubmissionRecord = insertResult.data;
+    currentUserId = userId;
+    detailActionState = resolveDetailActionState(currentTaskRecord, currentSubmissionRecord, currentUserId);
+    updateBottomActionBar();
+    alert(tdT('td_alert_simple_claim_ok'));
+    writeBroadcast({
+      user_id: userId,
+      event_type: 'task_claim',
+      description: '领取了简单任务「' + buildTaskBroadcastTitle(currentTaskRecord.title) + '」',
       reward_amount: Number(currentTaskRecord.reward_amount) || 0
     });
   }
@@ -2457,7 +2541,7 @@ window.addEventListener('hashchange', handleRoute);
 
   function configureActionButton(btn, config) {
     if (!btn) return;
-    btn.classList.remove('hidden', 'td-btn-gold', 'td-btn-blue', 'td-btn-gray', 'td-btn-disabled');
+    btn.classList.remove('hidden', 'td-btn-gold', 'td-btn-blue', 'td-btn-gray', 'td-btn-green', 'td-btn-disabled');
     btn.classList.add(config.styleClass);
     btn.textContent = config.text;
     btn.disabled = !!config.disabled;
@@ -2489,6 +2573,20 @@ window.addEventListener('hashchange', handleRoute);
           styleClass: 'td-btn-gold',
           text: tdT('td_btn_claim_now'),
           disabled: false
+        });
+        break;
+      case 'simple_can_claim':
+        configureActionButton(buttons.claim, {
+          styleClass: 'td-btn-gold',
+          text: tdT('td_btn_simple_claim'),
+          disabled: false
+        });
+        break;
+      case 'simple_completed':
+        configureActionButton(buttons.claim, {
+          styleClass: 'td-btn-green',
+          text: tdT('td_btn_simple_done'),
+          disabled: true
         });
         break;
       case 'go_submit':
@@ -2544,7 +2642,9 @@ window.addEventListener('hashchange', handleRoute);
     var claimBtn = document.getElementById('td-btn-claim');
     if (claimBtn) {
       claimBtn.addEventListener('click', function () {
-        if (detailActionState === 'can_claim') {
+        if (detailActionState === 'simple_can_claim') {
+          performSimpleTaskClaim();
+        } else if (detailActionState === 'can_claim') {
           performClaimTask();
         } else if (detailActionState === 'rejected_resubmit') {
           navigateToSubmitPage();
@@ -2673,9 +2773,9 @@ window.addEventListener('hashchange', handleRoute);
       ct_label_images: '任务图片',
       ct_ph_title: '请输入任务标题',
       ct_ph_desc: '请详细描述任务内容和要求',
-      ct_ph_desc_simple: '请描述简单的任务内容，如“关注XX账号”',
+      ct_ph_desc_simple: '请简单描述任务内容，如“关注 @CoinRealm_X”',
       ct_ph_req: '请输入任务要求',
-      ct_ph_req_simple: '请输入任务要求（纯文字）',
+      ct_ph_req_simple: '如“关注后截图上传”',
       ct_type_simple: '简单任务',
       ct_ph_reward: '请输入奖励金额',
       ct_ph_slots: '请输入名额（留空则不限）',
@@ -2701,7 +2801,7 @@ window.addEventListener('hashchange', handleRoute);
       ct_alert_image_size: '单张图片不能超过 5MB',
       ct_alert_upload_fail: '上传失败：',
       tag_all: '全部',
-      tag_simple: '简单',
+      tag_simple: '⚡ 简单任务',
       tag_airdrop: '空投',
       tag_register: '注册',
       tag_trade: '交易',
@@ -2723,9 +2823,9 @@ window.addEventListener('hashchange', handleRoute);
       ct_label_images: 'Task Images',
       ct_ph_title: 'Enter task title',
       ct_ph_desc: 'Describe the task content and requirements in detail',
-      ct_ph_desc_simple: 'Describe a simple task, e.g. "Follow @XX account"',
+      ct_ph_desc_simple: 'Briefly describe the task, e.g. "Follow @CoinRealm_X"',
       ct_ph_req: 'Enter a requirement',
-      ct_ph_req_simple: 'Enter a text-only requirement',
+      ct_ph_req_simple: 'e.g. "Upload a screenshot after following"',
       ct_type_simple: 'Simple Task',
       ct_ph_reward: 'Enter reward amount',
       ct_ph_slots: 'Enter slots (leave empty for unlimited)',
@@ -2751,7 +2851,7 @@ window.addEventListener('hashchange', handleRoute);
       ct_alert_image_size: 'Each image must be 5MB or smaller',
       ct_alert_upload_fail: 'Upload failed: ',
       tag_all: 'All',
-      tag_simple: 'Simple',
+      tag_simple: '⚡ Simple Tasks',
       tag_airdrop: 'Airdrop',
       tag_register: 'Register',
       tag_trade: 'Trade',
@@ -10456,7 +10556,7 @@ window.addEventListener('hashchange', handleRoute);
       st_btn_full: '已满员',
       st_label_slots: '剩余名额',
       st_label_deadline: '截止时间',
-      st_claim_success: '领取成功！等待系统自动验证。',
+      st_claim_success: '领取成功！请按照任务要求完成操作。',
       st_login_required: '请先登录后再领取',
       st_already_claimed: '你已领取过该任务',
       st_task_full: '任务名额已满',
@@ -10473,7 +10573,7 @@ window.addEventListener('hashchange', handleRoute);
       st_btn_full: 'Full',
       st_label_slots: 'Slots left',
       st_label_deadline: 'Deadline',
-      st_claim_success: 'Claimed! Awaiting automatic verification.',
+      st_claim_success: 'Claimed! Please complete the task as required.',
       st_login_required: 'Please sign in before claiming',
       st_already_claimed: 'You have already claimed this task',
       st_task_full: 'This task is full',

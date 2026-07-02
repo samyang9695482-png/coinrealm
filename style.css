@@ -1354,6 +1354,11 @@ img {
     color: #1a1a2e;
 }
 
+.td-btn-green {
+    background-color: #52c41a;
+    color: #ffffff;
+}
+
 .td-btn-disabled {
     background-color: #f0f0f0;
     color: #999;
