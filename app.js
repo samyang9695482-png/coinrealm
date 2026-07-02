@@ -527,6 +527,17 @@ function buildTaskInsertPayload(userId, fields) {
     if (fields.verificationType) {
         payload.verification_type = fields.verificationType;
     }
+    if (fields.platform) {
+        payload.platform = fields.platform;
+        payload.task_action = fields.taskAction || null;
+        payload.task_target = fields.taskTarget || null;
+        payload.task_keyword = fields.taskKeyword || null;
+        if (fields.platform === 'twitter') {
+            payload.twitter_action = fields.taskAction || null;
+            payload.twitter_target = fields.taskTarget || null;
+            payload.twitter_keyword = fields.taskKeyword || null;
+        }
+    }
     return payload;
 }
 
@@ -537,7 +548,9 @@ function isSimpleTaskType(task) {
 }
 
 function isTwitterVerificationTask(task) {
-    return isSimpleTaskType(task) && getTaskField(task, ['verification_type'], '') === 'twitter';
+    if (!isSimpleTaskType(task)) return false;
+    var platform = getTaskField(task, ['platform', 'verification_type'], '');
+    return platform === 'twitter';
 }
 
 async function verifyTwitterTask(taskId, userId) {
@@ -2163,7 +2176,9 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   function isTwitterSimpleTask(task) {
-    return isSimpleTaskRecord(task) && getTaskField(task, ['verification_type'], '') === 'twitter';
+    if (!isSimpleTaskRecord(task)) return false;
+    var platform = getTaskField(task, ['platform', 'verification_type'], '');
+    return platform === 'twitter';
   }
 
   function resolveDetailActionState(task, submission, userId) {
@@ -2332,7 +2347,7 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   function getTwitterTargetUrl(task) {
-    var target = String(getTaskField(task, ['twitter_target'], '') || '').trim();
+    var target = String(getTaskField(task, ['task_target', 'twitter_target'], '') || '').trim();
     if (!target) return '';
     if (/^https?:\/\//i.test(target)) return target;
     if (/^\d+$/.test(target)) return 'https://twitter.com/i/status/' + target;
@@ -3234,6 +3249,73 @@ window.addEventListener('hashchange', handleRoute);
   var CT_ALLOWED_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
   var CT_PLATFORM_COMMISSION = 0.15;
 
+  var CT_SOCIAL_PLATFORMS = {
+    twitter: {
+      actions: [
+        { value: 'follow', labelKey: 'ct_action_twitter_follow' },
+        { value: 'like', labelKey: 'ct_action_twitter_like' },
+        { value: 'retweet', labelKey: 'ct_action_twitter_retweet' },
+        { value: 'reply', labelKey: 'ct_action_twitter_reply', needsKeyword: true }
+      ],
+      targetPlaceholderKey: 'ct_ph_target_twitter'
+    },
+    telegram: {
+      actions: [
+        { value: 'join', labelKey: 'ct_action_telegram_join' },
+        { value: 'follow', labelKey: 'ct_action_telegram_follow' },
+        { value: 'message', labelKey: 'ct_action_telegram_message', needsKeyword: true }
+      ],
+      targetPlaceholderKey: 'ct_ph_target_telegram'
+    },
+    discord: {
+      actions: [
+        { value: 'join', labelKey: 'ct_action_discord_join' },
+        { value: 'message', labelKey: 'ct_action_discord_message', needsKeyword: true }
+      ],
+      targetPlaceholderKey: 'ct_ph_target_discord'
+    },
+    youtube: {
+      actions: [
+        { value: 'subscribe', labelKey: 'ct_action_youtube_subscribe' },
+        { value: 'like', labelKey: 'ct_action_youtube_like' },
+        { value: 'comment', labelKey: 'ct_action_youtube_comment', needsKeyword: true }
+      ],
+      targetPlaceholderKey: 'ct_ph_target_youtube'
+    },
+    github: {
+      actions: [
+        { value: 'star', labelKey: 'ct_action_github_star' },
+        { value: 'fork', labelKey: 'ct_action_github_fork' },
+        { value: 'follow', labelKey: 'ct_action_github_follow' }
+      ],
+      targetPlaceholderKey: 'ct_ph_target_github'
+    },
+    tiktok: {
+      actions: [
+        { value: 'follow', labelKey: 'ct_action_tiktok_follow' },
+        { value: 'like', labelKey: 'ct_action_tiktok_like' },
+        { value: 'comment', labelKey: 'ct_action_tiktok_comment', needsKeyword: true }
+      ],
+      targetPlaceholderKey: 'ct_ph_target_tiktok'
+    },
+    instagram: {
+      actions: [
+        { value: 'follow', labelKey: 'ct_action_instagram_follow' },
+        { value: 'like', labelKey: 'ct_action_instagram_like' },
+        { value: 'comment', labelKey: 'ct_action_instagram_comment', needsKeyword: true }
+      ],
+      targetPlaceholderKey: 'ct_ph_target_instagram'
+    },
+    reddit: {
+      actions: [
+        { value: 'join', labelKey: 'ct_action_reddit_join' },
+        { value: 'like', labelKey: 'ct_action_reddit_like' },
+        { value: 'comment', labelKey: 'ct_action_reddit_comment', needsKeyword: true }
+      ],
+      targetPlaceholderKey: 'ct_ph_target_reddit'
+    }
+  };
+
   var createTaskTranslations = {
     zh: {
       ct_page_title: '发布任务',
@@ -3252,6 +3334,57 @@ window.addEventListener('hashchange', handleRoute);
       ct_ph_desc_simple: '请简单描述任务内容，如“关注 @CoinRealm_X”',
       ct_ph_req: '请输入任务要求',
       ct_ph_req_simple: '如“关注后截图上传”',
+      ct_label_platform: '任务平台',
+      ct_platform_select: '请选择平台',
+      ct_platform_twitter: 'Twitter (X)',
+      ct_platform_telegram: 'Telegram',
+      ct_platform_discord: 'Discord',
+      ct_platform_youtube: 'YouTube',
+      ct_platform_github: 'GitHub',
+      ct_platform_tiktok: 'TikTok',
+      ct_platform_instagram: 'Instagram',
+      ct_platform_reddit: 'Reddit',
+      ct_label_action: '任务动作',
+      ct_label_target: '目标',
+      ct_label_keyword: '关键词',
+      ct_ph_target: '请输入目标链接或账号',
+      ct_ph_keyword: '请输入关键词（可选）',
+      ct_keyword_hint: '仅回复/评论/发送消息类任务需要填写',
+      ct_ph_target_twitter: '账号名或推文链接',
+      ct_ph_target_telegram: '群组/频道链接',
+      ct_ph_target_discord: '服务器邀请链接',
+      ct_ph_target_youtube: '频道链接或视频链接',
+      ct_ph_target_github: '仓库链接或用户主页链接',
+      ct_ph_target_tiktok: '账号链接或视频链接',
+      ct_ph_target_instagram: '账号链接或帖子链接',
+      ct_ph_target_reddit: '社区链接或帖子链接',
+      ct_action_twitter_follow: '关注账号',
+      ct_action_twitter_like: '点赞推文',
+      ct_action_twitter_retweet: '转发推文',
+      ct_action_twitter_reply: '回复推文',
+      ct_action_telegram_join: '加入群组',
+      ct_action_telegram_follow: '关注频道',
+      ct_action_telegram_message: '发送消息',
+      ct_action_discord_join: '加入服务器',
+      ct_action_discord_message: '发送消息',
+      ct_action_youtube_subscribe: '订阅频道',
+      ct_action_youtube_like: '点赞视频',
+      ct_action_youtube_comment: '评论视频',
+      ct_action_github_star: 'Star 仓库',
+      ct_action_github_fork: 'Fork 仓库',
+      ct_action_github_follow: 'Follow 用户',
+      ct_action_tiktok_follow: '关注账号',
+      ct_action_tiktok_like: '点赞视频',
+      ct_action_tiktok_comment: '评论视频',
+      ct_action_instagram_follow: '关注账号',
+      ct_action_instagram_like: '点赞帖子',
+      ct_action_instagram_comment: '评论帖子',
+      ct_action_reddit_join: '加入社区',
+      ct_action_reddit_like: '点赞帖子',
+      ct_action_reddit_comment: '评论帖子',
+      ct_sql_title: '若发布失败提示缺少字段，请在 Supabase 运行：',
+      ct_alert_platform_required: '请选择任务平台并填写动作与目标',
+      ct_alert_keyword_required: '请填写关键词',
       ct_type_simple: '简单任务',
       ct_ph_reward: '请输入奖励金额',
       ct_ph_slots: '请输入名额（留空则不限）',
@@ -3302,6 +3435,57 @@ window.addEventListener('hashchange', handleRoute);
       ct_ph_desc_simple: 'Briefly describe the task, e.g. "Follow @CoinRealm_X"',
       ct_ph_req: 'Enter a requirement',
       ct_ph_req_simple: 'e.g. "Upload a screenshot after following"',
+      ct_label_platform: 'Platform',
+      ct_platform_select: 'Select a platform',
+      ct_platform_twitter: 'Twitter (X)',
+      ct_platform_telegram: 'Telegram',
+      ct_platform_discord: 'Discord',
+      ct_platform_youtube: 'YouTube',
+      ct_platform_github: 'GitHub',
+      ct_platform_tiktok: 'TikTok',
+      ct_platform_instagram: 'Instagram',
+      ct_platform_reddit: 'Reddit',
+      ct_label_action: 'Action',
+      ct_label_target: 'Target',
+      ct_label_keyword: 'Keyword',
+      ct_ph_target: 'Enter target link or account',
+      ct_ph_keyword: 'Enter keyword (optional)',
+      ct_keyword_hint: 'Required for reply/comment/message actions',
+      ct_ph_target_twitter: 'Account handle or tweet link',
+      ct_ph_target_telegram: 'Group/channel link',
+      ct_ph_target_discord: 'Server invite link',
+      ct_ph_target_youtube: 'Channel or video link',
+      ct_ph_target_github: 'Repository or profile link',
+      ct_ph_target_tiktok: 'Account or video link',
+      ct_ph_target_instagram: 'Account or post link',
+      ct_ph_target_reddit: 'Community or post link',
+      ct_action_twitter_follow: 'Follow account',
+      ct_action_twitter_like: 'Like tweet',
+      ct_action_twitter_retweet: 'Retweet',
+      ct_action_twitter_reply: 'Reply to tweet',
+      ct_action_telegram_join: 'Join group',
+      ct_action_telegram_follow: 'Follow channel',
+      ct_action_telegram_message: 'Send message',
+      ct_action_discord_join: 'Join server',
+      ct_action_discord_message: 'Send message',
+      ct_action_youtube_subscribe: 'Subscribe to channel',
+      ct_action_youtube_like: 'Like video',
+      ct_action_youtube_comment: 'Comment on video',
+      ct_action_github_star: 'Star repository',
+      ct_action_github_fork: 'Fork repository',
+      ct_action_github_follow: 'Follow user',
+      ct_action_tiktok_follow: 'Follow account',
+      ct_action_tiktok_like: 'Like video',
+      ct_action_tiktok_comment: 'Comment on video',
+      ct_action_instagram_follow: 'Follow account',
+      ct_action_instagram_like: 'Like post',
+      ct_action_instagram_comment: 'Comment on post',
+      ct_action_reddit_join: 'Join community',
+      ct_action_reddit_like: 'Upvote post',
+      ct_action_reddit_comment: 'Comment on post',
+      ct_sql_title: 'If publish fails due to missing columns, run in Supabase:',
+      ct_alert_platform_required: 'Please select a platform and fill in action and target',
+      ct_alert_keyword_required: 'Please enter a keyword',
       ct_type_simple: 'Simple Task',
       ct_ph_reward: 'Enter reward amount',
       ct_ph_slots: 'Enter slots (leave empty for unlimited)',
@@ -3603,6 +3787,11 @@ window.addEventListener('hashchange', handleRoute);
     updateStakeHint();
     updateUnitPriceHint();
     updateSubmitButtonState();
+    if (getSelectedPlatform()) {
+      rebuildPlatformActionOptions();
+      updatePlatformTargetPlaceholder();
+      updatePlatformKeywordVisibility();
+    }
   }
 
   function bindRequirementRow(row) {
@@ -3645,6 +3834,161 @@ window.addEventListener('hashchange', handleRoute);
   function isSimpleTaskTypeSelected() {
     var type = document.getElementById('ct-task-type');
     return !!(type && type.value === 'simple');
+  }
+
+  function getSelectedPlatform() {
+    var select = document.getElementById('ct-task-platform');
+    return select ? String(select.value || '').trim() : '';
+  }
+
+  function getSelectedPlatformAction() {
+    var select = document.getElementById('ct-task-action');
+    return select ? String(select.value || '').trim() : '';
+  }
+
+  function getPlatformConfig(platform) {
+    return CT_SOCIAL_PLATFORMS[platform] || null;
+  }
+
+  function actionNeedsKeyword(platform, actionValue) {
+    var config = getPlatformConfig(platform);
+    if (!config) return false;
+    for (var i = 0; i < config.actions.length; i++) {
+      if (config.actions[i].value === actionValue) {
+        return !!config.actions[i].needsKeyword;
+      }
+    }
+    return false;
+  }
+
+  function rebuildPlatformActionOptions() {
+    var platform = getSelectedPlatform();
+    var actionSelect = document.getElementById('ct-task-action');
+    if (!actionSelect) return;
+
+    var previous = actionSelect.value;
+    actionSelect.innerHTML = '';
+
+    var config = getPlatformConfig(platform);
+    if (!config) {
+      actionSelect.disabled = true;
+      return;
+    }
+
+    actionSelect.disabled = false;
+    config.actions.forEach(function (action) {
+      var option = document.createElement('option');
+      option.value = action.value;
+      option.textContent = ctT(action.labelKey);
+      actionSelect.appendChild(option);
+    });
+
+    var hasPrevious = config.actions.some(function (action) {
+      return action.value === previous;
+    });
+    actionSelect.value = hasPrevious ? previous : config.actions[0].value;
+  }
+
+  function updatePlatformKeywordVisibility() {
+    var platform = getSelectedPlatform();
+    var action = getSelectedPlatformAction();
+    var keywordField = document.getElementById('ct-field-keyword');
+    var keywordInput = document.getElementById('ct-task-keyword');
+    var needsKeyword = actionNeedsKeyword(platform, action);
+
+    if (keywordField) keywordField.classList.toggle('hidden', !needsKeyword);
+    if (keywordInput && !needsKeyword) keywordInput.value = '';
+  }
+
+  function updatePlatformTargetPlaceholder() {
+    var platform = getSelectedPlatform();
+    var targetInput = document.getElementById('ct-task-target');
+    var config = getPlatformConfig(platform);
+    if (!targetInput || !config) return;
+
+    var placeholderKey = config.targetPlaceholderKey || 'ct_ph_target';
+    targetInput.setAttribute('data-placeholder', placeholderKey);
+    targetInput.placeholder = ctT(placeholderKey);
+  }
+
+  function resetPlatformFields() {
+    var platformSelect = document.getElementById('ct-task-platform');
+    var actionSelect = document.getElementById('ct-task-action');
+    var targetInput = document.getElementById('ct-task-target');
+    var keywordInput = document.getElementById('ct-task-keyword');
+
+    if (platformSelect) platformSelect.value = '';
+    if (actionSelect) {
+      actionSelect.innerHTML = '';
+      actionSelect.disabled = true;
+    }
+    if (targetInput) targetInput.value = '';
+    if (keywordInput) keywordInput.value = '';
+    updatePlatformKeywordVisibility();
+  }
+
+  function updatePlatformConfigUi() {
+    var simple = isSimpleTaskTypeSelected();
+    var platformField = document.getElementById('ct-field-platform');
+    var configField = document.getElementById('ct-field-platform-config');
+    var sqlHint = document.getElementById('ct-sql-migration-hint');
+    var platform = getSelectedPlatform();
+
+    if (platformField) platformField.classList.toggle('hidden', !simple);
+    if (sqlHint) sqlHint.classList.toggle('hidden', !simple);
+
+    if (!simple) {
+      if (configField) configField.classList.add('hidden');
+      resetPlatformFields();
+      return;
+    }
+
+    if (configField) {
+      configField.classList.toggle('hidden', !platform);
+    }
+
+    if (!platform) {
+      var actionSelect = document.getElementById('ct-task-action');
+      if (actionSelect) {
+        actionSelect.innerHTML = '';
+        actionSelect.disabled = true;
+      }
+      updatePlatformKeywordVisibility();
+      return;
+    }
+
+    rebuildPlatformActionOptions();
+    updatePlatformTargetPlaceholder();
+    updatePlatformKeywordVisibility();
+  }
+
+  function getSimpleTaskPlatformFields() {
+    var platform = getSelectedPlatform();
+    var action = getSelectedPlatformAction();
+    var targetInput = document.getElementById('ct-task-target');
+    var keywordInput = document.getElementById('ct-task-keyword');
+    var target = targetInput ? targetInput.value.trim() : '';
+    var keyword = keywordInput ? keywordInput.value.trim() : '';
+
+    return {
+      platform: platform,
+      taskAction: action,
+      taskTarget: target,
+      taskKeyword: keyword
+    };
+  }
+
+  function validateSimplePlatformFields() {
+    var fields = getSimpleTaskPlatformFields();
+    if (!fields.platform || !fields.taskAction || !fields.taskTarget) {
+      alert(ctT('ct_alert_platform_required'));
+      return false;
+    }
+    if (actionNeedsKeyword(fields.platform, fields.taskAction) && !fields.taskKeyword) {
+      alert(ctT('ct_alert_keyword_required'));
+      return false;
+    }
+    return true;
   }
 
   function ensureDefaultRequirementRows() {
@@ -3731,6 +4075,7 @@ window.addEventListener('hashchange', handleRoute);
     updateStakeHint();
     updateUnitPriceHint();
     updateSubmitButtonState();
+    updatePlatformConfigUi();
   }
 
   function resetCreateTaskForm() {
@@ -3778,6 +4123,13 @@ window.addEventListener('hashchange', handleRoute);
     applyCreateTaskI18n();
   }
 
+  function validateSimplePlatformFieldsSilent() {
+    var fields = getSimpleTaskPlatformFields();
+    if (!fields.platform || !fields.taskAction || !fields.taskTarget) return false;
+    if (actionNeedsKeyword(fields.platform, fields.taskAction) && !fields.taskKeyword) return false;
+    return true;
+  }
+
   function validateForm() {
     var title = document.getElementById('ct-task-title');
     var type = document.getElementById('ct-task-type');
@@ -3798,6 +4150,8 @@ window.addEventListener('hashchange', handleRoute);
       if (input.value.trim()) hasReq = true;
     });
     if (!hasReq) return false;
+
+    if (simple && !validateSimplePlatformFieldsSilent()) return false;
 
     return true;
   }
@@ -3830,7 +4184,11 @@ window.addEventListener('hashchange', handleRoute);
       if (freshBtn.disabled) return;
 
       if (!validateForm()) {
-        alert(ctT('ct_alert_required'));
+        if (isSimpleTaskTypeSelected() && !validateSimplePlatformFieldsSilent()) {
+          validateSimplePlatformFields();
+        } else {
+          alert(ctT('ct_alert_required'));
+        }
         return;
       }
 
@@ -3860,22 +4218,29 @@ window.addEventListener('hashchange', handleRoute);
         var deadline = document.getElementById('ct-deadline').value;
         var proofType = getProofType();
         var imageUrl = simpleTask ? null : (ctUploadedImages.length ? ctUploadedImages[0].url : null);
+        var platformFields = simpleTask ? getSimpleTaskPlatformFields() : null;
+
+        var insertPayload = buildTaskInsertPayload(userId, {
+          title: title,
+          type: type,
+          description: description,
+          requirements: requirements,
+          rewardType: rewardType,
+          rewardAmount: rewardAmount,
+          maxParticipants: maxParticipants,
+          deadline: deadline,
+          proofType: proofType,
+          imageUrl: imageUrl,
+          verificationType: simpleTask && platformFields ? platformFields.platform : null,
+          platform: simpleTask && platformFields ? platformFields.platform : null,
+          taskAction: simpleTask && platformFields ? platformFields.taskAction : null,
+          taskTarget: simpleTask && platformFields ? platformFields.taskTarget : null,
+          taskKeyword: simpleTask && platformFields ? platformFields.taskKeyword : null
+        });
 
         var insertResult = await window.supabase
           .from('tasks')
-          .insert(buildTaskInsertPayload(userId, {
-            title: title,
-            type: type,
-            description: description,
-            requirements: requirements,
-            rewardType: rewardType,
-            rewardAmount: rewardAmount,
-            maxParticipants: maxParticipants,
-            deadline: deadline,
-            proofType: proofType,
-            imageUrl: imageUrl,
-            verificationType: simpleTask ? 'simple' : null
-          }));
+          .insert(insertPayload);
 
         if (insertResult.error) throw insertResult.error;
 
@@ -3919,6 +4284,21 @@ window.addEventListener('hashchange', handleRoute);
       typeSelect.addEventListener('change', function () {
         updateCreateTaskTemplate();
         applyCreateTaskI18n();
+      });
+    }
+
+    var platformSelect = document.getElementById('ct-task-platform');
+    if (platformSelect) {
+      platformSelect.addEventListener('change', function () {
+        updatePlatformConfigUi();
+        applyCreateTaskI18n();
+      });
+    }
+
+    var actionSelect = document.getElementById('ct-task-action');
+    if (actionSelect) {
+      actionSelect.addEventListener('change', function () {
+        updatePlatformKeywordVisibility();
       });
     }
 
