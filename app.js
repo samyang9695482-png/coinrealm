@@ -532,11 +532,6 @@ function buildTaskInsertPayload(userId, fields) {
         payload.task_action = fields.taskAction || null;
         payload.task_target = fields.taskTarget || null;
         payload.task_keyword = fields.taskKeyword || null;
-        if (fields.platform === 'twitter') {
-            payload.twitter_action = fields.taskAction || null;
-            payload.twitter_target = fields.taskTarget || null;
-            payload.twitter_keyword = fields.taskKeyword || null;
-        }
     }
     return payload;
 }
@@ -2347,7 +2342,7 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   function getTwitterTargetUrl(task) {
-    var target = String(getTaskField(task, ['task_target', 'twitter_target'], '') || '').trim();
+    var target = String(getTaskField(task, ['task_target'], '') || '').trim();
     if (!target) return '';
     if (/^https?:\/\//i.test(target)) return target;
     if (/^\d+$/.test(target)) return 'https://twitter.com/i/status/' + target;
