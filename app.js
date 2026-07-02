@@ -542,7 +542,7 @@ function isTwitterVerificationTask(task) {
 
 async function verifyTwitterTask(taskId, userId) {
     if (!window.supabase || !taskId || !userId) {
-        return { success: false, error: 'missing params' };
+        return { success: false, verified: false, error: 'missing params' };
     }
 
     try {
@@ -555,48 +555,48 @@ async function verifyTwitterTask(taskId, userId) {
                 body: JSON.stringify({ task_id: taskId, user_id: userId })
             });
 
-            if (!response.ok) {
-                throw new Error('Worker request failed: ' + response.status);
+            var responseText = await response.text();
+            try {
+                workerResult = responseText ? JSON.parse(responseText) : null;
+            } catch (_parseErr) {
+                throw new Error(responseText || ('Worker request failed: ' + response.status));
             }
 
-            workerResult = await response.json();
+            if (!response.ok) {
+                throw new Error((workerResult && workerResult.error) || ('Worker request failed: ' + response.status));
+            }
         } else {
             workerResult = { success: true, status: 'approved' };
         }
 
-        var newStatus = 'verifying';
-        if (workerResult.status === 'approved') {
-            newStatus = 'approved';
-        } else if (workerResult.status === 'rejected') {
-            newStatus = 'rejected';
-        } else if (workerResult.success === false) {
-            newStatus = 'rejected';
-        }
+        var verified = workerResult.success === true && workerResult.status === 'approved';
 
-        var updatePayload = { status: newStatus };
-        if (newStatus === 'approved' || newStatus === 'rejected') {
-            updatePayload.reviewed_at = new Date().toISOString();
-        }
-        if (workerResult.reason || workerResult.review_comment) {
-            updatePayload.review_comment = workerResult.reason || workerResult.review_comment;
-        } else if (newStatus === 'rejected' && workerResult.error) {
-            updatePayload.review_comment = String(workerResult.error);
-        }
-
-        var updateResult = await window.supabase
+        var subResult = await window.supabase
             .from('submissions')
-            .update(updatePayload)
+            .select('id, task_id, user_id, status, submitted_at, reviewed_at, review_comment')
             .eq('task_id', taskId)
-            .eq('user_id', userId);
+            .eq('user_id', userId)
+            .maybeSingle();
 
-        if (updateResult.error) {
-            return { success: false, error: updateResult.error.message };
-        }
+        var submissionStatus = subResult.data && subResult.data.status
+            ? subResult.data.status
+            : (verified ? 'approved' : (workerResult.status || 'rejected'));
 
-        return Object.assign({}, workerResult, { status: newStatus });
+        return {
+            success: workerResult.success === true,
+            verified: verified,
+            status: submissionStatus,
+            reason: workerResult.reason || workerResult.review_comment || workerResult.error,
+            review_comment: workerResult.review_comment || workerResult.reason,
+            submission: subResult.data || null
+        };
     } catch (err) {
         console.warn('verifyTwitterTask failed', err);
-        return { success: false, error: err && err.message ? err.message : String(err) };
+        return {
+            success: false,
+            verified: false,
+            error: err && err.message ? err.message : String(err)
+        };
     }
 }
 
@@ -1950,6 +1950,9 @@ window.addEventListener('hashchange', handleRoute);
   var currentUserId = null;
   var detailActionState = 'loading';
   var twitterClaimInProgress = false;
+  var twitterVerifyInProgress = false;
+  var twitterPendingAutoVerify = false;
+  var taskDetailVisibilityBound = false;
 
   var taskDetailTranslations = {
     zh: {
@@ -1973,8 +1976,10 @@ window.addEventListener('hashchange', handleRoute);
       td_btn_claim: '领取任务',
       td_btn_claim_now: '立即领取',
       td_btn_simple_claim: '一键领取',
-      td_btn_simple_done: '已完成',
-      td_btn_simple_verifying: '验证中',
+      td_btn_simple_done: '✓ 已完成',
+      td_btn_simple_verifying: '验证中...',
+      td_btn_simple_checking: '正在验证...',
+      td_btn_simple_retry: '重新验证',
       td_btn_submit: '去提交',
       td_btn_manage: '管理任务',
       td_btn_login: '请先登录',
@@ -2000,6 +2005,10 @@ window.addEventListener('hashchange', handleRoute);
       td_type_all: '全部',
       td_alert_claim_ok: '领取成功！',
       td_alert_simple_claim_ok: '领取成功！请按照任务要求完成操作。',
+      td_alert_twitter_redirect: '任务已领取，即将跳转到 Twitter。完成操作后回到此页面，系统将自动验证。',
+      td_alert_twitter_verified: '验证通过！奖励已到账。',
+      td_alert_twitter_not_verified: '暂未检测到操作，请确认已完成后再试。',
+      td_alert_twitter_no_link: '任务未配置 Twitter 链接，请联系发布者。',
       td_alert_simple_verifying: '任务已领取，正在验证中...',
       td_alert_claim_fail: '领取失败：',
       td_alert_already_claimed: '您已经领取过该任务',
@@ -2007,8 +2016,8 @@ window.addEventListener('hashchange', handleRoute);
       td_alert_login: '请先登录后再领取任务',
       td_twitter_auth_msg: '此任务需要授权你的 Twitter 账号才能自动验证。',
       td_twitter_token_title: '绑定 Twitter（测试）',
-      td_twitter_token_desc: '请粘贴你的 Twitter Access Token（测试用，正式上线后将改为 OAuth 授权）。',
-      td_twitter_token_ph: '粘贴 Twitter Access Token',
+      td_twitter_token_desc: '请粘贴 Twitter OAuth 凭证：Access Token，或 Access Token|Access Token Secret 格式（测试用，正式上线后将改为 OAuth 授权）。',
+      td_twitter_token_ph: 'Access Token 或 Token|Secret',
       td_twitter_btn_cancel: '取消',
       td_twitter_btn_authorize: '去授权',
       td_twitter_btn_save: '保存并继续',
@@ -2036,8 +2045,10 @@ window.addEventListener('hashchange', handleRoute);
       td_btn_claim: 'Claim Task',
       td_btn_claim_now: 'Claim Now',
       td_btn_simple_claim: 'Claim Now',
-      td_btn_simple_done: 'Completed',
-      td_btn_simple_verifying: 'Verifying',
+      td_btn_simple_done: '✓ Completed',
+      td_btn_simple_verifying: 'Verifying...',
+      td_btn_simple_checking: 'Verifying now...',
+      td_btn_simple_retry: 'Verify Again',
       td_btn_submit: 'Submit Proof',
       td_btn_manage: 'Manage Task',
       td_btn_login: 'Please sign in first',
@@ -2063,6 +2074,10 @@ window.addEventListener('hashchange', handleRoute);
       td_type_all: 'All',
       td_alert_claim_ok: 'Task claimed successfully!',
       td_alert_simple_claim_ok: 'Claimed! Please complete the task as required.',
+      td_alert_twitter_redirect: 'Task claimed. Opening Twitter now. Return to this page when done and we will verify automatically.',
+      td_alert_twitter_verified: 'Verified! Your reward has been credited.',
+      td_alert_twitter_not_verified: 'Action not detected yet. Please finish on Twitter and try again.',
+      td_alert_twitter_no_link: 'This task has no Twitter link configured. Please contact the publisher.',
       td_alert_simple_verifying: 'Task claimed. Verification in progress...',
       td_alert_claim_fail: 'Claim failed: ',
       td_alert_already_claimed: 'You have already claimed this task',
@@ -2070,8 +2085,8 @@ window.addEventListener('hashchange', handleRoute);
       td_alert_login: 'Please sign in before claiming',
       td_twitter_auth_msg: 'This task requires Twitter authorization for automatic verification.',
       td_twitter_token_title: 'Connect Twitter (Test)',
-      td_twitter_token_desc: 'Paste your Twitter Access Token (for testing; OAuth will replace this later).',
-      td_twitter_token_ph: 'Paste Twitter Access Token',
+      td_twitter_token_desc: 'Paste Twitter OAuth credentials: Access Token, or Access Token|Access Token Secret (testing only; OAuth will replace this later).',
+      td_twitter_token_ph: 'Access Token or Token|Secret',
       td_twitter_btn_cancel: 'Cancel',
       td_twitter_btn_authorize: 'Authorize',
       td_twitter_btn_save: 'Save & Continue',
@@ -2164,7 +2179,8 @@ window.addEventListener('hashchange', handleRoute);
       if (userId === task.publisher_id) return 'manage_task';
       if (!submission) return 'simple_can_claim';
       if (submission.status === 'verifying') return 'simple_verifying';
-      if (submission.status === 'rejected') return 'simple_rejected';
+      if (submission.status === 'rejected') return 'simple_retry';
+      if (submission.status === 'approved') return 'simple_completed';
       return 'simple_completed';
     }
 
@@ -2273,12 +2289,162 @@ window.addEventListener('hashchange', handleRoute);
 
     var result = await window.supabase
       .from('users')
-      .select('twitter_token')
+      .select('twitter_token, twitter_access_token, twitter_token_secret, twitter_access_token_secret')
       .eq('id', userId)
       .maybeSingle();
 
-    if (result.error || !result.data || !result.data.twitter_token) return '';
-    return String(result.data.twitter_token).trim();
+    if (result.error || !result.data) return '';
+
+    var user = result.data;
+    var accessToken = String(user.twitter_access_token || user.twitter_token || '').trim();
+    var accessSecret = String(user.twitter_access_token_secret || user.twitter_token_secret || '').trim();
+
+    if (accessToken && accessToken.indexOf('|') !== -1 && !accessSecret) {
+      var parts = accessToken.split('|');
+      accessToken = parts[0] ? parts[0].trim() : '';
+      accessSecret = parts[1] ? parts[1].trim() : '';
+    }
+
+    if (!accessToken) return '';
+    return accessToken;
+  }
+
+  async function hasUserTwitterCredentials(userId) {
+    if (!window.supabase || !userId) return false;
+
+    var result = await window.supabase
+      .from('users')
+      .select('twitter_token, twitter_access_token, twitter_token_secret, twitter_access_token_secret')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (result.error || !result.data) return false;
+
+    var user = result.data;
+    var accessToken = String(user.twitter_access_token || user.twitter_token || '').trim();
+    var accessSecret = String(user.twitter_access_token_secret || user.twitter_token_secret || '').trim();
+
+    if (accessToken && accessToken.indexOf('|') !== -1) {
+      return true;
+    }
+
+    return !!(accessToken && accessSecret) || !!accessToken;
+  }
+
+  function getTwitterTargetUrl(task) {
+    var target = String(getTaskField(task, ['twitter_target'], '') || '').trim();
+    if (!target) return '';
+    if (/^https?:\/\//i.test(target)) return target;
+    if (/^\d+$/.test(target)) return 'https://twitter.com/i/status/' + target;
+    if (target.charAt(0) === '@') target = target.slice(1);
+    return 'https://twitter.com/' + encodeURIComponent(target);
+  }
+
+  function openTwitterTargetWindow(task) {
+    var url = getTwitterTargetUrl(task);
+    if (!url) {
+      alert(tdT('td_alert_twitter_no_link'));
+      return false;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+    return true;
+  }
+
+  function buildTdSpinnerButtonHtml(labelKey) {
+    return (
+      '<span class="td-btn-inner">' +
+        '<span class="td-verify-spinner" aria-hidden="true"></span>' +
+        '<span>' + escapeHtml(tdT(labelKey)) + '</span>' +
+      '</span>'
+    );
+  }
+
+  async function reloadCurrentSubmission() {
+    if (!window.supabase || !currentTaskRecord || !currentUserId) return null;
+
+    var subResult = await window.supabase
+      .from('submissions')
+      .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment')
+      .eq('task_id', currentTaskRecord.id)
+      .eq('user_id', currentUserId)
+      .maybeSingle();
+
+    if (!subResult.error && subResult.data) {
+      currentSubmissionRecord = subResult.data;
+    }
+
+    return currentSubmissionRecord;
+  }
+
+  async function runTwitterVerification(options) {
+    options = options || {};
+    if (twitterVerifyInProgress || !window.supabase || !currentTaskRecord || !currentUserId) return;
+    if (!isTwitterSimpleTask(currentTaskRecord)) return;
+
+    twitterVerifyInProgress = true;
+    detailActionState = 'simple_verify_checking';
+    updateBottomActionBar();
+
+    try {
+      var result = await verifyTwitterTask(currentTaskRecord.id, currentUserId);
+      if (result.submission) {
+        currentSubmissionRecord = result.submission;
+      } else {
+        await reloadCurrentSubmission();
+      }
+
+      if (result.verified) {
+        detailActionState = 'simple_completed';
+        twitterPendingAutoVerify = false;
+        updateBottomActionBar();
+        if (options.showAlert !== false) {
+          alert(tdT('td_alert_twitter_verified'));
+        }
+        return;
+      }
+
+      detailActionState = 'simple_retry';
+      twitterPendingAutoVerify = false;
+      updateBottomActionBar();
+      if (options.showAlert !== false) {
+        alert(tdT('td_alert_twitter_not_verified'));
+      }
+    } catch (err) {
+      console.warn('Twitter verification failed', err);
+      detailActionState = 'simple_verifying';
+      twitterPendingAutoVerify = true;
+      updateBottomActionBar();
+    } finally {
+      twitterVerifyInProgress = false;
+    }
+  }
+
+  function setupTaskDetailVisibilityListener() {
+    if (taskDetailVisibilityBound) return;
+    taskDetailVisibilityBound = true;
+
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState !== 'visible') return;
+      if (!twitterPendingAutoVerify) return;
+      if (detailActionState !== 'simple_verifying') return;
+      if (!currentTaskRecord || !isTwitterSimpleTask(currentTaskRecord)) return;
+      runTwitterVerification();
+    });
+  }
+
+  function syncTwitterVerifyUiState() {
+    if (!currentTaskRecord || !currentSubmissionRecord || !isTwitterSimpleTask(currentTaskRecord)) {
+      twitterPendingAutoVerify = false;
+      return;
+    }
+
+    if (currentSubmissionRecord.status === 'verifying') {
+      twitterPendingAutoVerify = true;
+      setupTaskDetailVisibilityListener();
+      return;
+    }
+
+    twitterPendingAutoVerify = false;
   }
 
   function showTwitterModal(modalId) {
@@ -2413,25 +2579,11 @@ window.addEventListener('hashchange', handleRoute);
 
     if (isTwitterTask) {
       detailActionState = 'simple_verifying';
+      twitterPendingAutoVerify = true;
+      setupTaskDetailVisibilityListener();
       updateBottomActionBar();
-      alert(tdT('td_alert_simple_verifying'));
-      verifyTwitterTask(taskId, userId).then(function (result) {
-        if (currentSubmissionRecord && currentTaskRecord && String(currentTaskRecord.id) === String(taskId)) {
-          window.supabase
-            .from('submissions')
-            .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment')
-            .eq('task_id', taskId)
-            .eq('user_id', userId)
-            .maybeSingle()
-            .then(function (subResult) {
-              if (!subResult.error && subResult.data) {
-                currentSubmissionRecord = subResult.data;
-                detailActionState = resolveDetailActionState(currentTaskRecord, currentSubmissionRecord, currentUserId);
-                updateBottomActionBar();
-              }
-            });
-        }
-      });
+      alert(tdT('td_alert_twitter_redirect'));
+      openTwitterTargetWindow(currentTaskRecord);
     } else {
       detailActionState = resolveDetailActionState(currentTaskRecord, currentSubmissionRecord, currentUserId);
       updateBottomActionBar();
@@ -2462,8 +2614,8 @@ window.addEventListener('hashchange', handleRoute);
     }
 
     if (isTwitterSimpleTask(currentTaskRecord)) {
-      var twitterToken = await fetchUserTwitterToken(userId);
-      if (!twitterToken) {
+      var hasTwitterCreds = await hasUserTwitterCredentials(userId);
+      if (!hasTwitterCreds) {
         openTwitterAuthModal();
         return;
       }
@@ -2724,6 +2876,7 @@ window.addEventListener('hashchange', handleRoute);
 
     updatePinCard();
     applyTaskDetailI18n();
+    syncTwitterVerifyUiState();
     updateBottomActionBar();
     initTaskDetailImageLightbox();
     initTaskDetailEvents();
@@ -2796,10 +2949,26 @@ window.addEventListener('hashchange', handleRoute);
 
   function configureActionButton(btn, config) {
     if (!btn) return;
-    btn.classList.remove('hidden', 'td-btn-gold', 'td-btn-blue', 'td-btn-gray', 'td-btn-green', 'td-btn-disabled');
+    btn.classList.remove(
+      'hidden',
+      'td-btn-gold',
+      'td-btn-blue',
+      'td-btn-gray',
+      'td-btn-green',
+      'td-btn-orange',
+      'td-btn-disabled',
+      'td-btn-with-spinner'
+    );
     btn.classList.add(config.styleClass);
-    btn.textContent = config.text;
+    if (config.html) {
+      btn.innerHTML = config.html;
+    } else {
+      btn.textContent = config.text;
+    }
     btn.disabled = !!config.disabled;
+    if (config.withSpinner) {
+      btn.classList.add('td-btn-with-spinner');
+    }
   }
 
   function updateBottomActionBar() {
@@ -2840,20 +3009,29 @@ window.addEventListener('hashchange', handleRoute);
       case 'simple_verifying':
         configureActionButton(buttons.claim, {
           styleClass: 'td-btn-blue',
-          text: tdT('td_btn_simple_verifying'),
-          disabled: true
+          html: buildTdSpinnerButtonHtml('td_btn_simple_verifying'),
+          disabled: true,
+          withSpinner: true
+        });
+        break;
+      case 'simple_verify_checking':
+        configureActionButton(buttons.claim, {
+          styleClass: 'td-btn-blue',
+          html: buildTdSpinnerButtonHtml('td_btn_simple_checking'),
+          disabled: true,
+          withSpinner: true
+        });
+        break;
+      case 'simple_retry':
+        configureActionButton(buttons.claim, {
+          styleClass: 'td-btn-orange',
+          text: tdT('td_btn_simple_retry'),
+          disabled: false
         });
         break;
       case 'simple_completed':
         configureActionButton(buttons.claim, {
           styleClass: 'td-btn-green',
-          text: tdT('td_btn_simple_done'),
-          disabled: true
-        });
-        break;
-      case 'simple_rejected':
-        configureActionButton(buttons.ended, {
-          styleClass: 'td-btn-disabled',
           text: tdT('td_btn_simple_done'),
           disabled: true
         });
@@ -2913,6 +3091,8 @@ window.addEventListener('hashchange', handleRoute);
       claimBtn.addEventListener('click', function () {
         if (detailActionState === 'simple_can_claim') {
           performSimpleTaskClaim();
+        } else if (detailActionState === 'simple_retry') {
+          runTwitterVerification();
         } else if (detailActionState === 'can_claim') {
           performClaimTask();
         } else if (detailActionState === 'rejected_resubmit') {
@@ -5109,6 +5289,34 @@ window.addEventListener('hashchange', handleRoute);
     }, VERIFY_POLL_MS);
   }
 
+  async function verifyActiveTwitterSubmissions() {
+    if (!window.supabase || !myTasksUserId) return false;
+
+    var verifyingItems = (myTasksData.active || []).filter(function (item) {
+      return item.submission &&
+        item.submission.status === 'verifying' &&
+        isTwitterVerificationTask(item.task);
+    });
+
+    if (!verifyingItems.length) return false;
+
+    var changed = false;
+    for (var i = 0; i < verifyingItems.length; i++) {
+      var item = verifyingItems[i];
+      var result = await verifyTwitterTask(item.task.id, myTasksUserId);
+      if (result && (result.verified || result.status === 'approved' || result.status === 'rejected')) {
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      myTasksData = await fetchMyTasksData(myTasksUserId);
+      renderMyTasksList();
+    }
+
+    return changed;
+  }
+
   async function pollVerifyingSubmissions() {
     if (!window.supabase || !myTasksUserId) return;
 
@@ -5121,29 +5329,38 @@ window.addEventListener('hashchange', handleRoute);
       return;
     }
 
-    var ids = verifyingItems.map(function (item) { return item.submission.id; });
-    var result = await window.supabase
-      .from('submissions')
-      .select('id, status, reviewed_at, review_comment')
-      .in('id', ids);
-
-    if (result.error) return;
-
-    var changed = false;
-    (result.data || []).forEach(function (row) {
-      if (row.status === 'approved' || row.status === 'rejected') {
-        changed = true;
-      }
+    var twitterItems = verifyingItems.filter(function (item) {
+      return isTwitterVerificationTask(item.task);
     });
 
-    if (changed) {
-      myTasksData = await fetchMyTasksData(myTasksUserId);
-      renderMyTasksList();
-      if (hasVerifyingTasks()) {
-        startVerifyingPoll();
-      } else {
-        stopVerifyingPoll();
+    if (twitterItems.length) {
+      await verifyActiveTwitterSubmissions();
+    } else {
+      var ids = verifyingItems.map(function (item) { return item.submission.id; });
+      var result = await window.supabase
+        .from('submissions')
+        .select('id, status, reviewed_at, review_comment')
+        .in('id', ids);
+
+      if (result.error) return;
+
+      var changed = false;
+      (result.data || []).forEach(function (row) {
+        if (row.status === 'approved' || row.status === 'rejected') {
+          changed = true;
+        }
+      });
+
+      if (changed) {
+        myTasksData = await fetchMyTasksData(myTasksUserId);
+        renderMyTasksList();
       }
+    }
+
+    if (hasVerifyingTasks()) {
+      startVerifyingPoll();
+    } else {
+      stopVerifyingPoll();
     }
   }
 
@@ -5333,6 +5550,7 @@ window.addEventListener('hashchange', handleRoute);
     try {
       myTasksData = await fetchMyTasksData(userId);
       renderMyTasksList();
+      await verifyActiveTwitterSubmissions();
       startVerifyingPoll();
     } catch (err) {
       console.warn('加载我的任务失败', err);

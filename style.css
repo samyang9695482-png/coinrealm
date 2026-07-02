@@ -1359,6 +1359,38 @@ img {
     color: #ffffff;
 }
 
+.td-btn-orange {
+    background-color: #fa8c16;
+    color: #ffffff;
+}
+
+.td-btn-with-spinner {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.td-btn-inner {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.td-verify-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    animation: tdVerifySpin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes tdVerifySpin {
+    to { transform: rotate(360deg); }
+}
+
 .td-twitter-modal {
     position: fixed;
     inset: 0;

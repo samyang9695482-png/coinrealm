@@ -325,19 +325,31 @@
       return Promise.reject(new Error('Supabase unavailable'));
     }
 
-    return fetch(WALLET_AUTH_WORKER_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        wallet_address: address,
-        signature: signature,
-        message: message
+    return verifyWalletSignatureInBrowser(message, signature, address)
+      .then(function () {
+        return fetch(WALLET_AUTH_WORKER_URL, {
+          method: 'POST',
+          mode: 'cors',
+          redirect: 'follow',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            wallet_address: address,
+            signature: signature,
+            message: message
+          })
+        });
       })
-    })
       .then(function (response) {
-        return response.json().then(function (data) {
+        return response.text().then(function (text) {
+          var data = null;
+          try {
+            data = text ? JSON.parse(text) : null;
+          } catch (_err) {
+            throw new Error(text || ('HTTP ' + response.status));
+          }
           if (!response.ok) {
-            throw new Error((data && data.error) || ('HTTP ' + response.status));
+            var detail = data && data.detail ? ' (' + data.detail + ')' : '';
+            throw new Error(((data && data.error) || ('HTTP ' + response.status)) + detail);
           }
           if (!data.access_token || !data.refresh_token) {
             throw new Error('Invalid wallet auth response');
@@ -410,6 +422,43 @@
       t('walletAddressLabel') + address + '\n' +
       t('timestampLabel') + Date.now()
     );
+  }
+
+  function loadBrowserEthers() {
+    return new Promise(function (resolve, reject) {
+      if (window.ethers && typeof window.ethers.verifyMessage === 'function') {
+        resolve(window.ethers);
+        return;
+      }
+
+      var existing = document.getElementById('coinrealm-ethers-cdn');
+      if (existing) {
+        existing.addEventListener('load', function () { resolve(window.ethers); }, { once: true });
+        existing.addEventListener('error', function () { reject(new Error('ethers load failed')); }, { once: true });
+        return;
+      }
+
+      var script = document.createElement('script');
+      script.id = 'coinrealm-ethers-cdn';
+      script.src = 'https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js';
+      script.onload = function () { resolve(window.ethers); };
+      script.onerror = function () { reject(new Error('ethers load failed')); };
+      document.head.appendChild(script);
+    });
+  }
+
+  function verifyWalletSignatureInBrowser(message, signature, address) {
+    return loadBrowserEthers().then(function (ethers) {
+      if (!ethers || typeof ethers.verifyMessage !== 'function') {
+        throw new Error('ethers verifyMessage unavailable');
+      }
+      var recovered = ethers.verifyMessage(message, signature);
+      var expected = ethers.getAddress(address).toLowerCase();
+      var actual = ethers.getAddress(recovered).toLowerCase();
+      if (expected !== actual) {
+        throw new Error('本地签名验证失败');
+      }
+    });
   }
 
   // 执行 MetaMask 连接与 personal_sign 签名流程
