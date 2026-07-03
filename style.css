@@ -1124,6 +1124,10 @@ img {
     margin-bottom: 0;
 }
 
+.td-empty-hint {
+    color: #999;
+}
+
 .td-task-images-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -1400,6 +1404,10 @@ img {
     justify-content: center;
 }
 
+#telegram-bind-modal.td-twitter-modal {
+    z-index: 9999;
+}
+
 .td-twitter-modal.hidden {
     display: none;
 }
@@ -1407,10 +1415,12 @@ img {
 .td-twitter-modal-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.45);
+    z-index: 0;
+    background: rgba(0, 0, 0, 0.5);
 }
 
-.td-twitter-modal-card {
+.td-twitter-modal-card,
+.td-twitter-modal-panel {
     position: relative;
     z-index: 1;
     width: min(420px, 92vw);
@@ -1418,6 +1428,7 @@ img {
     border-radius: 12px;
     padding: 24px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+    pointer-events: auto;
 }
 
 .td-twitter-modal-title {
@@ -1443,6 +1454,8 @@ img {
     border-radius: 8px;
     font-size: 14px;
     margin-bottom: 8px;
+    background: #fff;
+    pointer-events: auto;
 }
 
 .td-twitter-modal-error {
@@ -1467,6 +1480,7 @@ img {
     font-size: 14px;
     cursor: pointer;
     border: none;
+    pointer-events: auto;
 }
 
 .td-twitter-modal-cancel {
@@ -1967,12 +1981,6 @@ img {
     border-radius: 50%;
     animation: tdVerifySpin 0.8s linear infinite;
     flex-shrink: 0;
-}
-
-.task-detail-subtask-mode #td-task-description,
-.task-detail-subtask-mode #td-task-requirements,
-.task-detail-subtask-mode #td-task-images-section {
-    display: none !important;
 }
 
 /* Screenshot self-proof verification */

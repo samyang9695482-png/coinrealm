@@ -3196,8 +3196,10 @@ window.addEventListener('hashchange', handleRoute);
     zh: {
       td_official_badge: '官方认证',
       td_desc_title: '任务描述',
+      td_desc_empty: '暂无任务描述',
       td_images_title: '任务图片',
       td_req_title: '任务要求',
+      td_req_empty: '暂无任务要求',
       td_slots_label: '剩余名额',
       td_deadline_label: '截止时间',
       td_staked_label: '发布者已质押',
@@ -3313,8 +3315,10 @@ window.addEventListener('hashchange', handleRoute);
     en: {
       td_official_badge: 'Official Verified',
       td_desc_title: 'Description',
+      td_desc_empty: 'No description provided',
       td_images_title: 'Task Images',
       td_req_title: 'Requirements',
+      td_req_empty: 'No requirements listed',
       td_slots_label: 'Slots Left',
       td_deadline_label: 'Deadline',
       td_staked_label: 'Publisher Staked',
@@ -4994,13 +4998,13 @@ window.addEventListener('hashchange', handleRoute);
 
     var descEl = document.getElementById('td-task-description');
     if (descEl) {
-      var description = currentTaskRecord.description || '';
+      var description = String(getTaskField(currentTaskRecord, ['description'], '') || '').trim();
       if (description.indexOf('\n') !== -1) {
         descEl.innerHTML = description.split('\n').filter(function (p) { return p.trim(); }).map(function (p) {
-          return '<p>' + p + '</p>';
+          return '<p>' + escapeHtml(p) + '</p>';
         }).join('');
       } else {
-        descEl.innerHTML = description ? '<p>' + description + '</p>' : '';
+        descEl.innerHTML = description ? '<p>' + escapeHtml(description) + '</p>' : '<p class="td-empty-hint">' + escapeHtml(tdT('td_desc_empty')) + '</p>';
       }
     }
 
@@ -5008,10 +5012,14 @@ window.addEventListener('hashchange', handleRoute);
 
     var reqEl = document.getElementById('td-task-requirements');
     if (reqEl) {
-      var reqs = parseRequirements(currentTaskRecord.requirements);
-      reqEl.innerHTML = reqs.map(function (r) {
-        return '<li>' + r + '</li>';
-      }).join('');
+      var reqs = parseRequirements(getTaskField(currentTaskRecord, ['requirements'], ''));
+      if (reqs.length) {
+        reqEl.innerHTML = reqs.map(function (r) {
+          return '<li>' + escapeHtml(r) + '</li>';
+        }).join('');
+      } else {
+        reqEl.innerHTML = '<li class="td-empty-hint">' + escapeHtml(tdT('td_req_empty')) + '</li>';
+      }
     }
 
     var maxParticipants = currentTaskRecord.max_participants != null ? Number(currentTaskRecord.max_participants) : null;
