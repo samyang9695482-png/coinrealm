@@ -327,6 +327,39 @@
           <h3 class="task-detail-section-title" data-i18n="td_subtasks_title">任务步骤</h3>
           <div id="td-subtasks-list" class="td-subtasks-list"></div>
         </div>
+
+        <div id="td-screenshot-verify-section" class="task-detail-section hidden">
+          <h3 class="task-detail-section-title" data-i18n="td_verify_title">提交验证</h3>
+          <div id="td-verify-steps" class="td-verify-steps" aria-label="Verification steps"></div>
+
+          <div id="td-verify-upload-wrap">
+            <input type="file" id="td-verify-file-input" class="td-verify-file-input" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" hidden>
+            <div id="td-verify-upload-zone" class="td-verify-upload-zone" role="button" tabindex="0">
+              <span class="td-verify-upload-icon" aria-hidden="true">📷</span>
+              <span class="td-verify-upload-text" data-i18n="td_verify_upload_main">点击上传关注截图</span>
+              <span class="td-verify-upload-hint" data-i18n="td_verify_upload_hint">请截取包含目标账号的关注列表页面</span>
+            </div>
+            <div id="td-verify-preview-wrap" class="td-verify-preview-wrap hidden">
+              <img id="td-verify-preview-img" class="td-verify-preview-img" src="" alt="">
+              <button type="button" id="td-verify-reupload-btn" class="td-verify-reupload-btn" data-i18n="td_verify_reupload">重新上传</button>
+            </div>
+          </div>
+
+          <div class="td-verify-field">
+            <label class="td-verify-label" for="td-verify-account-input" data-i18n="td_verify_account_label">请确认截图中包含的目标账号</label>
+            <input type="text" id="td-verify-account-input" class="td-verify-input" data-placeholder="td_verify_account_ph" placeholder="如 @CoinRealm_X">
+            <p class="td-verify-field-hint" data-i18n="td_verify_account_hint">系统将自动比对您输入的用户名与任务目标是否一致</p>
+          </div>
+
+          <p id="td-verify-error" class="td-verify-error hidden" role="alert"></p>
+
+          <button type="button" id="td-verify-submit-btn" class="td-verify-submit-btn" data-i18n="td_verify_submit">提交验证</button>
+
+          <div id="td-verify-success-panel" class="td-verify-success-panel hidden">
+            <div class="td-verify-success-icon" aria-hidden="true">✓</div>
+            <p class="td-verify-success-text" data-i18n="td_verify_success">验证通过！奖励已到账</p>
+          </div>
+        </div>
       </div>
 
       <div id="td-image-lightbox" class="td-image-lightbox hidden" aria-hidden="true">

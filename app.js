@@ -1155,36 +1155,45 @@ async function verifyTwitterSubtask(taskId, userId, actionIndex) {
         return { success: true, verified: true };
     }
 
+    var payload = {
+        task_id: taskId,
+        user_id: userId,
+        action_index: actionIndex,
+        subtask_only: true
+    };
+
+    console.log('verifyTwitterSubtask 请求参数', payload);
+
     try {
-        var workerResult = await callTwitterVerifyWorker({
-            task_id: taskId,
-            user_id: userId,
-            action_index: actionIndex,
-            subtask_only: true
-        });
+        var workerResult = await callTwitterVerifyWorker(payload);
+
+        console.log('verifyTwitterSubtask Worker 返回', workerResult);
 
         if (workerResult.httpStatus) {
             return {
                 success: false,
                 verified: false,
                 error: workerResult.error,
-                reason: workerResult.reason
+                reason: workerResult.reason || workerResult.error
             };
         }
 
-        if (!workerResult.verified && workerResult.reason) {
+        var reason = workerResult.reason || workerResult.review_comment || workerResult.error || '';
+
+        if (!workerResult.verified) {
             console.warn('verifyTwitterSubtask 未通过', {
                 taskId: taskId,
                 userId: userId,
                 actionIndex: actionIndex,
-                reason: workerResult.reason
+                reason: reason,
+                workerResult: workerResult
             });
         }
 
         return {
             success: workerResult.success === true,
             verified: workerResult.verified === true,
-            reason: workerResult.reason || workerResult.error || '',
+            reason: reason,
             action_index: workerResult.action_index
         };
     } catch (err) {
@@ -1192,7 +1201,8 @@ async function verifyTwitterSubtask(taskId, userId, actionIndex) {
         return {
             success: false,
             verified: false,
-            error: err && err.message ? err.message : String(err)
+            error: err && err.message ? err.message : String(err),
+            reason: err && err.message ? err.message : String(err)
         };
     }
 }
@@ -1263,6 +1273,64 @@ async function applyTwitterVerificationSuccess(task, userId, options) {
         description: '完成了任务「' + buildTaskBroadcastTitle(broadcastTitle) + '」',
         reward_amount: Number(task.reward_amount) || 0
     });
+}
+
+var PROOF_SCREENSHOT_MAX_SIZE = 5 * 1024 * 1024;
+var PROOF_SCREENSHOT_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
+
+function getProofScreenshotExtension(filename) {
+    var parts = String(filename || '').toLowerCase().split('.');
+    return parts.length > 1 ? parts.pop() : '';
+}
+
+function validateProofScreenshotFile(file) {
+    if (!file) return 'Invalid file';
+    var ext = getProofScreenshotExtension(file.name);
+    if (PROOF_SCREENSHOT_EXTENSIONS.indexOf(ext) < 0) {
+        return 'Only JPG, PNG, and WebP formats are supported';
+    }
+    if (file.size > PROOF_SCREENSHOT_MAX_SIZE) {
+        return 'Each image must be 5MB or smaller';
+    }
+    return '';
+}
+
+async function uploadProofScreenshot(userId, file) {
+    if (!window.supabase || !userId || !file) return { ok: false, error: 'Supabase unavailable' };
+
+    var validationError = validateProofScreenshotFile(file);
+    if (validationError) return { ok: false, error: validationError };
+
+    var safeName = String(file.name || 'image').replace(/[^a-zA-Z0-9._-]/g, '_');
+    var storagePath = userId + '_' + Date.now() + '_' + safeName;
+
+    var uploadResult = await window.supabase.storage
+        .from('screenshots')
+        .upload(storagePath, file, {
+            upsert: false,
+            contentType: file.type || 'image/jpeg'
+        });
+
+    if (uploadResult.error) {
+        return { ok: false, error: uploadResult.error.message };
+    }
+
+    var uploadedPath = (uploadResult.data && uploadResult.data.path) || storagePath;
+    var urlResult = window.supabase.storage.from('screenshots').getPublicUrl(uploadedPath);
+    var publicUrl = urlResult && urlResult.data && urlResult.data.publicUrl;
+
+    if (!publicUrl) {
+        return { ok: false, error: 'Invalid public URL' };
+    }
+
+    return { ok: true, publicUrl: publicUrl, path: uploadedPath };
+}
+
+function compareTaskTargetUsername(inputValue, targetValue) {
+    var inputNorm = normalizeTwitterUsername(inputValue).toLowerCase();
+    var targetNorm = normalizeTwitterUsername(targetValue).toLowerCase();
+    if (!inputNorm || !targetNorm) return false;
+    return inputNorm === targetNorm;
 }
 
 async function getUserInfo() {
@@ -2625,7 +2693,16 @@ window.addEventListener('hashchange', handleRoute);
   var activeSubtaskKey = null;
   var activeSubtaskIndex = null;
   var subtaskUiState = {};
+  var subtaskFailReasons = {};
   var subtaskVerifyInProgress = false;
+  var verifyPanelActive = false;
+  var verifySubtaskIndex = null;
+  var verifyScreenshotFile = null;
+  var verifyScreenshotPreviewUrl = '';
+  var verifyScreenshotPublicUrl = '';
+  var verifySubmitting = false;
+  var verifyPanelSuccess = false;
+  var verifyPanelInitialized = false;
   var SUBTASK_PROGRESS_PREFIX = 'coinrealm_subtask_done';
 
   var taskDetailTranslations = {
@@ -2662,7 +2739,25 @@ window.addEventListener('hashchange', handleRoute);
       td_subtask_go: '去完成',
       td_subtask_verifying: '验证中...',
       td_subtask_retry: '重新验证',
+      td_subtask_fail_hint: '验证未通过',
       td_subtask_done: '✓ 已完成',
+      td_verify_title: '提交验证',
+      td_verify_step_action: '关注账号',
+      td_verify_step_upload: '上传截图',
+      td_verify_step_submit: '确认提交',
+      td_verify_upload_main: '点击上传关注截图',
+      td_verify_upload_hint: '请截取包含目标账号的关注列表页面',
+      td_verify_reupload: '重新上传',
+      td_verify_account_label: '请确认截图中包含的目标账号',
+      td_verify_account_ph: '如 @CoinRealm_X',
+      td_verify_account_hint: '系统将自动比对您输入的用户名与任务目标是否一致',
+      td_verify_submit: '提交验证',
+      td_verify_submit_done: '✓ 验证通过',
+      td_verify_success: '验证通过！奖励已到账',
+      td_verify_alert_no_screenshot: '请先上传截图',
+      td_verify_alert_no_account: '请输入目标账号',
+      td_verify_alert_mismatch: '账号名称不匹配，请确认后重新输入',
+      td_verify_alert_upload_fail: '上传失败：',
       td_btn_simple_done: '✓ 已完成',
       td_btn_simple_verifying: '验证中...',
       td_btn_simple_checking: '正在验证...',
@@ -2744,7 +2839,25 @@ window.addEventListener('hashchange', handleRoute);
       td_subtask_go: 'Go',
       td_subtask_verifying: 'Verifying...',
       td_subtask_retry: 'Retry',
+      td_subtask_fail_hint: 'Verification failed',
       td_subtask_done: '✓ Done',
+      td_verify_title: 'Submit Verification',
+      td_verify_step_action: 'Follow account',
+      td_verify_step_upload: 'Upload screenshot',
+      td_verify_step_submit: 'Confirm submit',
+      td_verify_upload_main: 'Click to upload follow screenshot',
+      td_verify_upload_hint: 'Capture the following list page that includes the target account',
+      td_verify_reupload: 'Re-upload',
+      td_verify_account_label: 'Confirm the target account shown in your screenshot',
+      td_verify_account_ph: 'e.g. @CoinRealm_X',
+      td_verify_account_hint: 'We will compare your input with the task target automatically',
+      td_verify_submit: 'Submit Verification',
+      td_verify_submit_done: '✓ Verified',
+      td_verify_success: 'Verified! Reward credited.',
+      td_verify_alert_no_screenshot: 'Please upload a screenshot first',
+      td_verify_alert_no_account: 'Please enter the target account',
+      td_verify_alert_mismatch: 'Account name does not match. Please check and try again',
+      td_verify_alert_upload_fail: 'Upload failed: ',
       td_btn_simple_done: '✓ Completed',
       td_btn_simple_verifying: 'Verifying...',
       td_btn_simple_checking: 'Verifying now...',
@@ -3015,10 +3128,353 @@ window.addEventListener('hashchange', handleRoute);
   function updateTaskDetailSubtaskModeUi() {
     var page = document.getElementById('task-detail-page');
     var section = document.getElementById('td-subtasks-section');
+    var verifySection = document.getElementById('td-screenshot-verify-section');
     var show = isSimpleSubtaskMode();
-    if (page) page.classList.toggle('task-detail-subtask-mode', show);
-    if (section) section.classList.toggle('hidden', !show);
-    if (show) renderSubtasksPanel();
+    if (page) {
+      page.classList.toggle('task-detail-subtask-mode', show);
+      page.classList.toggle('task-detail-verify-success', show && verifyPanelSuccess);
+    }
+    if (section) section.classList.toggle('hidden', !show || verifyPanelActive);
+    if (verifySection) verifySection.classList.toggle('hidden', !show || !verifyPanelActive);
+    if (show && !verifyPanelActive) renderSubtasksPanel();
+    if (show && verifyPanelActive) renderScreenshotVerifyPanel();
+  }
+
+  function resetVerifyPanelFormState() {
+    verifyScreenshotFile = null;
+    verifyScreenshotPreviewUrl = '';
+    verifyScreenshotPublicUrl = '';
+    verifyPanelSuccess = false;
+    verifySubmitting = false;
+
+    var fileInput = document.getElementById('td-verify-file-input');
+    var accountInput = document.getElementById('td-verify-account-input');
+    var errorEl = document.getElementById('td-verify-error');
+    var successPanel = document.getElementById('td-verify-success-panel');
+    var submitBtn = document.getElementById('td-verify-submit-btn');
+    var uploadZone = document.getElementById('td-verify-upload-zone');
+    var previewWrap = document.getElementById('td-verify-preview-wrap');
+    var previewImg = document.getElementById('td-verify-preview-img');
+
+    if (fileInput) fileInput.value = '';
+    if (accountInput) accountInput.value = '';
+    if (errorEl) {
+      errorEl.textContent = '';
+      errorEl.classList.add('hidden');
+    }
+    if (successPanel) successPanel.classList.add('hidden');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.classList.remove('td-verify-submit-done');
+      submitBtn.textContent = tdT('td_verify_submit');
+    }
+    if (uploadZone) uploadZone.classList.remove('hidden');
+    if (previewWrap) previewWrap.classList.add('hidden');
+    if (previewImg) previewImg.src = '';
+  }
+
+  function getVerifyStepPhase() {
+    if (verifyPanelSuccess) return 4;
+    if (verifyScreenshotFile || verifyScreenshotPreviewUrl) return 3;
+    return 2;
+  }
+
+  function renderVerifySteps(subtask) {
+    var stepsEl = document.getElementById('td-verify-steps');
+    if (!stepsEl) return;
+
+    var phase = getVerifyStepPhase();
+    var step1Label = subtask ? subtask.label : tdT('td_verify_step_action');
+    var steps = [
+      { label: step1Label, key: 'action' },
+      { label: tdT('td_verify_step_upload'), key: 'upload' },
+      { label: tdT('td_verify_step_submit'), key: 'submit' }
+    ];
+
+    var html = '';
+    steps.forEach(function (step, index) {
+      var stepNum = index + 1;
+      var stateClass = 'td-verify-step-pending';
+      var icon = '○';
+
+      if (verifyPanelSuccess || stepNum < phase) {
+        stateClass = 'td-verify-step-done';
+        icon = '✓';
+      } else if (stepNum === phase) {
+        stateClass = 'td-verify-step-current';
+        icon = '●';
+      }
+
+      html += (
+        '<div class="td-verify-step ' + stateClass + '">' +
+          '<span class="td-verify-step-icon">' + icon + '</span>' +
+          '<span class="td-verify-step-label">' + escapeHtml(step.label) + '</span>' +
+        '</div>'
+      );
+
+      if (index < steps.length - 1) {
+        html += '<div class="td-verify-step-connector"></div>';
+      }
+    });
+
+    stepsEl.innerHTML = html;
+  }
+
+  function renderScreenshotVerifyPanel() {
+    var subtasks = buildSubtasksFromTask(currentTaskRecord);
+    var st = subtasks[verifySubtaskIndex];
+    if (!st) return;
+
+    renderVerifySteps(st);
+
+    var uploadText = document.querySelector('#td-verify-upload-zone .td-verify-upload-text');
+    if (uploadText) {
+      uploadText.textContent = tdT('td_verify_upload_main');
+    }
+
+    var previewWrap = document.getElementById('td-verify-preview-wrap');
+    var previewImg = document.getElementById('td-verify-preview-img');
+    var uploadZone = document.getElementById('td-verify-upload-zone');
+    var successPanel = document.getElementById('td-verify-success-panel');
+    var submitBtn = document.getElementById('td-verify-submit-btn');
+    var accountInput = document.getElementById('td-verify-account-input');
+
+    if (verifyScreenshotPreviewUrl && previewImg && previewWrap) {
+      previewImg.src = verifyScreenshotPreviewUrl;
+      previewWrap.classList.remove('hidden');
+      if (uploadZone) uploadZone.classList.add('hidden');
+    }
+
+    if (accountInput && !accountInput.value) {
+      var targetUser = normalizeTwitterUsername(st.target);
+      if (targetUser) accountInput.placeholder = '@' + targetUser;
+    }
+
+    if (verifyPanelSuccess) {
+      if (successPanel) successPanel.classList.remove('hidden');
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.classList.add('td-verify-submit-done');
+        submitBtn.textContent = tdT('td_verify_submit_done');
+      }
+      if (accountInput) accountInput.disabled = true;
+    } else if (accountInput) {
+      accountInput.disabled = false;
+    }
+
+    applyTaskDetailI18n();
+  }
+
+  function showScreenshotVerifyPanel(index) {
+    verifyPanelActive = true;
+    verifySubtaskIndex = index;
+    resetVerifyPanelFormState();
+    updateTaskDetailSubtaskModeUi();
+  }
+
+  function hideScreenshotVerifyPanel() {
+    verifyPanelActive = false;
+    verifySubtaskIndex = null;
+    resetVerifyPanelFormState();
+    updateTaskDetailSubtaskModeUi();
+  }
+
+  function showVerifyError(message) {
+    var errorEl = document.getElementById('td-verify-error');
+    if (!errorEl) return;
+    errorEl.textContent = message || '';
+    errorEl.classList.toggle('hidden', !message);
+  }
+
+  async function handleVerifyScreenshotSelected(file) {
+    if (!file || verifySubmitting || verifyPanelSuccess) return;
+
+    var validationError = validateProofScreenshotFile(file);
+    if (validationError) {
+      showVerifyError(validationError);
+      return;
+    }
+
+    showVerifyError('');
+    verifyScreenshotFile = file;
+    verifyScreenshotPublicUrl = '';
+
+    if (verifyScreenshotPreviewUrl) {
+      URL.revokeObjectURL(verifyScreenshotPreviewUrl);
+    }
+    verifyScreenshotPreviewUrl = URL.createObjectURL(file);
+    renderScreenshotVerifyPanel();
+  }
+
+  async function submitScreenshotVerification() {
+    if (verifySubmitting || verifyPanelSuccess || !currentTaskRecord || !currentUserId) return;
+
+    var subtasks = buildSubtasksFromTask(currentTaskRecord);
+    var st = subtasks[verifySubtaskIndex];
+    if (!st) return;
+
+    if (!verifyScreenshotFile && !verifyScreenshotPublicUrl) {
+      showVerifyError(tdT('td_verify_alert_no_screenshot'));
+      return;
+    }
+
+    var accountInput = document.getElementById('td-verify-account-input');
+    var accountValue = accountInput ? accountInput.value : '';
+    if (!String(accountValue || '').trim()) {
+      showVerifyError(tdT('td_verify_alert_no_account'));
+      return;
+    }
+
+    if (!compareTaskTargetUsername(accountValue, st.target)) {
+      showVerifyError(tdT('td_verify_alert_mismatch'));
+      return;
+    }
+
+    showVerifyError('');
+    verifySubmitting = true;
+    var submitBtn = document.getElementById('td-verify-submit-btn');
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+      var screenshotUrl = verifyScreenshotPublicUrl;
+
+      if (verifyScreenshotFile && !screenshotUrl) {
+        var uploadResult = await uploadProofScreenshot(currentUserId, verifyScreenshotFile);
+        if (!uploadResult.ok) {
+          showVerifyError(tdT('td_verify_alert_upload_fail') + (uploadResult.error || ''));
+          return;
+        }
+        screenshotUrl = uploadResult.publicUrl;
+        verifyScreenshotPublicUrl = screenshotUrl;
+      }
+
+      markSubtaskDone(st.key);
+      clearSubtaskFailure(st);
+
+      var allDone = allSubtasksMarkedDone();
+
+      if (allDone) {
+        var priorStatus = currentSubmissionRecord ? currentSubmissionRecord.status : 'pending';
+
+        if (currentSubmissionRecord && currentSubmissionRecord.id) {
+          var existingUrls = currentSubmissionRecord.screenshot_urls;
+          if (typeof existingUrls === 'string') {
+            try { existingUrls = JSON.parse(existingUrls); } catch (_e) { existingUrls = []; }
+          }
+          if (!Array.isArray(existingUrls)) existingUrls = [];
+          if (screenshotUrl) existingUrls.push(screenshotUrl);
+
+          await window.supabase
+            .from('submissions')
+            .update({
+              screenshot_urls: existingUrls,
+              submitted_at: new Date().toISOString()
+            })
+            .eq('id', currentSubmissionRecord.id);
+        }
+
+        await applyTwitterVerificationSuccess(currentTaskRecord, currentUserId, {
+          priorStatus: priorStatus,
+          creditRewardClient: true
+        });
+
+        await reloadCurrentSubmission();
+
+        if (currentTaskRecord && currentTaskRecord.id) {
+          var taskRefresh = await window.supabase
+            .from('tasks')
+            .select('current_participants')
+            .eq('id', currentTaskRecord.id)
+            .maybeSingle();
+          if (!taskRefresh.error && taskRefresh.data) {
+            currentTaskRecord.current_participants = taskRefresh.data.current_participants;
+          }
+        }
+
+        verifyPanelSuccess = true;
+        detailActionState = 'simple_completed';
+        subtaskUiState = {};
+        subtaskFailReasons = {};
+        activeSubtaskKey = null;
+        activeSubtaskIndex = null;
+        renderScreenshotVerifyPanel();
+        updateBottomActionBar();
+        return;
+      }
+
+      verifyPanelSuccess = true;
+      renderScreenshotVerifyPanel();
+
+      var completedIndex = verifySubtaskIndex;
+
+      window.setTimeout(function () {
+        verifyPanelSuccess = false;
+        hideScreenshotVerifyPanel();
+
+        var nextIndex = subtasks.findIndex(function (item, idx) {
+          return idx > completedIndex && !isSubtaskDone(item.key);
+        });
+
+        if (nextIndex < 0) {
+          nextIndex = subtasks.findIndex(function (item) {
+            return !isSubtaskDone(item.key);
+          });
+        }
+
+        if (nextIndex >= 0) {
+          renderSubtasksPanel();
+          var nextRow = document.querySelector('#td-subtasks-list .td-subtask-row[data-subtask-index="' + nextIndex + '"]');
+          if (nextRow && nextRow.scrollIntoView) nextRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        updateBottomActionBar();
+      }, 1200);
+    } catch (err) {
+      showVerifyError(err && err.message ? err.message : String(err));
+    } finally {
+      verifySubmitting = false;
+      if (!verifyPanelSuccess && submitBtn) submitBtn.disabled = false;
+    }
+  }
+
+  function initScreenshotVerifyPanel() {
+    if (verifyPanelInitialized) return;
+    verifyPanelInitialized = true;
+
+    var uploadZone = document.getElementById('td-verify-upload-zone');
+    var fileInput = document.getElementById('td-verify-file-input');
+    var reuploadBtn = document.getElementById('td-verify-reupload-btn');
+    var submitBtn = document.getElementById('td-verify-submit-btn');
+
+    if (uploadZone && fileInput) {
+      uploadZone.addEventListener('click', function () {
+        if (verifySubmitting || verifyPanelSuccess) return;
+        fileInput.click();
+      });
+      uploadZone.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          uploadZone.click();
+        }
+      });
+      fileInput.addEventListener('change', function () {
+        var file = fileInput.files && fileInput.files[0];
+        if (file) handleVerifyScreenshotSelected(file);
+      });
+    }
+
+    if (reuploadBtn && fileInput) {
+      reuploadBtn.addEventListener('click', function () {
+        if (verifySubmitting || verifyPanelSuccess) return;
+        fileInput.click();
+      });
+    }
+
+    if (submitBtn) {
+      submitBtn.addEventListener('click', function () {
+        submitScreenshotVerification();
+      });
+    }
   }
 
   function getSubtaskDisplayState(st) {
@@ -3026,6 +3482,20 @@ window.addEventListener('hashchange', handleRoute);
     if (subtaskUiState[st.key] === 'verifying') return 'verifying';
     if (subtaskUiState[st.key] === 'failed') return 'retry';
     return 'go';
+  }
+
+  function getSubtaskFailReason(st) {
+    return subtaskFailReasons[st.key] || '';
+  }
+
+  function setSubtaskFailed(st, reason) {
+    subtaskUiState[st.key] = 'failed';
+    subtaskFailReasons[st.key] = reason || tdT('td_subtask_fail_hint');
+  }
+
+  function clearSubtaskFailure(st) {
+    delete subtaskUiState[st.key];
+    delete subtaskFailReasons[st.key];
   }
 
   function buildSubtaskButtonHtml(st, displayState) {
@@ -3066,14 +3536,20 @@ window.addEventListener('hashchange', handleRoute);
     listEl.innerHTML = subtasks.map(function (st, index) {
       var displayState = getSubtaskDisplayState(st);
       var done = displayState === 'done';
+      var failReason = getSubtaskFailReason(st);
       var rowClass = 'td-subtask-row' + (done ? ' td-subtask-row-done' : '');
+      if (displayState === 'retry') rowClass += ' td-subtask-row-failed';
       var indexClass = 'td-subtask-index' + (done ? ' td-subtask-index-done' : '');
       var indexContent = done ? '✓' : String(index + 1);
+      var reasonHtml = (displayState === 'retry' && failReason)
+        ? '<div class="td-subtask-reason">' + escapeHtml(failReason) + '</div>'
+        : '';
       return (
         '<div class="' + rowClass + '" data-subtask-index="' + index + '">' +
           '<div class="' + indexClass + '" aria-hidden="true">' + indexContent + '</div>' +
           '<div class="td-subtask-body">' +
             '<div class="td-subtask-label">' + escapeHtml(st.label) + '</div>' +
+            reasonHtml +
           '</div>' +
           buildSubtaskButtonHtml(st, displayState) +
         '</div>'
@@ -3082,7 +3558,7 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   function handleSubtaskGo(index) {
-    if (subtaskVerifyInProgress || !currentTaskRecord || !currentUserId) return;
+    if (verifySubmitting || !currentTaskRecord || !currentUserId) return;
     var subtasks = buildSubtasksFromTask(currentTaskRecord);
     var st = subtasks[index];
     if (!st || isSubtaskDone(st.key)) return;
@@ -3092,67 +3568,10 @@ window.addEventListener('hashchange', handleRoute);
       return;
     }
 
-    subtaskUiState[st.key] = 'verifying';
     activeSubtaskKey = st.key;
     activeSubtaskIndex = index;
-    renderSubtasksPanel();
-    setupTaskDetailVisibilityListener();
     window.open(st.url, '_blank', 'noopener,noreferrer');
-  }
-
-  async function runSubtaskVerification(index) {
-    if (subtaskVerifyInProgress || !currentTaskRecord || !currentUserId) return;
-
-    var subtasks = buildSubtasksFromTask(currentTaskRecord);
-    var st = subtasks[index];
-    if (!st || isSubtaskDone(st.key)) {
-      activeSubtaskKey = null;
-      activeSubtaskIndex = null;
-      return;
-    }
-
-    var username = await fetchUserTwitterUsername(currentUserId);
-    if (!username) {
-      subtaskUiState[st.key] = 'failed';
-      activeSubtaskKey = null;
-      activeSubtaskIndex = null;
-      renderSubtasksPanel();
-      await openTwitterBindModal({
-        onSuccess: function () {
-          runSubtaskVerification(index);
-        }
-      });
-      return;
-    }
-
-    subtaskVerifyInProgress = true;
-    subtaskUiState[st.key] = 'verifying';
-    renderSubtasksPanel();
-
-    try {
-      var result = await verifyTwitterSubtask(currentTaskRecord.id, currentUserId, index);
-      console.log('子任务验证结果', {
-        taskId: currentTaskRecord.id,
-        userId: currentUserId,
-        actionIndex: index,
-        verified: result.verified,
-        reason: result.reason || result.error
-      });
-      if (result.verified) {
-        markSubtaskDone(st.key);
-        delete subtaskUiState[st.key];
-      } else {
-        subtaskUiState[st.key] = 'failed';
-      }
-    } catch (_err) {
-      subtaskUiState[st.key] = 'failed';
-    } finally {
-      subtaskVerifyInProgress = false;
-      activeSubtaskKey = null;
-      activeSubtaskIndex = null;
-      renderSubtasksPanel();
-      updateBottomActionBar();
-    }
+    showScreenshotVerifyPanel(index);
   }
 
   function normalizeTwitterUsername(value) {
@@ -3350,78 +3769,41 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   async function submitSimpleTwitterTask() {
-    if (twitterVerifyInProgress || !window.supabase || !currentTaskRecord || !currentUserId || !currentSubmissionRecord) {
+    if (!window.supabase || !currentTaskRecord || !currentUserId || !currentSubmissionRecord) {
       return;
     }
 
     if (!allSubtasksMarkedDone()) {
+      alert(tdT('td_btn_subtasks_remaining', {
+        count: Math.max(0, buildSubtasksFromTask(currentTaskRecord).length - countCompletedSubtasks())
+      }));
       return;
     }
 
-    var username = await fetchUserTwitterUsername(currentUserId);
-    if (!username) {
-      await openTwitterBindModal({
-        onSuccess: function () {
-          submitSimpleTwitterTask();
-        }
-      });
+    if (currentSubmissionRecord.status === 'approved') {
+      detailActionState = 'simple_completed';
+      updateBottomActionBar();
       return;
     }
 
     var priorStatus = currentSubmissionRecord.status;
 
-    twitterVerifyInProgress = true;
-    detailActionState = 'simple_verify_checking';
-    updateBottomActionBar();
-
     try {
-      if (priorStatus === 'pending' || priorStatus === 'rejected') {
-        var updateResult = await window.supabase
-          .from('submissions')
-          .update({
-            status: 'pending',
-            submitted_at: new Date().toISOString()
-          })
-          .eq('id', currentSubmissionRecord.id);
-
-        if (updateResult.error) {
-          alert(tdT('td_alert_claim_fail') + updateResult.error.message);
-          return;
-        }
-      }
-
       await applyTwitterVerificationSuccess(currentTaskRecord, currentUserId, {
         priorStatus: priorStatus,
         creditRewardClient: true
       });
-
       await reloadCurrentSubmission();
-
-      if (currentTaskRecord && currentTaskRecord.id) {
-        var taskRefresh = await window.supabase
-          .from('tasks')
-          .select('current_participants')
-          .eq('id', currentTaskRecord.id)
-          .maybeSingle();
-        if (!taskRefresh.error && taskRefresh.data) {
-          currentTaskRecord.current_participants = taskRefresh.data.current_participants;
-        }
-      }
-
       detailActionState = 'simple_completed';
+      verifyPanelActive = false;
+      verifyPanelSuccess = false;
       subtaskUiState = {};
-      activeSubtaskKey = null;
-      activeSubtaskIndex = null;
+      subtaskFailReasons = {};
       updateTaskDetailSubtaskModeUi();
       updateBottomActionBar();
       alert(tdT('td_alert_twitter_verified'));
     } catch (err) {
-      console.warn('Simple task submit failed', err);
-      detailActionState = 'simple_subtasks';
-      updateBottomActionBar();
       alert(tdT('td_alert_claim_fail') + (err && err.message ? err.message : String(err)));
-    } finally {
-      twitterVerifyInProgress = false;
     }
   }
 
@@ -3449,7 +3831,7 @@ window.addEventListener('hashchange', handleRoute);
 
     var subResult = await window.supabase
       .from('submissions')
-      .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment')
+      .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment, screenshot_urls')
       .eq('task_id', currentTaskRecord.id)
       .eq('user_id', currentUserId)
       .maybeSingle();
@@ -3531,15 +3913,7 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   function setupTaskDetailVisibilityListener() {
-    if (taskDetailVisibilityBound) return;
-    taskDetailVisibilityBound = true;
-
-    document.addEventListener('visibilitychange', function () {
-      if (document.visibilityState !== 'visible') return;
-      if (activeSubtaskIndex == null) return;
-      var pendingIndex = activeSubtaskIndex;
-      runSubtaskVerification(pendingIndex);
-    });
+    /* Screenshot self-proof flow — no auto verification on tab focus */
   }
 
   function syncTwitterVerifyUiState() {
@@ -3651,17 +4025,7 @@ window.addEventListener('hashchange', handleRoute);
         if (!inserted) return;
 
         detailActionState = 'simple_subtasks';
-        var existingUsername = await fetchUserTwitterUsername(userId);
-        if (!existingUsername) {
-          await openTwitterBindModal({
-            onSuccess: function () {
-              updateTaskDetailSubtaskModeUi();
-              updateBottomActionBar();
-            }
-          });
-        } else {
-          updateTaskDetailSubtaskModeUi();
-        }
+        updateTaskDetailSubtaskModeUi();
         updateBottomActionBar();
       } finally {
         twitterClaimInProgress = false;
@@ -3738,6 +4102,10 @@ window.addEventListener('hashchange', handleRoute);
     currentSubmissionRecord = null;
     currentUserId = null;
     subtaskUiState = {};
+    subtaskFailReasons = {};
+    verifyPanelActive = false;
+    verifySubtaskIndex = null;
+    verifyPanelSuccess = false;
     activeSubtaskKey = null;
     activeSubtaskIndex = null;
 
@@ -3757,7 +4125,7 @@ window.addEventListener('hashchange', handleRoute);
       currentUserId = userId;
       var subResult = await window.supabase
         .from('submissions')
-        .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment')
+        .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment, screenshot_urls')
         .eq('task_id', taskId)
         .eq('user_id', currentUserId)
         .maybeSingle();
@@ -3925,6 +4293,7 @@ window.addEventListener('hashchange', handleRoute);
     updatePinCard();
     applyTaskDetailI18n();
     syncTwitterVerifyUiState();
+    initScreenshotVerifyPanel();
     updateBottomActionBar();
     initTaskDetailImageLightbox();
     initTaskDetailEvents();
@@ -4177,7 +4546,9 @@ window.addEventListener('hashchange', handleRoute);
         if (detailActionState === 'simple_can_claim') {
           performSimpleTaskClaim();
         } else if (detailActionState === 'simple_subtasks' || detailActionState === 'simple_retry') {
-          submitSimpleTwitterTask();
+          if (allSubtasksMarkedDone()) {
+            submitSimpleTwitterTask();
+          }
         } else if (detailActionState === 'can_claim') {
           performClaimTask();
         } else if (detailActionState === 'rejected_resubmit') {
@@ -4190,14 +4561,10 @@ window.addEventListener('hashchange', handleRoute);
     if (subtasksList && !subtasksList.dataset.bound) {
       subtasksList.dataset.bound = '1';
       subtasksList.addEventListener('click', function (e) {
-        var btn = e.target.closest('.td-subtask-btn-go, .td-subtask-btn-retry');
+        var btn = e.target.closest('.td-subtask-btn-go');
         if (!btn || btn.disabled) return;
         var index = parseInt(btn.getAttribute('data-subtask-index'), 10);
         if (Number.isNaN(index)) return;
-        if (btn.classList.contains('td-subtask-btn-retry')) {
-          runSubtaskVerification(index);
-          return;
-        }
         handleSubtaskGo(index);
       });
     }
