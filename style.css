@@ -2011,10 +2011,11 @@ img {
 }
 
 .td-verify-step-label {
-    font-size: 12px;
+    font-size: 11px;
     line-height: 1.35;
     color: #8c8c8c;
     word-break: break-word;
+    max-width: 110px;
 }
 
 .td-verify-step-connector {

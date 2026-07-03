@@ -336,8 +336,8 @@
             <input type="file" id="td-verify-file-input" class="td-verify-file-input" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" hidden>
             <div id="td-verify-upload-zone" class="td-verify-upload-zone" role="button" tabindex="0">
               <span class="td-verify-upload-icon" aria-hidden="true">📷</span>
-              <span class="td-verify-upload-text" data-i18n="td_verify_upload_main">点击上传关注截图</span>
-              <span class="td-verify-upload-hint" data-i18n="td_verify_upload_hint">请截取包含目标账号的关注列表页面</span>
+              <span id="td-verify-upload-text" class="td-verify-upload-text">点击上传截图</span>
+              <span id="td-verify-upload-hint" class="td-verify-upload-hint">请上传任务完成截图</span>
             </div>
             <div id="td-verify-preview-wrap" class="td-verify-preview-wrap hidden">
               <img id="td-verify-preview-img" class="td-verify-preview-img" src="" alt="">
@@ -346,9 +346,9 @@
           </div>
 
           <div class="td-verify-field">
-            <label class="td-verify-label" for="td-verify-account-input" data-i18n="td_verify_account_label">请确认截图中包含的目标账号</label>
-            <input type="text" id="td-verify-account-input" class="td-verify-input" data-placeholder="td_verify_account_ph" placeholder="如 @CoinRealm_X">
-            <p class="td-verify-field-hint" data-i18n="td_verify_account_hint">系统将自动比对您输入的用户名与任务目标是否一致</p>
+            <label id="td-verify-confirm-label" class="td-verify-label" for="td-verify-account-input">请填写确认信息</label>
+            <input type="text" id="td-verify-account-input" class="td-verify-input" placeholder="">
+            <p id="td-verify-confirm-hint" class="td-verify-field-hint">系统将自动比对您填写的内容与任务目标是否一致</p>
           </div>
 
           <p id="td-verify-error" class="td-verify-error hidden" role="alert"></p>
@@ -357,7 +357,7 @@
 
           <div id="td-verify-success-panel" class="td-verify-success-panel hidden">
             <div class="td-verify-success-icon" aria-hidden="true">✓</div>
-            <p class="td-verify-success-text" data-i18n="td_verify_success">验证通过！奖励已到账</p>
+            <p id="td-verify-success-text" class="td-verify-success-text" data-i18n="td_verify_success">✓ 验证通过！奖励已到账</p>
           </div>
         </div>
       </div>

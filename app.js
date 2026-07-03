@@ -1333,6 +1333,38 @@ function compareTaskTargetUsername(inputValue, targetValue) {
     return inputNorm === targetNorm;
 }
 
+function normalizeTweetUrlForCompare(value) {
+    var text = String(value || '').trim().toLowerCase();
+    if (!text) return '';
+    text = text.replace(/^https?:\/\//i, '');
+    text = text.replace(/^www\./i, '');
+    text = text.replace(/\/+$/, '');
+    text = text.replace(/^x\.com\//, 'twitter.com/');
+    return text;
+}
+
+function compareTaskTargetTweetUrl(inputValue, targetValue) {
+    var inputNorm = normalizeTweetUrlForCompare(inputValue);
+    var targetNorm = normalizeTweetUrlForCompare(targetValue);
+    if (!inputNorm || !targetNorm) return false;
+    if (inputNorm === targetNorm) return true;
+
+    var rawTarget = String(targetValue || '').trim();
+    if (/^\d+$/.test(rawTarget)) {
+        var statusPath = '/status/' + rawTarget;
+        return inputNorm.indexOf(statusPath) >= 0 || inputNorm.endsWith(statusPath.replace(/^\//, ''));
+    }
+
+    return false;
+}
+
+function compareTaskTargetKeyword(inputValue, keywordValue) {
+    var inputNorm = String(inputValue || '').trim().toLowerCase();
+    var keywordNorm = String(keywordValue || '').trim().toLowerCase();
+    if (!inputNorm || !keywordNorm) return false;
+    return inputNorm === keywordNorm;
+}
+
 async function getUserInfo() {
     if (!window.supabase) return null;
 
@@ -2742,21 +2774,32 @@ window.addEventListener('hashchange', handleRoute);
       td_subtask_fail_hint: '验证未通过',
       td_subtask_done: '✓ 已完成',
       td_verify_title: '提交验证',
-      td_verify_step_action: '关注账号',
       td_verify_step_upload: '上传截图',
       td_verify_step_submit: '确认提交',
-      td_verify_upload_main: '点击上传关注截图',
-      td_verify_upload_hint: '请截取包含目标账号的关注列表页面',
+      td_verify_upload_main: '点击上传截图',
+      td_verify_step_follow: '关注 {user} 后，截图你的关注列表',
+      td_verify_hint_follow: '请截取包含目标账号 {user} 的关注列表页面',
+      td_verify_label_follow: '请确认截图中包含的目标账号',
+      td_verify_ph_follow: '如 {user}',
+      td_verify_empty_follow: '请输入目标账号',
+      td_verify_step_like: '点赞推文后，截图你的点赞记录',
+      td_verify_hint_like: '请截取包含目标推文的点赞页面',
+      td_verify_label_like: '请确认截图中包含的推文链接',
+      td_verify_ph_like: '如 https://twitter.com/xxx/status/123',
+      td_verify_empty_like: '请输入推文链接',
+      td_verify_step_reply: '评论推文后，截图你的评论内容',
+      td_verify_hint_reply: '请截取包含你的评论内容的页面',
+      td_verify_label_reply: '请确认你的评论中包含的关键词',
+      td_verify_ph_reply: '如 {keyword}',
+      td_verify_empty_reply: '请输入关键词',
+      td_verify_confirm_hint: '系统将自动比对您填写的内容与任务目标是否一致',
       td_verify_reupload: '重新上传',
-      td_verify_account_label: '请确认截图中包含的目标账号',
-      td_verify_account_ph: '如 @CoinRealm_X',
-      td_verify_account_hint: '系统将自动比对您输入的用户名与任务目标是否一致',
       td_verify_submit: '提交验证',
       td_verify_submit_done: '✓ 验证通过',
-      td_verify_success: '验证通过！奖励已到账',
+      td_verify_success: '✓ 验证通过！奖励已到账',
       td_verify_alert_no_screenshot: '请先上传截图',
-      td_verify_alert_no_account: '请输入目标账号',
-      td_verify_alert_mismatch: '账号名称不匹配，请确认后重新输入',
+      td_verify_alert_no_confirm: '请填写确认信息',
+      td_verify_alert_mismatch: '信息不匹配，请确认后重新输入',
       td_verify_alert_upload_fail: '上传失败：',
       td_btn_simple_done: '✓ 已完成',
       td_btn_simple_verifying: '验证中...',
@@ -2842,21 +2885,32 @@ window.addEventListener('hashchange', handleRoute);
       td_subtask_fail_hint: 'Verification failed',
       td_subtask_done: '✓ Done',
       td_verify_title: 'Submit Verification',
-      td_verify_step_action: 'Follow account',
       td_verify_step_upload: 'Upload screenshot',
       td_verify_step_submit: 'Confirm submit',
-      td_verify_upload_main: 'Click to upload follow screenshot',
-      td_verify_upload_hint: 'Capture the following list page that includes the target account',
+      td_verify_upload_main: 'Click to upload screenshot',
+      td_verify_step_follow: 'After following {user}, screenshot your following list',
+      td_verify_hint_follow: 'Capture the following list page that includes {user}',
+      td_verify_label_follow: 'Confirm the target account shown in your screenshot',
+      td_verify_ph_follow: 'e.g. {user}',
+      td_verify_empty_follow: 'Please enter the target account',
+      td_verify_step_like: 'After liking the tweet, screenshot your likes page',
+      td_verify_hint_like: 'Capture the likes page that includes the target tweet',
+      td_verify_label_like: 'Confirm the tweet link shown in your screenshot',
+      td_verify_ph_like: 'e.g. https://twitter.com/xxx/status/123',
+      td_verify_empty_like: 'Please enter the tweet link',
+      td_verify_step_reply: 'After commenting, screenshot your comment',
+      td_verify_hint_reply: 'Capture the page that includes your comment',
+      td_verify_label_reply: 'Confirm the keyword included in your comment',
+      td_verify_ph_reply: 'e.g. {keyword}',
+      td_verify_empty_reply: 'Please enter the keyword',
+      td_verify_confirm_hint: 'We will compare your input with the task target automatically',
       td_verify_reupload: 'Re-upload',
-      td_verify_account_label: 'Confirm the target account shown in your screenshot',
-      td_verify_account_ph: 'e.g. @CoinRealm_X',
-      td_verify_account_hint: 'We will compare your input with the task target automatically',
       td_verify_submit: 'Submit Verification',
       td_verify_submit_done: '✓ Verified',
-      td_verify_success: 'Verified! Reward credited.',
+      td_verify_success: '✓ Verified! Reward credited.',
       td_verify_alert_no_screenshot: 'Please upload a screenshot first',
-      td_verify_alert_no_account: 'Please enter the target account',
-      td_verify_alert_mismatch: 'Account name does not match. Please check and try again',
+      td_verify_alert_no_confirm: 'Please fill in the confirmation field',
+      td_verify_alert_mismatch: 'Information does not match. Please check and try again',
       td_verify_alert_upload_fail: 'Upload failed: ',
       td_btn_simple_done: '✓ Completed',
       td_btn_simple_verifying: 'Verifying...',
@@ -3125,6 +3179,108 @@ window.addEventListener('hashchange', handleRoute);
       && currentSubmissionRecord.status !== 'submitted';
   }
 
+  function getVerifyActionCopy(subtask) {
+    if (!subtask) {
+      return {
+        stepAction: tdT('td_verify_step_upload'),
+        uploadMain: tdT('td_verify_upload_main'),
+        uploadHint: '',
+        inputLabel: tdT('td_verify_confirm_hint'),
+        inputPlaceholder: '',
+        inputHint: tdT('td_verify_confirm_hint'),
+        emptyInput: tdT('td_verify_alert_no_confirm')
+      };
+    }
+
+    var target = String(subtask.target || '').trim();
+    var user = normalizeTwitterUsername(target);
+    var userAt = user ? '@' + user : target;
+    var keyword = currentTaskRecord
+      ? String(getTaskField(currentTaskRecord, ['task_keyword'], '') || '').trim()
+      : '';
+    var vars = { user: userAt, target: target, keyword: keyword };
+
+    if (subtask.action === 'like' || subtask.action === 'retweet') {
+      return {
+        stepAction: tdT('td_verify_step_like'),
+        uploadMain: tdT('td_verify_upload_main'),
+        uploadHint: tdT('td_verify_hint_like'),
+        inputLabel: tdT('td_verify_label_like'),
+        inputPlaceholder: target && /^https?:\/\//i.test(target)
+          ? target
+          : tdT('td_verify_ph_like'),
+        inputHint: tdT('td_verify_confirm_hint'),
+        emptyInput: tdT('td_verify_empty_like')
+      };
+    }
+
+    if (subtask.action === 'reply') {
+      return {
+        stepAction: tdT('td_verify_step_reply'),
+        uploadMain: tdT('td_verify_upload_main'),
+        uploadHint: tdT('td_verify_hint_reply'),
+        inputLabel: tdT('td_verify_label_reply'),
+        inputPlaceholder: keyword ? tdT('td_verify_ph_reply', vars) : tdT('td_verify_empty_reply'),
+        inputHint: tdT('td_verify_confirm_hint'),
+        emptyInput: tdT('td_verify_empty_reply')
+      };
+    }
+
+    return {
+      stepAction: tdT('td_verify_step_follow', vars),
+      uploadMain: tdT('td_verify_upload_main'),
+      uploadHint: tdT('td_verify_hint_follow', vars),
+      inputLabel: tdT('td_verify_label_follow'),
+      inputPlaceholder: userAt ? tdT('td_verify_ph_follow', vars) : tdT('td_verify_empty_follow'),
+      inputHint: tdT('td_verify_confirm_hint'),
+      emptyInput: tdT('td_verify_empty_follow')
+    };
+  }
+
+  function compareScreenshotProofInput(inputValue, subtask, task) {
+    if (!subtask) return false;
+
+    if (subtask.action === 'like' || subtask.action === 'retweet') {
+      return compareTaskTargetTweetUrl(inputValue, subtask.target);
+    }
+
+    if (subtask.action === 'reply') {
+      var keyword = task ? String(getTaskField(task, ['task_keyword'], '') || '').trim() : '';
+      if (!keyword) return false;
+      return compareTaskTargetKeyword(inputValue, keyword);
+    }
+
+    return compareTaskTargetUsername(inputValue, subtask.target);
+  }
+
+  function applyVerifyPanelCopy(subtask) {
+    var copy = getVerifyActionCopy(subtask);
+    var uploadText = document.getElementById('td-verify-upload-text');
+    var uploadHint = document.getElementById('td-verify-upload-hint');
+    var confirmLabel = document.getElementById('td-verify-confirm-label');
+    var confirmHint = document.getElementById('td-verify-confirm-hint');
+    var accountInput = document.getElementById('td-verify-account-input');
+    var successText = document.getElementById('td-verify-success-text');
+    var reuploadBtn = document.getElementById('td-verify-reupload-btn');
+    var submitBtn = document.getElementById('td-verify-submit-btn');
+
+    if (uploadText) uploadText.textContent = copy.uploadMain;
+    if (uploadHint) uploadHint.textContent = copy.uploadHint;
+    if (confirmLabel) confirmLabel.textContent = copy.inputLabel;
+    if (confirmHint) confirmHint.textContent = copy.inputHint;
+    if (accountInput && !accountInput.value && !verifyPanelSuccess) {
+      accountInput.placeholder = copy.inputPlaceholder;
+    }
+    if (successText) successText.textContent = tdT('td_verify_success');
+    if (reuploadBtn) reuploadBtn.textContent = tdT('td_verify_reupload');
+    if (submitBtn && !verifyPanelSuccess) submitBtn.textContent = tdT('td_verify_submit');
+  }
+
+  function getVerifyEmptyInputMessage(subtask) {
+    var copy = getVerifyActionCopy(subtask);
+    return copy.emptyInput || tdT('td_verify_alert_no_confirm');
+  }
+
   function updateTaskDetailSubtaskModeUi() {
     var page = document.getElementById('task-detail-page');
     var section = document.getElementById('td-subtasks-section');
@@ -3183,10 +3339,10 @@ window.addEventListener('hashchange', handleRoute);
     var stepsEl = document.getElementById('td-verify-steps');
     if (!stepsEl) return;
 
+    var copy = getVerifyActionCopy(subtask);
     var phase = getVerifyStepPhase();
-    var step1Label = subtask ? subtask.label : tdT('td_verify_step_action');
     var steps = [
-      { label: step1Label, key: 'action' },
+      { label: copy.stepAction, key: 'action' },
       { label: tdT('td_verify_step_upload'), key: 'upload' },
       { label: tdT('td_verify_step_submit'), key: 'submit' }
     ];
@@ -3225,12 +3381,8 @@ window.addEventListener('hashchange', handleRoute);
     var st = subtasks[verifySubtaskIndex];
     if (!st) return;
 
+    applyVerifyPanelCopy(st);
     renderVerifySteps(st);
-
-    var uploadText = document.querySelector('#td-verify-upload-zone .td-verify-upload-text');
-    if (uploadText) {
-      uploadText.textContent = tdT('td_verify_upload_main');
-    }
 
     var previewWrap = document.getElementById('td-verify-preview-wrap');
     var previewImg = document.getElementById('td-verify-preview-img');
@@ -3245,11 +3397,6 @@ window.addEventListener('hashchange', handleRoute);
       if (uploadZone) uploadZone.classList.add('hidden');
     }
 
-    if (accountInput && !accountInput.value) {
-      var targetUser = normalizeTwitterUsername(st.target);
-      if (targetUser) accountInput.placeholder = '@' + targetUser;
-    }
-
     if (verifyPanelSuccess) {
       if (successPanel) successPanel.classList.remove('hidden');
       if (submitBtn) {
@@ -3261,8 +3408,6 @@ window.addEventListener('hashchange', handleRoute);
     } else if (accountInput) {
       accountInput.disabled = false;
     }
-
-    applyTaskDetailI18n();
   }
 
   function showScreenshotVerifyPanel(index) {
@@ -3321,11 +3466,11 @@ window.addEventListener('hashchange', handleRoute);
     var accountInput = document.getElementById('td-verify-account-input');
     var accountValue = accountInput ? accountInput.value : '';
     if (!String(accountValue || '').trim()) {
-      showVerifyError(tdT('td_verify_alert_no_account'));
+      showVerifyError(getVerifyEmptyInputMessage(st));
       return;
     }
 
-    if (!compareTaskTargetUsername(accountValue, st.target)) {
+    if (!compareScreenshotProofInput(accountValue, st, currentTaskRecord)) {
       showVerifyError(tdT('td_verify_alert_mismatch'));
       return;
     }
