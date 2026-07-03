@@ -387,20 +387,6 @@
         <button type="button" id="td-btn-ended" class="td-action-btn td-btn-disabled hidden" disabled data-i18n="td_btn_ended">已结束</button>
       </div>
 
-      <div id="td-twitter-bind-modal" class="td-twitter-modal hidden" aria-hidden="true">
-        <div class="td-twitter-modal-overlay"></div>
-        <div class="td-twitter-modal-card">
-          <h3 class="td-twitter-modal-title" data-i18n="td_twitter_bind_title">请先绑定你的 Twitter 账号</h3>
-          <p class="td-twitter-modal-desc" data-i18n="td_twitter_bind_desc">验证任务需要你的 Twitter 账号信息</p>
-          <input type="text" id="td-twitter-bind-input" class="td-twitter-token-input" data-placeholder="td_twitter_bind_ph" autocomplete="off">
-          <p id="td-twitter-bind-error" class="td-twitter-modal-error hidden"></p>
-          <div class="td-twitter-modal-actions">
-            <button type="button" id="td-twitter-bind-cancel" class="td-twitter-modal-btn td-twitter-modal-cancel" data-i18n="td_twitter_btn_cancel">取消</button>
-            <button type="button" id="td-twitter-bind-confirm" class="td-twitter-modal-btn td-twitter-modal-primary" data-i18n="td_twitter_bind_confirm">确认绑定</button>
-          </div>
-        </div>
-      </div>
-
     </div>
 
     <!-- 发布任务页 — 由路由 #create-task 显示 -->
@@ -687,6 +673,10 @@ ALTER TABLE tasks ADD COLUMN task_keyword TEXT;</pre>
           <span data-i18n="pf_menu_leaderboard">排行榜</span>
           <span class="profile-menu-arrow">→</span>
         </a>
+        <button type="button" id="pf-twitter-bind-item" class="profile-menu-item profile-menu-item-action">
+          <span id="pf-twitter-menu-label" data-i18n="pf_menu_twitter_bind">绑定 Twitter 账号</span>
+          <span id="pf-twitter-menu-status" class="profile-menu-status profile-menu-status-muted" data-i18n="pf_twitter_unbound">未绑定</span>
+        </button>
         <a href="#invite" class="profile-menu-item" data-route="invite">
           <span data-i18n="pf_menu_invite">邀请好友</span>
           <span class="profile-menu-arrow">→</span>
@@ -1311,6 +1301,21 @@ ALTER TABLE tasks ADD COLUMN task_keyword TEXT;</pre>
               <button type="button" id="ad-grant-confirm" class="admin-primary-btn" data-i18n="ad_btn_grant_confirm">确认发放</button>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 全局 Twitter 用户名绑定弹窗 -->
+    <div id="twitter-bind-modal" class="td-twitter-modal hidden" aria-hidden="true">
+      <div class="td-twitter-modal-overlay"></div>
+      <div class="td-twitter-modal-card">
+        <h3 id="twitter-bind-title" class="td-twitter-modal-title" data-i18n="tw_bind_title">绑定 Twitter 账号</h3>
+        <p id="twitter-bind-desc" class="td-twitter-modal-desc hidden" data-i18n="tw_bind_desc">验证任务需要你的 Twitter 账号信息</p>
+        <input type="text" id="twitter-bind-input" class="td-twitter-token-input" data-placeholder="tw_bind_ph" autocomplete="off">
+        <p id="twitter-bind-error" class="td-twitter-modal-error hidden"></p>
+        <div class="td-twitter-modal-actions">
+          <button type="button" id="twitter-bind-cancel" class="td-twitter-modal-btn td-twitter-modal-cancel" data-i18n="tw_bind_cancel">取消</button>
+          <button type="button" id="twitter-bind-confirm" class="td-twitter-modal-btn td-twitter-modal-primary" data-i18n="tw_bind_confirm">确认绑定</button>
         </div>
       </div>
     </div>

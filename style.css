@@ -2682,6 +2682,60 @@ img {
     background-color: #fafafa;
 }
 
+.profile-menu-item-with-status,
+.profile-menu-item-action {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    border: none;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+}
+
+.profile-menu-status {
+    flex-shrink: 0;
+    margin-left: 12px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.profile-menu-status-muted {
+    color: #999;
+}
+
+.profile-menu-status-bound {
+    color: #1890ff;
+    font-weight: 600;
+}
+
+.auth-dropdown-twitter {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    text-align: left;
+}
+
+.auth-twitter-status {
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 500;
+    color: #999;
+}
+
+.auth-twitter-status-bound {
+    color: #1890ff;
+}
+
+.profile-menu-item-action:hover {
+    background: #fafafa;
+}
+
 .profile-menu-item-last {
     border-bottom: none;
 }

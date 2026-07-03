@@ -87,6 +87,9 @@
       menuLeaderboard: '排行榜',
       menuInvite: '邀请好友',
       menuAdmin: '管理后台',
+      menuTwitter: 'Twitter 账号',
+      twitterUnbound: '未绑定',
+      twitterBound: 'Twitter 已绑定 ✓',
       signOutAll: '退出登录'
     },
     en: {
@@ -114,6 +117,9 @@
       menuLeaderboard: 'Leaderboard',
       menuInvite: 'Invite Friends',
       menuAdmin: 'Admin Panel',
+      menuTwitter: 'Twitter Account',
+      twitterUnbound: 'Not linked',
+      twitterBound: 'Twitter linked ✓',
       signOutAll: 'Sign out'
     }
   };
@@ -538,6 +544,11 @@
     return (
       items +
       '<div class="auth-dropdown-divider"></div>' +
+      '<button type="button" class="auth-dropdown-item auth-dropdown-twitter" id="auth-dropdown-twitter">' +
+        '<span class="auth-dropdown-twitter-label">' + t('menuTwitter') + '</span>' +
+        '<span id="auth-twitter-status" class="auth-twitter-status">' + t('twitterUnbound') + '</span>' +
+      '</button>' +
+      '<div class="auth-dropdown-divider"></div>' +
       '<button type="button" class="auth-dropdown-item auth-dropdown-signout">' + t('signOutAll') + '</button>'
     );
   }
@@ -680,6 +691,21 @@
         closeDropdown();
         signOutAll();
       });
+    }
+
+    var twitterBtn = document.getElementById('auth-dropdown-twitter');
+    if (twitterBtn) {
+      twitterBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        closeDropdown();
+        if (typeof window.coinrealmOpenTwitterBindModal === 'function') {
+          window.coinrealmOpenTwitterBindModal();
+        }
+      });
+    }
+
+    if (typeof window.coinrealmRefreshTwitterBindUi === 'function') {
+      window.coinrealmRefreshTwitterBindUi();
     }
 
     if (!documentClickBound) {

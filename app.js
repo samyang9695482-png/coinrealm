@@ -542,6 +542,320 @@ var TWITTER_OAUTH_SESSION_USER = 'coinrealm_twitter_oauth_user_id';
 var TWITTER_OAUTH_SESSION_RETURN = 'coinrealm_twitter_oauth_return_hash';
 var TWITTER_OAUTH_PENDING_CLAIM = 'coinrealm_twitter_oauth_pending_claim';
 
+var twitterBindInitialized = false;
+var twitterBindSubmitting = false;
+var twitterBindOnSuccessCallback = null;
+
+var twitterBindTranslations = {
+    zh: {
+        tw_bind_title: '绑定 Twitter 账号',
+        tw_bind_desc: '验证任务需要你的 Twitter 账号信息',
+        tw_bind_ph: '请输入你的 Twitter 用户名（如 @testuser）',
+        tw_bind_confirm: '确认绑定',
+        tw_bind_cancel: '取消',
+        tw_bind_login_required: '请先登录',
+        tw_bind_username_required: '请输入 Twitter 用户名',
+        tw_bind_username_invalid: 'Twitter 用户名格式无效（1-15 位字母、数字或下划线）',
+        tw_bind_save_fail: '保存失败：',
+        tw_menu_unbound: '未绑定',
+        tw_menu_bound: 'Twitter 已绑定 ✓',
+        tw_profile_bind_label: '绑定 Twitter 账号',
+        tw_profile_account_label: 'Twitter 账号'
+    },
+    en: {
+        tw_bind_title: 'Link Twitter Account',
+        tw_bind_desc: 'Task verification requires your Twitter account',
+        tw_bind_ph: 'Enter your Twitter username (e.g. @testuser)',
+        tw_bind_confirm: 'Confirm',
+        tw_bind_cancel: 'Cancel',
+        tw_bind_login_required: 'Please sign in first',
+        tw_bind_username_required: 'Please enter your Twitter username',
+        tw_bind_username_invalid: 'Invalid Twitter username (1-15 letters, numbers, or underscores)',
+        tw_bind_save_fail: 'Save failed: ',
+        tw_menu_unbound: 'Not linked',
+        tw_menu_bound: 'Twitter linked ✓',
+        tw_profile_bind_label: 'Link Twitter Account',
+        tw_profile_account_label: 'Twitter Account'
+    }
+};
+
+function getTwitterBindLang() {
+    var saved = localStorage.getItem('coinrealm_lang');
+    return saved === 'en' ? 'en' : 'zh';
+}
+
+function twT(key) {
+    var dict = twitterBindTranslations[getTwitterBindLang()];
+    return dict[key] || key;
+}
+
+function normalizeTwitterUsername(value) {
+    var text = String(value || '').trim();
+    if (!text) return '';
+    var urlMatch = text.match(/(?:twitter\.com|x\.com)\/([A-Za-z0-9_]{1,15})(?:[\/?#]|$)/i);
+    if (urlMatch) return urlMatch[1];
+    return text.replace(/^@+/, '').trim();
+}
+
+async function fetchUserTwitterUsername(userId) {
+    if (!window.supabase || !userId) return '';
+
+    var result = await window.supabase
+        .from('users')
+        .select('twitter_username')
+        .eq('id', userId)
+        .maybeSingle();
+
+    if (result.error || !result.data || !result.data.twitter_username) return '';
+    return normalizeTwitterUsername(result.data.twitter_username);
+}
+
+function applyTwitterBindModalI18n() {
+    var modal = document.getElementById('twitter-bind-modal');
+    if (!modal) return;
+
+    modal.querySelectorAll('[data-i18n]').forEach(function (el) {
+        var key = el.getAttribute('data-i18n');
+        if (twitterBindTranslations[getTwitterBindLang()][key]) {
+            el.textContent = twT(key);
+        }
+    });
+
+    modal.querySelectorAll('[data-placeholder]').forEach(function (el) {
+        var key = el.getAttribute('data-placeholder');
+        if (twitterBindTranslations[getTwitterBindLang()][key]) {
+            el.setAttribute('placeholder', twT(key));
+        }
+    });
+}
+
+function hideTwitterBindModal() {
+    var modal = document.getElementById('twitter-bind-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+    twitterBindOnSuccessCallback = null;
+
+    var errorEl = document.getElementById('twitter-bind-error');
+    if (errorEl) {
+        errorEl.textContent = '';
+        errorEl.classList.add('hidden');
+    }
+}
+
+function showTwitterBindModalElement() {
+    var modal = document.getElementById('twitter-bind-modal');
+    if (!modal) return;
+    applyTwitterBindModalI18n();
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function updateTwitterBindStatusUi(username) {
+    var bound = !!username;
+    var handleText = bound ? ('@' + username) : twT('tw_menu_unbound');
+    var profileLabel = document.getElementById('pf-twitter-menu-label');
+    var profileStatus = document.getElementById('pf-twitter-menu-status');
+    var authStatus = document.getElementById('auth-twitter-status');
+    var authLabel = document.querySelector('.auth-dropdown-twitter-label');
+
+    if (profileLabel) {
+        profileLabel.textContent = bound ? twT('tw_profile_account_label') : twT('tw_profile_bind_label');
+    }
+
+    if (profileStatus) {
+        profileStatus.textContent = handleText;
+        profileStatus.classList.toggle('profile-menu-status-muted', !bound);
+        profileStatus.classList.toggle('profile-menu-status-bound', bound);
+        if (!bound) profileStatus.setAttribute('data-i18n', 'pf_twitter_unbound');
+    }
+
+    if (authLabel) {
+        authLabel.textContent = getTwitterBindLang() === 'zh' ? 'Twitter 账号' : 'Twitter Account';
+    }
+
+    if (authStatus) {
+        authStatus.textContent = bound ? twT('tw_menu_bound') : twT('tw_menu_unbound');
+        authStatus.classList.toggle('auth-twitter-status-bound', bound);
+    }
+}
+
+async function refreshTwitterBindStatusUi() {
+    var userId = await getCurrentUserId();
+    if (!userId) {
+        updateTwitterBindStatusUi('');
+        return;
+    }
+
+    var cached = coinrealmCurrentUserProfile && coinrealmCurrentUserProfile.twitter_username
+        ? normalizeTwitterUsername(coinrealmCurrentUserProfile.twitter_username)
+        : '';
+    var username = cached || await fetchUserTwitterUsername(userId);
+
+    if (coinrealmCurrentUserProfile && username) {
+        coinrealmCurrentUserProfile.twitter_username = username;
+    }
+
+    updateTwitterBindStatusUi(username);
+}
+
+async function saveUserTwitterUsername(username) {
+    var userId = await getAuthenticatedUserId();
+    if (!userId) {
+        alert(twT('tw_bind_login_required'));
+        return { success: false, error: 'not_logged_in' };
+    }
+
+    var updateResult = await window.supabase
+        .from('users')
+        .update({ twitter_username: username })
+        .eq('id', userId);
+
+    if (updateResult.error) {
+        return { success: false, error: updateResult.error.message };
+    }
+
+    if (coinrealmCurrentUserProfile) {
+        coinrealmCurrentUserProfile.twitter_username = username;
+    }
+
+    await refreshTwitterBindStatusUi();
+    if (typeof window.coinrealmRefreshAuthArea === 'function') {
+        window.coinrealmRefreshAuthArea();
+    }
+
+    return { success: true, username: username };
+}
+
+async function confirmTwitterBindModal() {
+    if (twitterBindSubmitting || !window.supabase) return;
+
+    var userId = await getAuthenticatedUserId();
+    if (!userId) {
+        alert(twT('tw_bind_login_required'));
+        return;
+    }
+
+    var input = document.getElementById('twitter-bind-input');
+    var errorEl = document.getElementById('twitter-bind-error');
+    var username = normalizeTwitterUsername(input && input.value);
+
+    if (!username) {
+        if (errorEl) {
+            errorEl.textContent = twT('tw_bind_username_required');
+            errorEl.classList.remove('hidden');
+        }
+        return;
+    }
+
+    if (!/^[A-Za-z0-9_]{1,15}$/.test(username)) {
+        if (errorEl) {
+            errorEl.textContent = twT('tw_bind_username_invalid');
+            errorEl.classList.remove('hidden');
+        }
+        return;
+    }
+
+    twitterBindSubmitting = true;
+    var confirmBtn = document.getElementById('twitter-bind-confirm');
+    if (confirmBtn) confirmBtn.disabled = true;
+
+    try {
+        var saveResult = await saveUserTwitterUsername(username);
+        if (!saveResult.success) {
+            if (errorEl) {
+                errorEl.textContent = twT('tw_bind_save_fail') + (saveResult.error || '');
+                errorEl.classList.remove('hidden');
+            }
+            return;
+        }
+
+        var callback = twitterBindOnSuccessCallback;
+        hideTwitterBindModal();
+        if (typeof callback === 'function') {
+            callback(saveResult.username);
+        }
+    } finally {
+        twitterBindSubmitting = false;
+        if (confirmBtn) confirmBtn.disabled = false;
+    }
+}
+
+function initTwitterBindModal() {
+    if (twitterBindInitialized) return;
+    twitterBindInitialized = true;
+
+    document.addEventListener('click', function (e) {
+        if (e.target.closest('#pf-twitter-bind-item')) {
+            e.preventDefault();
+            window.coinrealmOpenTwitterBindModal();
+            return;
+        }
+        if (e.target.closest('#twitter-bind-cancel')) {
+            hideTwitterBindModal();
+            return;
+        }
+        if (e.target.closest('#twitter-bind-modal .td-twitter-modal-overlay')) {
+            hideTwitterBindModal();
+            return;
+        }
+        if (e.target.closest('#twitter-bind-confirm')) {
+            confirmTwitterBindModal();
+        }
+    });
+
+    applyTwitterBindModalI18n();
+}
+
+window.coinrealmOpenTwitterBindModal = async function (options) {
+    options = options || {};
+
+    if (!window.supabase) return;
+
+    initTwitterBindModal();
+
+    var userId = await getAuthenticatedUserId();
+    if (!userId) {
+        alert(twT('tw_bind_login_required'));
+        return;
+    }
+
+    twitterBindOnSuccessCallback = typeof options.onSuccess === 'function' ? options.onSuccess : null;
+
+    var titleEl = document.getElementById('twitter-bind-title');
+    var descEl = document.getElementById('twitter-bind-desc');
+    var input = document.getElementById('twitter-bind-input');
+    var errorEl = document.getElementById('twitter-bind-error');
+
+    if (titleEl) {
+        titleEl.textContent = options.title ? options.title : twT('tw_bind_title');
+    }
+    if (descEl) {
+        descEl.classList.toggle('hidden', options.showDesc !== true);
+        if (options.showDesc) descEl.textContent = options.desc || twT('tw_bind_desc');
+    }
+    if (errorEl) {
+        errorEl.textContent = '';
+        errorEl.classList.add('hidden');
+    }
+
+    var existing = await fetchUserTwitterUsername(userId);
+    if (input) {
+        input.value = existing ? ('@' + existing) : '';
+        input.setAttribute('placeholder', twT('tw_bind_ph'));
+    }
+
+    showTwitterBindModalElement();
+
+    if (input) {
+        setTimeout(function () { input.focus(); }, 50);
+    }
+};
+
+window.coinrealmRefreshTwitterBindUi = refreshTwitterBindStatusUi;
+window.coinrealmFetchTwitterUsername = fetchUserTwitterUsername;
+window.coinrealmNormalizeTwitterUsername = normalizeTwitterUsername;
+
 function buildTwitterOAuthCallbackUrl() {
     var path = window.location.pathname || '/';
     if (path.endsWith('/')) {
@@ -1157,11 +1471,14 @@ async function loadCurrentUserProfileCache() {
     }
     var result = await window.supabase
         .from('users')
-        .select('id, username, email, avatar_url')
+        .select('id, username, email, avatar_url, twitter_username')
         .eq('id', userId)
         .single();
     if (!result.error && result.data) {
         coinrealmCurrentUserProfile = result.data;
+        if (typeof window.coinrealmRefreshTwitterBindUi === 'function') {
+            window.coinrealmRefreshTwitterBindUi();
+        }
         if (typeof window.coinrealmRefreshAuthArea === 'function') {
             window.coinrealmRefreshAuthArea();
         }
@@ -1198,6 +1515,7 @@ window.coinrealmRefreshAllAvatars = async function () {
 window.addEventListener('DOMContentLoaded', function () {
     setTimeout(function () {
         loadCurrentUserProfileCache();
+        initTwitterBindModal();
     }, 300);
 });
 
@@ -2799,7 +3117,11 @@ window.addEventListener('hashchange', handleRoute);
       activeSubtaskKey = null;
       activeSubtaskIndex = null;
       renderSubtasksPanel();
-      await openTwitterBindModal();
+      await openTwitterBindModal({
+        onSuccess: function () {
+          runSubtaskVerification(index);
+        }
+      });
       return;
     }
 
@@ -2834,6 +3156,9 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   function normalizeTwitterUsername(value) {
+    if (typeof window.coinrealmNormalizeTwitterUsername === 'function') {
+      return window.coinrealmNormalizeTwitterUsername(value);
+    }
     var text = String(value || '').trim();
     if (!text) return '';
     var urlMatch = text.match(/(?:twitter\.com|x\.com)\/([A-Za-z0-9_]{1,15})(?:[\/?#]|$)/i);
@@ -2965,16 +3290,9 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   async function fetchUserTwitterUsername(userId) {
-    if (!window.supabase || !userId) return '';
-
-    var result = await window.supabase
-      .from('users')
-      .select('twitter_username')
-      .eq('id', userId)
-      .maybeSingle();
-
-    if (result.error || !result.data || !result.data.twitter_username) return '';
-    return normalizeTwitterUsername(result.data.twitter_username);
+    return window.coinrealmFetchTwitterUsername
+      ? window.coinrealmFetchTwitterUsername(userId)
+      : '';
   }
 
   async function insertTwitterPendingSubmission(userId) {
@@ -3042,7 +3360,11 @@ window.addEventListener('hashchange', handleRoute);
 
     var username = await fetchUserTwitterUsername(currentUserId);
     if (!username) {
-      await openTwitterBindModal();
+      await openTwitterBindModal({
+        onSuccess: function () {
+          submitSimpleTwitterTask();
+        }
+      });
       return;
     }
 
@@ -3240,88 +3562,14 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   function hideAllTwitterModals() {
-    hideTwitterModal('td-twitter-bind-modal');
-    var errorEl = document.getElementById('td-twitter-bind-error');
-    if (errorEl) {
-      errorEl.textContent = '';
-      errorEl.classList.add('hidden');
+    if (typeof hideTwitterBindModal === 'function') {
+      hideTwitterBindModal();
     }
   }
 
-  async function openTwitterBindModal() {
-    hideAllTwitterModals();
-
-    var input = document.getElementById('td-twitter-bind-input');
-    var errorEl = document.getElementById('td-twitter-bind-error');
-    if (errorEl) {
-      errorEl.textContent = '';
-      errorEl.classList.add('hidden');
-    }
-
-    var userId = await getAuthenticatedUserId();
-    var existing = userId ? await fetchUserTwitterUsername(userId) : '';
-    if (input) {
-      input.value = existing ? ('@' + existing) : '';
-      input.setAttribute('placeholder', tdT('td_twitter_bind_ph'));
-    }
-
-    showTwitterModal('td-twitter-bind-modal');
-  }
-
-  async function confirmTwitterBindAndContinue() {
-    if (twitterClaimInProgress || !window.supabase || !currentTaskRecord) return;
-
-    var userId = await getAuthenticatedUserId();
-    if (!userId) {
-      alert(tdT('td_alert_login'));
-      return;
-    }
-
-    var input = document.getElementById('td-twitter-bind-input');
-    var errorEl = document.getElementById('td-twitter-bind-error');
-    var username = normalizeTwitterUsername(input && input.value);
-
-    if (!username) {
-      if (errorEl) {
-        errorEl.textContent = tdT('td_twitter_username_required');
-        errorEl.classList.remove('hidden');
-      }
-      return;
-    }
-
-    if (!/^[A-Za-z0-9_]{1,15}$/.test(username)) {
-      if (errorEl) {
-        errorEl.textContent = tdT('td_twitter_username_invalid');
-        errorEl.classList.remove('hidden');
-      }
-      return;
-    }
-
-    twitterClaimInProgress = true;
-    var confirmBtn = document.getElementById('td-twitter-bind-confirm');
-    if (confirmBtn) confirmBtn.disabled = true;
-
-    try {
-      var updateResult = await window.supabase
-        .from('users')
-        .update({ twitter_username: username })
-        .eq('id', userId);
-
-      if (updateResult.error) {
-        if (errorEl) {
-          errorEl.textContent = tdT('td_twitter_save_fail') + updateResult.error.message;
-          errorEl.classList.remove('hidden');
-        }
-        return;
-      }
-
-      hideAllTwitterModals();
-      updateTaskDetailSubtaskModeUi();
-      updateBottomActionBar();
-    } finally {
-      twitterClaimInProgress = false;
-      if (confirmBtn) confirmBtn.disabled = false;
-    }
+  async function openTwitterBindModal(options) {
+    if (typeof window.coinrealmOpenTwitterBindModal !== 'function') return;
+    await window.coinrealmOpenTwitterBindModal(Object.assign({ showDesc: true }, options || {}));
   }
 
   async function completeSimpleTaskClaim(userId) {
@@ -3405,7 +3653,12 @@ window.addEventListener('hashchange', handleRoute);
         detailActionState = 'simple_subtasks';
         var existingUsername = await fetchUserTwitterUsername(userId);
         if (!existingUsername) {
-          await openTwitterBindModal();
+          await openTwitterBindModal({
+            onSuccess: function () {
+              updateTaskDetailSubtaskModeUi();
+              updateBottomActionBar();
+            }
+          });
         } else {
           updateTaskDetailSubtaskModeUi();
         }
@@ -3961,24 +4214,6 @@ window.addEventListener('hashchange', handleRoute);
       manageBtn.addEventListener('click', function () {
         window.location.hash = 'review';
       });
-    }
-
-    var twitterBindCancel = document.getElementById('td-twitter-bind-cancel');
-    var twitterBindConfirm = document.getElementById('td-twitter-bind-confirm');
-
-    if (twitterBindCancel) {
-      twitterBindCancel.addEventListener('click', hideAllTwitterModals);
-    }
-    if (twitterBindConfirm) {
-      twitterBindConfirm.addEventListener('click', confirmTwitterBindAndContinue);
-    }
-
-    var bindModal = document.getElementById('td-twitter-bind-modal');
-    if (bindModal) {
-      var overlay = bindModal.querySelector('.td-twitter-modal-overlay');
-      if (overlay) {
-        overlay.addEventListener('click', hideAllTwitterModals);
-      }
     }
   }
 
@@ -6068,6 +6303,8 @@ window.addEventListener('hashchange', handleRoute);
       pf_menu_leaderboard: '排行榜',
       pf_menu_invite: '邀请好友',
       pf_menu_settings: '设置（语言/通知/退出登录）',
+      pf_menu_twitter_bind: '绑定 Twitter 账号',
+      pf_twitter_unbound: '未绑定',
       pf_level_master: '大师',
       pf_completion_rate: '{rate}% 完成率',
       pf_level_badge: 'Lv.{level} {label}',
@@ -6090,6 +6327,8 @@ window.addEventListener('hashchange', handleRoute);
       pf_menu_leaderboard: 'Leaderboard',
       pf_menu_invite: 'Invite Friends',
       pf_menu_settings: 'Settings (Language/Notifications/Logout)',
+      pf_menu_twitter_bind: 'Link Twitter Account',
+      pf_twitter_unbound: 'Not linked',
       pf_level_master: 'Master',
       pf_completion_rate: '{rate}% completion rate',
       pf_level_badge: 'Lv.{level} {label}',
@@ -6231,6 +6470,10 @@ window.addEventListener('hashchange', handleRoute);
     if (editBtn) editBtn.classList.remove('hidden');
 
     applyProfileI18n();
+
+    if (typeof window.coinrealmRefreshTwitterBindUi === 'function') {
+      await window.coinrealmRefreshTwitterBindUi();
+    }
   }
 
   function renderAvatarPickerGrid() {
