@@ -1238,7 +1238,7 @@ async function verifyTelegramSubtask(taskId, userId, actionIndex) {
 
 function isTelegramVerificationTask(task) {
     if (!isSimpleTaskType(task)) return false;
-    var platform = getTaskField(task, ['platform', 'verification_type'], '');
+    var platform = String(getTaskField(task, ['platform', 'verification_type'], '') || '').trim().toLowerCase();
     return platform === 'telegram';
 }
 
@@ -1254,6 +1254,56 @@ function isTelegramVerifiableAction(task) {
     return actions.every(function (action) {
         return isAllowedTelegramAction(action);
     });
+}
+
+function isSimplePlatformVerifiableTask(task) {
+    return isTwitterVerifiableAction(task) || isTelegramVerifiableAction(task);
+}
+
+async function insertSimplePendingSubmission(taskId, userId, taskMeta) {
+    if (!window.supabase || !taskId || !userId) {
+        return { ok: false, error: 'missing params' };
+    }
+
+    var existingResult = await window.supabase
+        .from('submissions')
+        .select('id, task_id, user_id, status')
+        .eq('task_id', taskId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    if (existingResult.error) {
+        return { ok: false, error: existingResult.error.message };
+    }
+
+    if (existingResult.data) {
+        return { ok: true, data: existingResult.data, alreadyExists: true };
+    }
+
+    var insertResult = await window.supabase
+        .from('submissions')
+        .insert({
+            task_id: taskId,
+            user_id: userId,
+            status: 'pending'
+        })
+        .select('id, task_id, user_id, status')
+        .single();
+
+    if (insertResult.error) {
+        return { ok: false, error: insertResult.error.message };
+    }
+
+    if (typeof writeBroadcast === 'function' && taskMeta) {
+        writeBroadcast({
+            user_id: userId,
+            event_type: 'task_claim',
+            description: '领取了简单任务「' + buildTaskBroadcastTitle(taskMeta.title || '') + '」',
+            reward_amount: Number(taskMeta.reward_amount) || 0
+        });
+    }
+
+    return { ok: true, data: insertResult.data };
 }
 window.coinrealmNormalizeTwitterUsername = normalizeTwitterUsername;
 
@@ -1432,7 +1482,7 @@ function isSimpleTaskType(task) {
 
 function isTwitterVerificationTask(task) {
     if (!isSimpleTaskType(task)) return false;
-    var platform = getTaskField(task, ['platform', 'verification_type'], '');
+    var platform = String(getTaskField(task, ['platform', 'verification_type'], '') || '').trim().toLowerCase();
     return platform === 'twitter';
 }
 
@@ -1625,8 +1675,8 @@ async function applyTwitterVerificationSuccess(task, userId, options) {
         .eq('task_id', taskId)
         .eq('user_id', userId)
         .in('status', priorStatus === 'rejected'
-            ? ['verifying', 'rejected', 'pending']
-            : ['verifying', 'pending']);
+            ? ['verifying', 'rejected', 'pending', 'submitted']
+            : ['verifying', 'pending', 'submitted']);
 
     if (priorStatus === 'verifying' || priorStatus === 'rejected' || priorStatus === 'pending') {
         var taskResult = await window.supabase
@@ -3242,9 +3292,9 @@ window.addEventListener('hashchange', handleRoute);
       td_alert_twitter_no_link: '任务未配置 Twitter 链接，请联系发布者。',
       td_alert_telegram_no_link: '任务未配置 Telegram 链接，请联系发布者。',
       td_alert_telegram_verified: '验证通过！奖励已到账。',
-      td_subtask_tg_join: '加入群组 {target}',
-      td_subtask_tg_follow: '关注频道 {target}',
-      td_subtask_tg_message: '发送消息 {target}',
+      td_subtask_tg_join: '加入群组',
+      td_subtask_tg_follow: '关注频道',
+      td_subtask_tg_message: '发送消息',
       td_subtask_tg_message_kw: '发送消息（关键词：{keyword}）',
       td_alert_simple_verifying: '任务已领取，正在验证中...',
       td_alert_claim_fail: '领取失败：',
@@ -3359,9 +3409,9 @@ window.addEventListener('hashchange', handleRoute);
       td_alert_twitter_no_link: 'This task has no Twitter link configured. Please contact the publisher.',
       td_alert_telegram_no_link: 'This task has no Telegram link configured. Please contact the publisher.',
       td_alert_telegram_verified: 'Verified! Reward credited.',
-      td_subtask_tg_join: 'Join group {target}',
-      td_subtask_tg_follow: 'Follow channel {target}',
-      td_subtask_tg_message: 'Send message {target}',
+      td_subtask_tg_join: 'Join group',
+      td_subtask_tg_follow: 'Follow channel',
+      td_subtask_tg_message: 'Send message',
       td_subtask_tg_message_kw: 'Send message (keyword: {keyword})',
       td_alert_simple_verifying: 'Task claimed. Verification in progress...',
       td_alert_claim_fail: 'Claim failed: ',
@@ -3448,7 +3498,7 @@ window.addEventListener('hashchange', handleRoute);
 
   function isTwitterSimpleTask(task) {
     if (!isSimpleTaskRecord(task)) return false;
-    var platform = getTaskField(task, ['platform', 'verification_type'], '');
+    var platform = String(getTaskField(task, ['platform', 'verification_type'], '') || '').trim().toLowerCase();
     return platform === 'twitter';
   }
 
@@ -3473,7 +3523,7 @@ window.addEventListener('hashchange', handleRoute);
 
   function isTelegramSimpleTask(task) {
     if (!isSimpleTaskRecord(task)) return false;
-    var platform = getTaskField(task, ['platform', 'verification_type'], '');
+    var platform = String(getTaskField(task, ['platform', 'verification_type'], '') || '').trim().toLowerCase();
     return platform === 'telegram';
   }
 
@@ -3560,12 +3610,12 @@ window.addEventListener('hashchange', handleRoute);
   function buildSubtaskLabel(action, target, task) {
     var platform = getTaskPlatform(task);
     if (platform === 'telegram') {
-      if (action === 'join') return tdT('td_subtask_tg_join', { target: target });
-      if (action === 'follow') return tdT('td_subtask_tg_follow', { target: target });
+      if (action === 'join') return tdT('td_subtask_tg_join');
+      if (action === 'follow') return tdT('td_subtask_tg_follow');
       if (action === 'message') {
         var tgKeyword = task ? String(getTaskField(task, ['task_keyword'], '') || '').trim() : '';
-        if (tgKeyword) return tdT('td_subtask_tg_message_kw', { keyword: tgKeyword, target: target });
-        return tdT('td_subtask_tg_message', { target: target });
+        if (tgKeyword) return tdT('td_subtask_tg_message_kw', { keyword: tgKeyword });
+        return tdT('td_subtask_tg_message');
       }
     }
     if (action === 'follow') {
@@ -3652,8 +3702,11 @@ window.addEventListener('hashchange', handleRoute);
     if (!currentTaskRecord || !currentSubmissionRecord || !isSimpleVerifiablePlatformTask(currentTaskRecord)) {
       return false;
     }
-    return currentSubmissionRecord.status !== 'approved'
-      && currentSubmissionRecord.status !== 'submitted';
+    if (currentSubmissionRecord.status === 'approved') return false;
+    if (currentSubmissionRecord.status === 'submitted') {
+      return !allSubtasksMarkedDone();
+    }
+    return true;
   }
 
   function getVerifyActionCopy(subtask) {
@@ -4751,6 +4804,7 @@ window.addEventListener('hashchange', handleRoute);
         detailActionState = 'simple_subtasks';
         updateTaskDetailSubtaskModeUi();
         updateBottomActionBar();
+        renderSubtasksPanel();
       } finally {
         twitterClaimInProgress = false;
       }
@@ -14140,16 +14194,24 @@ window.addEventListener('hashchange', handleRoute);
 
     if (hasSubmission) {
       var sub = userSimpleSubmissionMap[task.id];
-      var inProgress = sub && (sub.status === 'pending' || sub.status === 'verifying' || sub.status === 'rejected');
-      var isDone = sub && (sub.status === 'approved' || sub.status === 'submitted');
+      var platformTask = isSimplePlatformVerifiableTask(task);
 
-      if (inProgress && isTwitterVerifiableAction(task)) {
-        btnClass += ' simple-task-claim-btn-continue';
-        btnText = stT('st_btn_continue');
-      } else if (isDone || hasSubmission) {
-        btnClass += ' simple-task-claim-btn-done';
-        btnText = stT('st_btn_claimed');
-        btnDisabled = ' disabled';
+      if (platformTask) {
+        if (sub.status === 'approved') {
+          btnClass += ' simple-task-claim-btn-done';
+          btnText = stT('st_btn_claimed');
+          btnDisabled = ' disabled';
+        } else {
+          btnClass += ' simple-task-claim-btn-continue';
+          btnText = stT('st_btn_continue');
+        }
+      } else {
+        var isDone = sub && (sub.status === 'approved' || sub.status === 'submitted');
+        if (isDone || hasSubmission) {
+          btnClass += ' simple-task-claim-btn-done';
+          btnText = stT('st_btn_claimed');
+          btnDisabled = ' disabled';
+        }
       }
     } else if (full) {
       btnClass += ' simple-task-claim-btn-disabled';
@@ -14291,7 +14353,18 @@ window.addEventListener('hashchange', handleRoute);
 
       var freshTask = freshResult.data;
 
-      if (isTwitterVerifiableAction(freshTask)) {
+      if (isSimplePlatformVerifiableTask(freshTask)) {
+        var pendingResult = await insertSimplePendingSubmission(taskId, userId, freshTask);
+        if (!pendingResult.ok) {
+          alert(stT('st_claim_fail') + (pendingResult.error || ''));
+          return;
+        }
+
+        if (pendingResult.data) {
+          userSimpleSubmissionMap[taskId] = pendingResult.data;
+        }
+
+        renderSimpleTasksGrid();
         window.location.hash = 'task-detail?id=' + encodeURIComponent(taskId);
         return;
       }
