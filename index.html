@@ -323,6 +323,10 @@
           <h3 class="task-detail-section-title" data-i18n="td_req_title">任务要求</h3>
           <ul id="td-task-requirements" class="task-requirements-list"></ul>
         </div>
+        <div id="td-subtasks-section" class="task-detail-section hidden">
+          <h3 class="task-detail-section-title" data-i18n="td_subtasks_title">任务步骤</h3>
+          <div id="td-subtasks-list" class="td-subtasks-list"></div>
+        </div>
       </div>
 
       <div id="td-image-lightbox" class="td-image-lightbox hidden" aria-hidden="true">
@@ -471,18 +475,45 @@
         </div>
 
         <div id="ct-field-platform-config" class="create-task-platform-config hidden">
-          <div class="create-task-field">
-            <label class="create-task-label" for="ct-task-action" data-i18n="ct_label_action">任务动作</label>
-            <select id="ct-task-action" class="create-task-input"></select>
+          <div id="ct-config-twitter" class="hidden">
+            <div class="create-task-field">
+              <label class="create-task-label" data-i18n="ct_label_action">任务动作</label>
+              <div id="ct-twitter-action-group" class="ct-action-toggle-group" role="group" aria-label="Twitter actions">
+                <button type="button" class="ct-action-toggle" data-action="follow" data-i18n="ct_toggle_follow" onclick="window.coinrealmToggleTwitterAction && window.coinrealmToggleTwitterAction(this)">关注</button>
+                <button type="button" class="ct-action-toggle" data-action="like" data-i18n="ct_toggle_like" onclick="window.coinrealmToggleTwitterAction && window.coinrealmToggleTwitterAction(this)">点赞</button>
+                <button type="button" class="ct-action-toggle" data-action="reply" data-i18n="ct_toggle_reply" onclick="window.coinrealmToggleTwitterAction && window.coinrealmToggleTwitterAction(this)">评论</button>
+              </div>
+            </div>
+            <div id="ct-target-field-follow" class="create-task-field ct-action-target-field hidden">
+              <label class="create-task-label" for="ct-target-input-follow" data-i18n="ct_label_target_follow">关注目标</label>
+              <input type="text" id="ct-target-input-follow" class="create-task-input" data-placeholder="ct_ph_target_follow" placeholder="">
+            </div>
+            <div id="ct-target-field-like" class="create-task-field ct-action-target-field hidden">
+              <label class="create-task-label" for="ct-target-input-like" data-i18n="ct_label_target_like">点赞目标</label>
+              <input type="text" id="ct-target-input-like" class="create-task-input" data-placeholder="ct_ph_target_like" placeholder="">
+            </div>
+            <div id="ct-target-field-reply" class="create-task-field ct-action-target-field hidden">
+              <label class="create-task-label" for="ct-target-input-reply" data-i18n="ct_label_target_reply">评论目标</label>
+              <input type="text" id="ct-target-input-reply" class="create-task-input" data-placeholder="ct_ph_target_reply" placeholder="">
+              <div id="ct-target-field-reply-keyword" class="ct-action-keyword-field hidden">
+                <input type="text" id="ct-target-keyword-reply" class="create-task-input" data-placeholder="ct_ph_keyword_reply" placeholder="">
+              </div>
+            </div>
           </div>
-          <div class="create-task-field">
-            <label class="create-task-label" for="ct-task-target" data-i18n="ct_label_target">目标</label>
-            <input type="text" id="ct-task-target" class="create-task-input" data-placeholder="ct_ph_target" placeholder="">
-          </div>
-          <div id="ct-field-keyword" class="create-task-field hidden">
-            <label class="create-task-label" for="ct-task-keyword" data-i18n="ct_label_keyword">关键词</label>
-            <input type="text" id="ct-task-keyword" class="create-task-input" data-placeholder="ct_ph_keyword" placeholder="">
-            <p class="create-task-orange-hint" data-i18n="ct_keyword_hint">仅回复/评论/发送消息类任务需要填写</p>
+          <div id="ct-config-generic">
+            <div class="create-task-field">
+              <label class="create-task-label" for="ct-task-action" data-i18n="ct_label_action">任务动作</label>
+              <select id="ct-task-action" class="create-task-input"></select>
+            </div>
+            <div class="create-task-field">
+              <label class="create-task-label" for="ct-task-target" data-i18n="ct_label_target">目标</label>
+              <input type="text" id="ct-task-target" class="create-task-input" data-placeholder="ct_ph_target" placeholder="">
+            </div>
+            <div id="ct-field-keyword" class="create-task-field hidden">
+              <label class="create-task-label" for="ct-task-keyword" data-i18n="ct_label_keyword">关键词</label>
+              <input type="text" id="ct-task-keyword" class="create-task-input" data-placeholder="ct_ph_keyword" placeholder="">
+              <p class="create-task-orange-hint" data-i18n="ct_keyword_hint">仅回复/评论/发送消息类任务需要填写</p>
+            </div>
           </div>
         </div>
 

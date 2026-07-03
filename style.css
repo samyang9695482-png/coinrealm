@@ -1793,6 +1793,175 @@ img {
     margin-bottom: 0;
 }
 
+.ct-action-toggle-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.ct-action-toggle {
+    position: relative;
+    flex: 1;
+    min-width: 88px;
+    padding: 10px 36px 10px 14px;
+    border: 1px solid #d9d9d9;
+    border-radius: 8px;
+    background: #fff;
+    color: #333;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.ct-action-toggle.selected {
+    background: #e6f7e6;
+    border-color: #52c41a;
+    color: #389e0d;
+}
+
+.ct-action-toggle.selected::after {
+    content: '✓';
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 14px;
+    font-weight: 700;
+    color: #52c41a;
+}
+
+.ct-action-keyword-field {
+    margin-top: 10px;
+}
+
+.ct-action-keyword-field .create-task-input {
+    margin-bottom: 0;
+}
+
+.td-subtasks-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.td-subtask-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    border: 1px solid #e8e8e8;
+    border-radius: 12px;
+    background: #fafafa;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.td-subtask-row-done {
+    background: #e6f7e6;
+    border-color: #b7eb8f;
+}
+
+.td-subtask-index {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #fff;
+    border: 1px solid #d9d9d9;
+    color: #666;
+    font-size: 13px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.td-subtask-index-done {
+    background: #52c41a;
+    border-color: #52c41a;
+    color: #fff;
+    font-size: 14px;
+}
+
+.td-subtask-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.td-subtask-label {
+    font-size: 14px;
+    color: #333;
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.td-subtask-row-done .td-subtask-label {
+    color: #237804;
+}
+
+.td-subtask-btn {
+    flex-shrink: 0;
+    min-width: 92px;
+    padding: 7px 14px;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.td-subtask-btn-go {
+    background: #1890ff;
+    color: #fff;
+}
+
+.td-subtask-btn-go:hover {
+    background: #096dd9;
+}
+
+.td-subtask-btn-verifying {
+    background: #1890ff;
+    color: #fff;
+    cursor: wait;
+    opacity: 0.92;
+}
+
+.td-subtask-btn-done {
+    background: #52c41a;
+    color: #fff;
+    cursor: default;
+}
+
+.td-subtask-btn-retry {
+    background: #fa8c16;
+    color: #fff;
+}
+
+.td-subtask-btn-retry:hover {
+    background: #d46b08;
+}
+
+.td-subtask-spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: tdVerifySpin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+.task-detail-subtask-mode #td-task-description,
+.task-detail-subtask-mode #td-task-requirements,
+.task-detail-subtask-mode #td-task-images-section {
+    display: none !important;
+}
+
 .create-task-sql-hint {
     margin-top: 12px;
     padding: 12px 14px;

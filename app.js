@@ -704,7 +704,21 @@ function getTwitterTaskActionForTask(task) {
 
 function isTwitterVerifiableAction(task) {
     if (!isTwitterVerificationTask(task)) return false;
-    var action = getTwitterTaskActionForTask(task);
+    var actions = parseCommaList(getTaskField(task, ['task_action'], ''));
+    if (!actions.length) return false;
+    return actions.every(function (action) {
+        return isAllowedTwitterAction(action);
+    });
+}
+
+function parseCommaList(value) {
+    return String(value || '').split(',').map(function (item) {
+        return item.trim();
+    }).filter(Boolean);
+}
+
+function isAllowedTwitterAction(action) {
+    var key = String(action || '').trim().toLowerCase();
     var allowed = {
         follow: true,
         following: true,
@@ -716,7 +730,7 @@ function isTwitterVerifiableAction(task) {
         reply: true,
         comment: true
     };
-    return !!allowed[action];
+    return !!allowed[key];
 }
 
 /** @deprecated use isTwitterVerifiableAction */
@@ -777,6 +791,55 @@ async function verifyTwitterTask(taskId, userId) {
         };
     } catch (err) {
         console.warn('verifyTwitterTask failed', err);
+        return {
+            success: false,
+            verified: false,
+            error: err && err.message ? err.message : String(err)
+        };
+    }
+}
+
+async function verifyTwitterSubtask(taskId, userId, actionIndex) {
+    if (!taskId || !userId || actionIndex == null) {
+        return { success: false, verified: false, error: 'missing params' };
+    }
+
+    if (!TWITTER_VERIFY_WORKER_URL || TWITTER_VERIFY_WORKER_URL === 'WORKER_URL_PLACEHOLDER') {
+        return { success: true, verified: true };
+    }
+
+    try {
+        var response = await fetch(TWITTER_VERIFY_WORKER_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                task_id: taskId,
+                user_id: userId,
+                action_index: actionIndex,
+                subtask_only: true
+            })
+        });
+
+        var responseText = await response.text();
+        var workerResult = null;
+        try {
+            workerResult = responseText ? JSON.parse(responseText) : null;
+        } catch (_parseErr) {
+            throw new Error(responseText || ('Worker request failed: ' + response.status));
+        }
+
+        if (!response.ok) {
+            throw new Error((workerResult && workerResult.error) || ('Worker request failed: ' + response.status));
+        }
+
+        return {
+            success: workerResult.success === true,
+            verified: workerResult.verified === true,
+            reason: workerResult.reason || workerResult.error || '',
+            action_index: workerResult.action_index
+        };
+    } catch (err) {
+        console.warn('verifyTwitterSubtask failed', err);
         return {
             success: false,
             verified: false,
@@ -2206,6 +2269,11 @@ window.addEventListener('hashchange', handleRoute);
   var twitterVerifyInProgress = false;
   var twitterPendingAutoVerify = false;
   var taskDetailVisibilityBound = false;
+  var activeSubtaskKey = null;
+  var activeSubtaskIndex = null;
+  var subtaskUiState = {};
+  var subtaskVerifyInProgress = false;
+  var SUBTASK_PROGRESS_PREFIX = 'coinrealm_subtask_done';
 
   var taskDetailTranslations = {
     zh: {
@@ -2231,6 +2299,17 @@ window.addEventListener('hashchange', handleRoute);
       td_btn_simple_claim: '一键领取',
       td_btn_go_twitter: '前往 Twitter 完成任务',
       td_btn_waiting_action: '等待操作...',
+      td_btn_submit_task: '提交任务',
+      td_btn_subtasks_remaining: '还有 {count} 项未完成',
+      td_subtasks_title: '任务步骤',
+      td_subtask_follow: '关注 {user}',
+      td_subtask_like: '点赞推文',
+      td_subtask_reply: '评论推文',
+      td_subtask_reply_keyword: '评论推文（关键词：{keyword}）',
+      td_subtask_go: '去完成',
+      td_subtask_verifying: '验证中...',
+      td_subtask_retry: '重新验证',
+      td_subtask_done: '✓ 已完成',
       td_btn_simple_done: '✓ 已完成',
       td_btn_simple_verifying: '验证中...',
       td_btn_simple_checking: '正在验证...',
@@ -2302,6 +2381,17 @@ window.addEventListener('hashchange', handleRoute);
       td_btn_simple_claim: 'Claim Now',
       td_btn_go_twitter: 'Go to Twitter',
       td_btn_waiting_action: 'Waiting for action...',
+      td_btn_submit_task: 'Submit Task',
+      td_btn_subtasks_remaining: '{count} step(s) remaining',
+      td_subtasks_title: 'Task Steps',
+      td_subtask_follow: 'Follow {user}',
+      td_subtask_like: 'Like tweet',
+      td_subtask_reply: 'Comment on tweet',
+      td_subtask_reply_keyword: 'Comment on tweet (keyword: {keyword})',
+      td_subtask_go: 'Go',
+      td_subtask_verifying: 'Verifying...',
+      td_subtask_retry: 'Retry',
+      td_subtask_done: '✓ Done',
       td_btn_simple_done: '✓ Completed',
       td_btn_simple_verifying: 'Verifying...',
       td_btn_simple_checking: 'Verifying now...',
@@ -2437,19 +2527,268 @@ window.addEventListener('hashchange', handleRoute);
 
   function isTwitterVerifiableActionLocal(task) {
     if (!isTwitterSimpleTask(task)) return false;
-    var action = getTwitterTaskAction(task);
-    var allowed = {
-      follow: true,
-      following: true,
-      like: true,
-      favorite: true,
-      favourite: true,
-      retweet: true,
-      repost: true,
-      reply: true,
-      comment: true
+    var actions = parseTaskActionsList(task);
+    if (!actions.length) return false;
+    return actions.every(function (action) {
+      return isAllowedTwitterAction(action);
+    });
+  }
+
+  function parseTaskActionsList(task) {
+    return parseCommaList(getTaskField(task, ['task_action'], '')).map(function (action) {
+      return action.toLowerCase();
+    });
+  }
+
+  function parseTaskTargetsList(task) {
+    return parseCommaList(getTaskField(task, ['task_target'], ''));
+  }
+
+  function normalizeSubtaskAction(action) {
+    var map = {
+      follow: 'follow',
+      following: 'follow',
+      like: 'like',
+      favorite: 'like',
+      favourite: 'like',
+      retweet: 'retweet',
+      repost: 'retweet',
+      reply: 'reply',
+      comment: 'reply'
     };
-    return !!allowed[action];
+    return map[String(action || '').toLowerCase()] || String(action || '').toLowerCase();
+  }
+
+  function buildSubtaskOpenUrl(action, target) {
+    var clean = String(target || '').trim();
+    if (!clean) return '';
+    if (/^https?:\/\//i.test(clean)) return clean;
+    if (action === 'follow') {
+      var user = normalizeTwitterUsername(clean);
+      return user ? 'https://twitter.com/' + encodeURIComponent(user) : '';
+    }
+    if (/^\d+$/.test(clean)) return 'https://twitter.com/i/status/' + clean;
+    return 'https://twitter.com/' + encodeURIComponent(clean.replace(/^@+/, ''));
+  }
+
+  function buildSubtaskLabel(action, target, task) {
+    if (action === 'follow') {
+      var user = normalizeTwitterUsername(target);
+      return tdT('td_subtask_follow', { user: user ? '@' + user : target });
+    }
+    if (action === 'like') return tdT('td_subtask_like');
+    if (action === 'reply') {
+      var keyword = task ? String(getTaskField(task, ['task_keyword'], '') || '').trim() : '';
+      if (keyword) return tdT('td_subtask_reply_keyword', { keyword: keyword });
+      return tdT('td_subtask_reply');
+    }
+    if (action === 'retweet') return tdT('td_subtask_like');
+    return target;
+  }
+
+  function buildSubtasksFromTask(task) {
+    var actions = parseTaskActionsList(task);
+    var targets = parseTaskTargetsList(task);
+    return actions.map(function (rawAction, index) {
+      var action = normalizeSubtaskAction(rawAction);
+      var target = targets[index] || '';
+      return {
+        key: action + ':' + index,
+        index: index,
+        action: action,
+        target: target,
+        label: buildSubtaskLabel(action, target, task),
+        url: buildSubtaskOpenUrl(action, target)
+      };
+    });
+  }
+
+  function getSubtaskProgressStorageKey() {
+    if (!currentTaskRecord || !currentUserId) return '';
+    return SUBTASK_PROGRESS_PREFIX + ':' + currentTaskRecord.id + ':' + currentUserId;
+  }
+
+  function loadSubtaskProgressSet() {
+    var key = getSubtaskProgressStorageKey();
+    if (!key) return {};
+    try {
+      var raw = sessionStorage.getItem(key);
+      return raw ? JSON.parse(raw) : {};
+    } catch (_err) {
+      return {};
+    }
+  }
+
+  function saveSubtaskProgressSet(setObj) {
+    var key = getSubtaskProgressStorageKey();
+    if (!key) return;
+    sessionStorage.setItem(key, JSON.stringify(setObj || {}));
+  }
+
+  function isSubtaskDone(subtaskKey) {
+    var set = loadSubtaskProgressSet();
+    return !!set[subtaskKey];
+  }
+
+  function markSubtaskDone(subtaskKey) {
+    var set = loadSubtaskProgressSet();
+    set[subtaskKey] = true;
+    saveSubtaskProgressSet(set);
+  }
+
+  function countCompletedSubtasks() {
+    if (!currentTaskRecord) return 0;
+    return buildSubtasksFromTask(currentTaskRecord).filter(function (st) {
+      return isSubtaskDone(st.key);
+    }).length;
+  }
+
+  function allSubtasksMarkedDone() {
+    if (!currentTaskRecord) return false;
+    var subtasks = buildSubtasksFromTask(currentTaskRecord);
+    return subtasks.length > 0 && subtasks.every(function (st) {
+      return isSubtaskDone(st.key);
+    });
+  }
+
+  function isSimpleSubtaskMode() {
+    if (!currentTaskRecord || !currentSubmissionRecord || !isTwitterVerifiableActionLocal(currentTaskRecord)) {
+      return false;
+    }
+    return currentSubmissionRecord.status !== 'approved'
+      && currentSubmissionRecord.status !== 'submitted';
+  }
+
+  function updateTaskDetailSubtaskModeUi() {
+    var page = document.getElementById('task-detail-page');
+    var section = document.getElementById('td-subtasks-section');
+    var show = isSimpleSubtaskMode();
+    if (page) page.classList.toggle('task-detail-subtask-mode', show);
+    if (section) section.classList.toggle('hidden', !show);
+    if (show) renderSubtasksPanel();
+  }
+
+  function getSubtaskDisplayState(st) {
+    if (isSubtaskDone(st.key)) return 'done';
+    if (subtaskUiState[st.key] === 'verifying') return 'verifying';
+    if (subtaskUiState[st.key] === 'failed') return 'retry';
+    return 'go';
+  }
+
+  function buildSubtaskButtonHtml(st, displayState) {
+    if (displayState === 'done') {
+      return (
+        '<button type="button" class="td-subtask-btn td-subtask-btn-done" data-subtask-index="' + st.index + '" disabled>' +
+          escapeHtml(tdT('td_subtask_done')) +
+        '</button>'
+      );
+    }
+    if (displayState === 'verifying') {
+      return (
+        '<button type="button" class="td-subtask-btn td-subtask-btn-verifying" data-subtask-index="' + st.index + '" disabled>' +
+          '<span class="td-subtask-spinner" aria-hidden="true"></span>' +
+          '<span>' + escapeHtml(tdT('td_subtask_verifying')) + '</span>' +
+        '</button>'
+      );
+    }
+    if (displayState === 'retry') {
+      return (
+        '<button type="button" class="td-subtask-btn td-subtask-btn-retry" data-subtask-index="' + st.index + '" data-subtask-action="retry">' +
+          escapeHtml(tdT('td_subtask_retry')) +
+        '</button>'
+      );
+    }
+    return (
+      '<button type="button" class="td-subtask-btn td-subtask-btn-go" data-subtask-index="' + st.index + '" data-subtask-action="go">' +
+        escapeHtml(tdT('td_subtask_go')) +
+      '</button>'
+    );
+  }
+
+  function renderSubtasksPanel() {
+    var listEl = document.getElementById('td-subtasks-list');
+    if (!listEl || !currentTaskRecord) return;
+
+    var subtasks = buildSubtasksFromTask(currentTaskRecord);
+    listEl.innerHTML = subtasks.map(function (st, index) {
+      var displayState = getSubtaskDisplayState(st);
+      var done = displayState === 'done';
+      var rowClass = 'td-subtask-row' + (done ? ' td-subtask-row-done' : '');
+      var indexClass = 'td-subtask-index' + (done ? ' td-subtask-index-done' : '');
+      var indexContent = done ? '✓' : String(index + 1);
+      return (
+        '<div class="' + rowClass + '" data-subtask-index="' + index + '">' +
+          '<div class="' + indexClass + '" aria-hidden="true">' + indexContent + '</div>' +
+          '<div class="td-subtask-body">' +
+            '<div class="td-subtask-label">' + escapeHtml(st.label) + '</div>' +
+          '</div>' +
+          buildSubtaskButtonHtml(st, displayState) +
+        '</div>'
+      );
+    }).join('');
+  }
+
+  function handleSubtaskGo(index) {
+    if (subtaskVerifyInProgress || !currentTaskRecord || !currentUserId) return;
+    var subtasks = buildSubtasksFromTask(currentTaskRecord);
+    var st = subtasks[index];
+    if (!st || isSubtaskDone(st.key)) return;
+
+    if (!st.url) {
+      alert(tdT('td_alert_twitter_no_link'));
+      return;
+    }
+
+    subtaskUiState[st.key] = 'verifying';
+    activeSubtaskKey = st.key;
+    activeSubtaskIndex = index;
+    renderSubtasksPanel();
+    setupTaskDetailVisibilityListener();
+    window.open(st.url, '_blank', 'noopener,noreferrer');
+  }
+
+  async function runSubtaskVerification(index) {
+    if (subtaskVerifyInProgress || !currentTaskRecord || !currentUserId) return;
+
+    var subtasks = buildSubtasksFromTask(currentTaskRecord);
+    var st = subtasks[index];
+    if (!st || isSubtaskDone(st.key)) {
+      activeSubtaskKey = null;
+      activeSubtaskIndex = null;
+      return;
+    }
+
+    var username = await fetchUserTwitterUsername(currentUserId);
+    if (!username) {
+      subtaskUiState[st.key] = 'failed';
+      activeSubtaskKey = null;
+      activeSubtaskIndex = null;
+      renderSubtasksPanel();
+      await openTwitterBindModal();
+      return;
+    }
+
+    subtaskVerifyInProgress = true;
+    subtaskUiState[st.key] = 'verifying';
+    renderSubtasksPanel();
+
+    try {
+      var result = await verifyTwitterSubtask(currentTaskRecord.id, currentUserId, index);
+      if (result.verified) {
+        markSubtaskDone(st.key);
+        delete subtaskUiState[st.key];
+      } else {
+        subtaskUiState[st.key] = 'failed';
+      }
+    } catch (_err) {
+      subtaskUiState[st.key] = 'failed';
+    } finally {
+      subtaskVerifyInProgress = false;
+      activeSubtaskKey = null;
+      activeSubtaskIndex = null;
+      renderSubtasksPanel();
+      updateBottomActionBar();
+    }
   }
 
   function normalizeTwitterUsername(value) {
@@ -2476,9 +2815,7 @@ window.addEventListener('hashchange', handleRoute);
       if (isTwitterVerifiableActionLocal(task)) {
         if (submission.status === 'approved') return 'simple_completed';
         if (submission.status === 'rejected') return 'simple_retry';
-        if (submission.status === 'verifying') return 'simple_waiting_action';
-        if (submission.status === 'pending') return 'simple_go_twitter';
-        return 'simple_go_twitter';
+        return 'simple_subtasks';
       }
 
       if (submission.status === 'approved' || submission.status === 'submitted') return 'simple_completed';
@@ -2639,48 +2976,8 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   async function launchTwitterTaskStep2() {
-    if (!window.supabase || !currentTaskRecord || !currentUserId || !currentSubmissionRecord) return;
-
-    detailActionState = 'simple_go_twitter';
+    updateTaskDetailSubtaskModeUi();
     updateBottomActionBar();
-
-    alert(tdT('td_alert_twitter_launch'));
-
-    var updateResult = await window.supabase
-      .from('submissions')
-      .update({
-        status: 'verifying',
-        submitted_at: new Date().toISOString()
-      })
-      .eq('id', currentSubmissionRecord.id);
-
-    if (updateResult.error) {
-      alert(tdT('td_alert_claim_fail') + updateResult.error.message);
-      return;
-    }
-
-    currentSubmissionRecord.status = 'verifying';
-
-    if (!openTwitterTargetWindow(currentTaskRecord)) {
-      return;
-    }
-
-    twitterPendingAutoVerify = true;
-    setupTaskDetailVisibilityListener();
-    detailActionState = 'simple_waiting_action';
-    updateBottomActionBar();
-  }
-
-  async function performGoToTwitterTask() {
-    if (!window.supabase || !currentTaskRecord || !currentUserId || !currentSubmissionRecord) return;
-
-    var username = await fetchUserTwitterUsername(currentUserId);
-    if (!username) {
-      await openTwitterBindModal();
-      return;
-    }
-
-    await launchTwitterTaskStep2();
   }
 
   function getTwitterTargetUrl(task) {
@@ -2690,6 +2987,78 @@ window.addEventListener('hashchange', handleRoute);
     if (/^\d+$/.test(target)) return 'https://twitter.com/i/status/' + target;
     if (target.charAt(0) === '@') target = target.slice(1);
     return 'https://twitter.com/' + encodeURIComponent(target);
+  }
+
+  async function submitSimpleTwitterTask() {
+    if (twitterVerifyInProgress || !window.supabase || !currentTaskRecord || !currentUserId || !currentSubmissionRecord) {
+      return;
+    }
+
+    if (!allSubtasksMarkedDone()) {
+      return;
+    }
+
+    var username = await fetchUserTwitterUsername(currentUserId);
+    if (!username) {
+      await openTwitterBindModal();
+      return;
+    }
+
+    var priorStatus = currentSubmissionRecord.status;
+
+    twitterVerifyInProgress = true;
+    detailActionState = 'simple_verify_checking';
+    updateBottomActionBar();
+
+    try {
+      if (priorStatus === 'pending' || priorStatus === 'rejected') {
+        var updateResult = await window.supabase
+          .from('submissions')
+          .update({
+            status: 'pending',
+            submitted_at: new Date().toISOString()
+          })
+          .eq('id', currentSubmissionRecord.id);
+
+        if (updateResult.error) {
+          alert(tdT('td_alert_claim_fail') + updateResult.error.message);
+          return;
+        }
+      }
+
+      await applyTwitterVerificationSuccess(currentTaskRecord, currentUserId, {
+        priorStatus: priorStatus,
+        creditRewardClient: true
+      });
+
+      await reloadCurrentSubmission();
+
+      if (currentTaskRecord && currentTaskRecord.id) {
+        var taskRefresh = await window.supabase
+          .from('tasks')
+          .select('current_participants')
+          .eq('id', currentTaskRecord.id)
+          .maybeSingle();
+        if (!taskRefresh.error && taskRefresh.data) {
+          currentTaskRecord.current_participants = taskRefresh.data.current_participants;
+        }
+      }
+
+      detailActionState = 'simple_completed';
+      subtaskUiState = {};
+      activeSubtaskKey = null;
+      activeSubtaskIndex = null;
+      updateTaskDetailSubtaskModeUi();
+      updateBottomActionBar();
+      alert(tdT('td_alert_twitter_verified'));
+    } catch (err) {
+      console.warn('Simple task submit failed', err);
+      detailActionState = 'simple_subtasks';
+      updateBottomActionBar();
+      alert(tdT('td_alert_claim_fail') + (err && err.message ? err.message : String(err)));
+    } finally {
+      twitterVerifyInProgress = false;
+    }
   }
 
   function openTwitterTargetWindow(task) {
@@ -2767,6 +3136,8 @@ window.addEventListener('hashchange', handleRoute);
         }
         detailActionState = 'simple_completed';
         twitterPendingAutoVerify = false;
+        activeSubtaskKey = null;
+        updateTaskDetailSubtaskModeUi();
         updateBottomActionBar();
         if (options.showAlert !== false) {
           alert(tdT('td_alert_twitter_verified'));
@@ -2777,16 +3148,18 @@ window.addEventListener('hashchange', handleRoute);
       await reloadCurrentSubmission();
       detailActionState = currentSubmissionRecord && currentSubmissionRecord.status === 'rejected'
         ? 'simple_retry'
-        : resolveDetailActionState(currentTaskRecord, currentSubmissionRecord, currentUserId);
-      twitterPendingAutoVerify = detailActionState === 'simple_waiting_action';
+        : 'simple_subtasks';
+      twitterPendingAutoVerify = false;
+      activeSubtaskKey = null;
+      updateTaskDetailSubtaskModeUi();
       updateBottomActionBar();
       if (options.showAlert !== false) {
         alert(tdT('td_alert_twitter_not_verified'));
       }
     } catch (err) {
       console.warn('Twitter verification failed', err);
-      detailActionState = 'simple_waiting_action';
-      twitterPendingAutoVerify = true;
+      detailActionState = 'simple_retry';
+      updateTaskDetailSubtaskModeUi();
       updateBottomActionBar();
     } finally {
       twitterVerifyInProgress = false;
@@ -2799,29 +3172,14 @@ window.addEventListener('hashchange', handleRoute);
 
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState !== 'visible') return;
-      if (!twitterPendingAutoVerify) return;
-      if (detailActionState !== 'simple_waiting_action') return;
-      if (!currentTaskRecord || !isTwitterVerifiableActionLocal(currentTaskRecord)) return;
-      runTwitterVerification({ showAlert: false });
+      if (activeSubtaskIndex == null) return;
+      var pendingIndex = activeSubtaskIndex;
+      runSubtaskVerification(pendingIndex);
     });
   }
 
   function syncTwitterVerifyUiState() {
-    if (!currentTaskRecord || !currentSubmissionRecord || !isTwitterVerifiableActionLocal(currentTaskRecord)) {
-      twitterPendingAutoVerify = false;
-      return;
-    }
-
-    if (currentSubmissionRecord.status === 'verifying') {
-      twitterPendingAutoVerify = true;
-      setupTaskDetailVisibilityListener();
-      if (detailActionState !== 'simple_verify_checking') {
-        detailActionState = 'simple_waiting_action';
-      }
-      return;
-    }
-
-    twitterPendingAutoVerify = false;
+    updateTaskDetailSubtaskModeUi();
   }
 
   function showTwitterModal(modalId) {
@@ -2916,7 +3274,8 @@ window.addEventListener('hashchange', handleRoute);
       }
 
       hideAllTwitterModals();
-      await launchTwitterTaskStep2();
+      updateTaskDetailSubtaskModeUi();
+      updateBottomActionBar();
     } finally {
       twitterClaimInProgress = false;
       if (confirmBtn) confirmBtn.disabled = false;
@@ -3000,7 +3359,15 @@ window.addEventListener('hashchange', handleRoute);
       try {
         var inserted = await insertTwitterPendingSubmission(userId);
         if (!inserted) return;
-        await openTwitterBindModal();
+
+        detailActionState = 'simple_subtasks';
+        var existingUsername = await fetchUserTwitterUsername(userId);
+        if (!existingUsername) {
+          await openTwitterBindModal();
+        } else {
+          updateTaskDetailSubtaskModeUi();
+        }
+        updateBottomActionBar();
       } finally {
         twitterClaimInProgress = false;
       }
@@ -3075,6 +3442,9 @@ window.addEventListener('hashchange', handleRoute);
     currentPublisherRecord = null;
     currentSubmissionRecord = null;
     currentUserId = null;
+    subtaskUiState = {};
+    activeSubtaskKey = null;
+    activeSubtaskIndex = null;
 
     if (currentTaskRecord.publisher_id) {
       var publisherResult = await window.supabase
@@ -3354,6 +3724,26 @@ window.addEventListener('hashchange', handleRoute);
     }
   }
 
+  function getSimpleSubtaskBottomBarConfig() {
+    var total = currentTaskRecord ? buildSubtasksFromTask(currentTaskRecord).length : 0;
+    var done = countCompletedSubtasks();
+    var remaining = Math.max(0, total - done);
+
+    if (allSubtasksMarkedDone()) {
+      return {
+        styleClass: 'td-btn-gold',
+        text: tdT('td_btn_submit_task'),
+        disabled: false
+      };
+    }
+
+    return {
+      styleClass: 'td-btn-disabled',
+      text: tdT('td_btn_subtasks_remaining', { count: remaining }),
+      disabled: true
+    };
+  }
+
   function updateBottomActionBar() {
     var buttons = {
       claim: document.getElementById('td-btn-claim'),
@@ -3388,6 +3778,10 @@ window.addEventListener('hashchange', handleRoute);
           text: tdT('td_btn_simple_claim'),
           disabled: false
         });
+        break;
+      case 'simple_subtasks':
+      case 'simple_retry':
+        configureActionButton(buttons.claim, getSimpleSubtaskBottomBarConfig());
         break;
       case 'simple_go_twitter':
         configureActionButton(buttons.claim, {
@@ -3487,15 +3881,29 @@ window.addEventListener('hashchange', handleRoute);
       claimBtn.addEventListener('click', function () {
         if (detailActionState === 'simple_can_claim') {
           performSimpleTaskClaim();
-        } else if (detailActionState === 'simple_go_twitter') {
-          performGoToTwitterTask();
-        } else if (detailActionState === 'simple_retry') {
-          runTwitterVerification();
+        } else if (detailActionState === 'simple_subtasks' || detailActionState === 'simple_retry') {
+          submitSimpleTwitterTask();
         } else if (detailActionState === 'can_claim') {
           performClaimTask();
         } else if (detailActionState === 'rejected_resubmit') {
           navigateToSubmitPage();
         }
+      });
+    }
+
+    var subtasksList = document.getElementById('td-subtasks-list');
+    if (subtasksList && !subtasksList.dataset.bound) {
+      subtasksList.dataset.bound = '1';
+      subtasksList.addEventListener('click', function (e) {
+        var btn = e.target.closest('.td-subtask-btn-go, .td-subtask-btn-retry');
+        if (!btn || btn.disabled) return;
+        var index = parseInt(btn.getAttribute('data-subtask-index'), 10);
+        if (Number.isNaN(index)) return;
+        if (btn.classList.contains('td-subtask-btn-retry')) {
+          runSubtaskVerification(index);
+          return;
+        }
+        handleSubtaskGo(index);
       });
     }
 
@@ -3719,6 +4127,18 @@ window.addEventListener('hashchange', handleRoute);
       ct_platform_instagram: 'Instagram',
       ct_platform_reddit: 'Reddit',
       ct_label_action: '任务动作',
+      ct_toggle_follow: '关注',
+      ct_toggle_like: '点赞',
+      ct_toggle_reply: '评论',
+      ct_label_target_follow: '关注目标',
+      ct_label_target_like: '点赞目标',
+      ct_label_target_reply: '评论目标',
+      ct_ph_target_follow: '请输入 Twitter 用户名，如 @CoinRealm_X',
+      ct_ph_target_like: '请输入推文链接',
+      ct_ph_target_reply: '请输入推文链接，并可选填写要求的关键词',
+      ct_ph_keyword_reply: '要求的关键词（可选）',
+      ct_alert_twitter_actions_required: '请至少选择一项 Twitter 任务动作',
+      ct_alert_twitter_target_required: '请填写所有已选动作对应的目标',
       ct_label_target: '目标',
       ct_label_keyword: '关键词',
       ct_ph_target: '请输入目标链接或账号',
@@ -3820,6 +4240,18 @@ window.addEventListener('hashchange', handleRoute);
       ct_platform_instagram: 'Instagram',
       ct_platform_reddit: 'Reddit',
       ct_label_action: 'Action',
+      ct_toggle_follow: 'Follow',
+      ct_toggle_like: 'Like',
+      ct_toggle_reply: 'Comment',
+      ct_label_target_follow: 'Follow target',
+      ct_label_target_like: 'Like target',
+      ct_label_target_reply: 'Comment target',
+      ct_ph_target_follow: 'Enter Twitter username, e.g. @CoinRealm_X',
+      ct_ph_target_like: 'Enter tweet link',
+      ct_ph_target_reply: 'Enter tweet link (optional keyword below)',
+      ct_ph_keyword_reply: 'Required keyword (optional)',
+      ct_alert_twitter_actions_required: 'Select at least one Twitter action',
+      ct_alert_twitter_target_required: 'Fill in the target for each selected action',
       ct_label_target: 'Target',
       ct_label_keyword: 'Keyword',
       ct_ph_target: 'Enter target link or account',
@@ -4216,8 +4648,69 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   function getSelectedPlatformAction() {
+    if (getSelectedPlatform() === 'twitter') {
+      return getSelectedTwitterActions().join(',');
+    }
     var select = document.getElementById('ct-task-action');
     return select ? String(select.value || '').trim() : '';
+  }
+
+  function getSelectedTwitterActions() {
+    var group = document.getElementById('ct-twitter-action-group');
+    if (!group) return [];
+    return Array.prototype.slice.call(group.querySelectorAll('.ct-action-toggle.selected'))
+      .map(function (btn) { return btn.getAttribute('data-action'); })
+      .filter(Boolean);
+  }
+
+  function updateTwitterMultiActionUi() {
+    ['follow', 'like', 'reply'].forEach(function (action) {
+      var field = document.getElementById('ct-target-field-' + action);
+      var btn = document.querySelector('#ct-twitter-action-group .ct-action-toggle[data-action="' + action + '"]');
+      var selected = !!(btn && btn.classList.contains('selected'));
+      if (field) field.classList.toggle('hidden', !selected);
+    });
+    var replyKeywordWrap = document.getElementById('ct-target-field-reply-keyword');
+    var replySelected = !!document.querySelector('#ct-twitter-action-group .ct-action-toggle[data-action="reply"].selected');
+    if (replyKeywordWrap) replyKeywordWrap.classList.toggle('hidden', !replySelected);
+  }
+
+  function resetTwitterMultiActionFields() {
+    var group = document.getElementById('ct-twitter-action-group');
+    if (group) {
+      group.querySelectorAll('.ct-action-toggle').forEach(function (btn) {
+        btn.classList.remove('selected');
+      });
+    }
+    ['follow', 'like', 'reply'].forEach(function (action) {
+      var input = document.getElementById('ct-target-input-' + action);
+      var field = document.getElementById('ct-target-field-' + action);
+      if (input) input.value = '';
+      if (field) field.classList.add('hidden');
+    });
+    var replyKeyword = document.getElementById('ct-target-keyword-reply');
+    var replyKeywordWrap = document.getElementById('ct-target-field-reply-keyword');
+    if (replyKeyword) replyKeyword.value = '';
+    if (replyKeywordWrap) replyKeywordWrap.classList.add('hidden');
+  }
+
+  function toggleTwitterActionButton(btn) {
+    if (!btn || !btn.classList.contains('ct-action-toggle')) return;
+    btn.classList.toggle('selected');
+    btn.setAttribute('aria-pressed', btn.classList.contains('selected') ? 'true' : 'false');
+    updateTwitterMultiActionUi();
+    updateSubmitButtonState();
+  }
+
+  window.coinrealmToggleTwitterAction = toggleTwitterActionButton;
+
+  function initTwitterActionToggleGroup() {
+    var group = document.getElementById('ct-twitter-action-group');
+    if (!group || group.dataset.bound) return;
+    group.dataset.bound = '1';
+    group.querySelectorAll('.ct-action-toggle').forEach(function (btn) {
+      btn.setAttribute('aria-pressed', btn.classList.contains('selected') ? 'true' : 'false');
+    });
   }
 
   function getPlatformConfig(platform) {
@@ -4298,6 +4791,7 @@ window.addEventListener('hashchange', handleRoute);
     }
     if (targetInput) targetInput.value = '';
     if (keywordInput) keywordInput.value = '';
+    resetTwitterMultiActionFields();
     updatePlatformKeywordVisibility();
   }
 
@@ -4307,6 +4801,8 @@ window.addEventListener('hashchange', handleRoute);
     var configField = document.getElementById('ct-field-platform-config');
     var sqlHint = document.getElementById('ct-sql-migration-hint');
     var platform = getSelectedPlatform();
+    var twitterConfig = document.getElementById('ct-config-twitter');
+    var genericConfig = document.getElementById('ct-config-generic');
 
     if (platformField) platformField.classList.toggle('hidden', !simple);
     if (sqlHint) sqlHint.classList.toggle('hidden', !simple);
@@ -4327,10 +4823,21 @@ window.addEventListener('hashchange', handleRoute);
         actionSelect.innerHTML = '';
         actionSelect.disabled = true;
       }
+      resetTwitterMultiActionFields();
       updatePlatformKeywordVisibility();
       return;
     }
 
+    if (platform === 'twitter') {
+      if (twitterConfig) twitterConfig.classList.remove('hidden');
+      if (genericConfig) genericConfig.classList.add('hidden');
+      initTwitterActionToggleGroup();
+      updateTwitterMultiActionUi();
+      return;
+    }
+
+    if (twitterConfig) twitterConfig.classList.add('hidden');
+    if (genericConfig) genericConfig.classList.remove('hidden');
     rebuildPlatformActionOptions();
     updatePlatformTargetPlaceholder();
     updatePlatformKeywordVisibility();
@@ -4338,6 +4845,25 @@ window.addEventListener('hashchange', handleRoute);
 
   function getSimpleTaskPlatformFields() {
     var platform = getSelectedPlatform();
+
+    if (platform === 'twitter') {
+      var actions = getSelectedTwitterActions();
+      var targets = actions.map(function (action) {
+        var input = document.getElementById('ct-target-input-' + action);
+        return input ? input.value.trim() : '';
+      });
+      var keywordInput = document.getElementById('ct-target-keyword-reply');
+      var taskKeyword = actions.indexOf('reply') !== -1 && keywordInput
+        ? keywordInput.value.trim()
+        : '';
+      return {
+        platform: platform,
+        taskAction: actions.join(','),
+        taskTarget: targets.join(','),
+        taskKeyword: taskKeyword
+      };
+    }
+
     var action = getSelectedPlatformAction();
     var targetInput = document.getElementById('ct-task-target');
     var keywordInput = document.getElementById('ct-task-keyword');
@@ -4354,7 +4880,28 @@ window.addEventListener('hashchange', handleRoute);
 
   function validateSimplePlatformFields() {
     var fields = getSimpleTaskPlatformFields();
-    if (!fields.platform || !fields.taskAction || !fields.taskTarget) {
+    if (!fields.platform) {
+      alert(ctT('ct_alert_platform_required'));
+      return false;
+    }
+
+    if (fields.platform === 'twitter') {
+      var actions = getSelectedTwitterActions();
+      if (!actions.length) {
+        alert(ctT('ct_alert_twitter_actions_required'));
+        return false;
+      }
+      for (var i = 0; i < actions.length; i++) {
+        var input = document.getElementById('ct-target-input-' + actions[i]);
+        if (!input || !input.value.trim()) {
+          alert(ctT('ct_alert_twitter_target_required'));
+          return false;
+        }
+      }
+      return true;
+    }
+
+    if (!fields.taskAction || !fields.taskTarget) {
       alert(ctT('ct_alert_platform_required'));
       return false;
     }
@@ -4704,6 +5251,7 @@ window.addEventListener('hashchange', handleRoute);
 
     renderCtImageList();
     initRequirementList();
+    initTwitterActionToggleGroup();
   }
 
   async function renderCreateTaskPage() {
