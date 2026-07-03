@@ -1480,6 +1480,18 @@ img {
     font-weight: 600;
 }
 
+.td-twitter-modal-actions-stack {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.td-twitter-modal-secondary {
+    background: #fff;
+    color: #1d9bf0;
+    border: 1px solid #1d9bf0;
+    font-weight: 600;
+}
+
 .td-btn-disabled {
     background-color: #f0f0f0;
     color: #999;
