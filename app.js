@@ -537,6 +537,8 @@ function buildTaskInsertPayload(userId, fields) {
 }
 
 var TWITTER_VERIFY_WORKER_URL = 'https://coinrealm-twitter-verify.samyang9695482.workers.dev';
+var TELEGRAM_WORKER_URL = 'https://coinrealm-telegram-verify.samyang9695482.workers.dev';
+var TELEGRAM_VERIFY_WORKER_URL = TELEGRAM_WORKER_URL;
 var TWITTER_OAUTH_SESSION_TOKEN = 'coinrealm_twitter_oauth_token_secret';
 var TWITTER_OAUTH_SESSION_USER = 'coinrealm_twitter_oauth_user_id';
 var TWITTER_OAUTH_SESSION_RETURN = 'coinrealm_twitter_oauth_return_hash';
@@ -854,6 +856,405 @@ window.coinrealmOpenTwitterBindModal = async function (options) {
 
 window.coinrealmRefreshTwitterBindUi = refreshTwitterBindStatusUi;
 window.coinrealmFetchTwitterUsername = fetchUserTwitterUsername;
+
+var telegramBindInitialized = false;
+var telegramBindSubmitting = false;
+var telegramBindOnSuccessCallback = null;
+
+var telegramBindTranslations = {
+    zh: {
+        tg_bind_title: '绑定 Telegram 账号',
+        tg_bind_desc: '验证任务需要你的 Telegram 账号信息',
+        tg_bind_ph: '请输入你的 Telegram 用户名（如 @testuser）',
+        tg_bind_confirm: '确认绑定',
+        tg_bind_cancel: '取消',
+        tg_bind_login_required: '请先登录',
+        tg_bind_username_required: '请输入 Telegram 用户名',
+        tg_bind_username_invalid: 'Telegram 用户名格式无效（5-32 位字母、数字或下划线）',
+        tg_bind_save_fail: '保存失败：',
+        tg_menu_unbound: '未绑定',
+        tg_menu_bound: 'Telegram 已绑定 ✓',
+        tg_profile_bind_label: '绑定 Telegram 账号',
+        tg_profile_account_label: 'Telegram 账号'
+    },
+    en: {
+        tg_bind_title: 'Link Telegram Account',
+        tg_bind_desc: 'Task verification requires your Telegram account',
+        tg_bind_ph: 'Enter your Telegram username (e.g. @testuser)',
+        tg_bind_confirm: 'Confirm',
+        tg_bind_cancel: 'Cancel',
+        tg_bind_login_required: 'Please sign in first',
+        tg_bind_username_required: 'Please enter your Telegram username',
+        tg_bind_username_invalid: 'Invalid Telegram username (5-32 letters, numbers, or underscores)',
+        tg_bind_save_fail: 'Save failed: ',
+        tg_menu_unbound: 'Not linked',
+        tg_menu_bound: 'Telegram linked ✓',
+        tg_profile_bind_label: 'Link Telegram Account',
+        tg_profile_account_label: 'Telegram Account'
+    }
+};
+
+function tgT(key) {
+    var dict = telegramBindTranslations[getTwitterBindLang()];
+    return dict[key] || key;
+}
+
+function normalizeTelegramUsername(value) {
+    var text = String(value || '').trim();
+    if (!text) return '';
+    var urlMatch = text.match(/t\.me\/([A-Za-z0-9_]{5,32})/i);
+    if (urlMatch) return urlMatch[1];
+    return text.replace(/^@+/, '').trim();
+}
+
+async function fetchUserTelegramUsername(userId) {
+    if (!window.supabase || !userId) return '';
+
+    var result = await window.supabase
+        .from('users')
+        .select('telegram_username')
+        .eq('id', userId)
+        .maybeSingle();
+
+    if (result.error || !result.data || !result.data.telegram_username) return '';
+    return normalizeTelegramUsername(result.data.telegram_username);
+}
+
+function applyTelegramBindModalI18n() {
+    var modal = document.getElementById('telegram-bind-modal');
+    if (!modal) return;
+
+    modal.querySelectorAll('[data-i18n]').forEach(function (el) {
+        var key = el.getAttribute('data-i18n');
+        if (telegramBindTranslations[getTwitterBindLang()][key]) {
+            el.textContent = tgT(key);
+        }
+    });
+
+    modal.querySelectorAll('[data-placeholder]').forEach(function (el) {
+        var key = el.getAttribute('data-placeholder');
+        if (telegramBindTranslations[getTwitterBindLang()][key]) {
+            el.setAttribute('placeholder', tgT(key));
+        }
+    });
+}
+
+function hideTelegramBindModal() {
+    var modal = document.getElementById('telegram-bind-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+    telegramBindOnSuccessCallback = null;
+
+    var errorEl = document.getElementById('telegram-bind-error');
+    if (errorEl) {
+        errorEl.textContent = '';
+        errorEl.classList.add('hidden');
+    }
+}
+
+function showTelegramBindModalElement() {
+    var modal = document.getElementById('telegram-bind-modal');
+    if (!modal) return;
+    applyTelegramBindModalI18n();
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function updateTelegramBindStatusUi(username) {
+    var bound = !!username;
+    var handleText = bound ? ('@' + username) : tgT('tg_menu_unbound');
+    var profileLabel = document.getElementById('pf-telegram-menu-label');
+    var profileStatus = document.getElementById('pf-telegram-menu-status');
+
+    if (profileLabel) {
+        profileLabel.textContent = bound ? tgT('tg_profile_account_label') : tgT('tg_profile_bind_label');
+    }
+
+    if (profileStatus) {
+        profileStatus.textContent = handleText;
+        profileStatus.classList.toggle('profile-menu-status-muted', !bound);
+        profileStatus.classList.toggle('profile-menu-status-bound', bound);
+        if (!bound) profileStatus.setAttribute('data-i18n', 'pf_telegram_unbound');
+    }
+}
+
+async function refreshTelegramBindStatusUi() {
+    var userId = await getCurrentUserId();
+    if (!userId) {
+        updateTelegramBindStatusUi('');
+        return;
+    }
+
+    var cached = coinrealmCurrentUserProfile && coinrealmCurrentUserProfile.telegram_username
+        ? normalizeTelegramUsername(coinrealmCurrentUserProfile.telegram_username)
+        : '';
+    var username = cached || await fetchUserTelegramUsername(userId);
+
+    if (coinrealmCurrentUserProfile && username) {
+        coinrealmCurrentUserProfile.telegram_username = username;
+    }
+
+    updateTelegramBindStatusUi(username);
+}
+
+async function saveUserTelegramUsername(username) {
+    var userId = await getAuthenticatedUserId();
+    if (!userId) {
+        alert(tgT('tg_bind_login_required'));
+        return { success: false, error: 'not_logged_in' };
+    }
+
+    var updateResult = await window.supabase
+        .from('users')
+        .update({ telegram_username: username })
+        .eq('id', userId);
+
+    if (updateResult.error) {
+        return { success: false, error: updateResult.error.message };
+    }
+
+    if (coinrealmCurrentUserProfile) {
+        coinrealmCurrentUserProfile.telegram_username = username;
+    }
+
+    await refreshTelegramBindStatusUi();
+    return { success: true, username: username };
+}
+
+async function confirmTelegramBindModal() {
+    if (telegramBindSubmitting || !window.supabase) return;
+
+    var userId = await getAuthenticatedUserId();
+    if (!userId) {
+        alert(tgT('tg_bind_login_required'));
+        return;
+    }
+
+    var input = document.getElementById('telegram-bind-input');
+    var errorEl = document.getElementById('telegram-bind-error');
+    var username = normalizeTelegramUsername(input && input.value);
+
+    if (!username) {
+        if (errorEl) {
+            errorEl.textContent = tgT('tg_bind_username_required');
+            errorEl.classList.remove('hidden');
+        }
+        return;
+    }
+
+    if (!/^[A-Za-z0-9_]{5,32}$/.test(username)) {
+        if (errorEl) {
+            errorEl.textContent = tgT('tg_bind_username_invalid');
+            errorEl.classList.remove('hidden');
+        }
+        return;
+    }
+
+    telegramBindSubmitting = true;
+    var confirmBtn = document.getElementById('telegram-bind-confirm');
+    if (confirmBtn) confirmBtn.disabled = true;
+
+    try {
+        var saveResult = await saveUserTelegramUsername(username);
+        if (!saveResult.success) {
+            if (errorEl) {
+                errorEl.textContent = tgT('tg_bind_save_fail') + (saveResult.error || '');
+                errorEl.classList.remove('hidden');
+            }
+            return;
+        }
+
+        var callback = telegramBindOnSuccessCallback;
+        hideTelegramBindModal();
+        if (typeof callback === 'function') {
+            callback(saveResult.username);
+        }
+    } finally {
+        telegramBindSubmitting = false;
+        if (confirmBtn) confirmBtn.disabled = false;
+    }
+}
+
+function initTelegramBindModal() {
+    if (telegramBindInitialized) return;
+    telegramBindInitialized = true;
+
+    document.addEventListener('click', function (e) {
+        if (e.target.closest('#pf-telegram-bind-item')) {
+            e.preventDefault();
+            window.coinrealmOpenTelegramBindModal();
+            return;
+        }
+        if (e.target.closest('#telegram-bind-cancel')) {
+            hideTelegramBindModal();
+            return;
+        }
+        if (e.target.closest('#telegram-bind-modal .td-twitter-modal-overlay')) {
+            hideTelegramBindModal();
+            return;
+        }
+        if (e.target.closest('#telegram-bind-confirm')) {
+            confirmTelegramBindModal();
+        }
+    });
+
+    applyTelegramBindModalI18n();
+}
+
+window.coinrealmOpenTelegramBindModal = async function (options) {
+    options = options || {};
+
+    if (!window.supabase) return;
+
+    initTelegramBindModal();
+
+    var userId = await getAuthenticatedUserId();
+    if (!userId) {
+        alert(tgT('tg_bind_login_required'));
+        return;
+    }
+
+    telegramBindOnSuccessCallback = typeof options.onSuccess === 'function' ? options.onSuccess : null;
+
+    var titleEl = document.getElementById('telegram-bind-title');
+    var descEl = document.getElementById('telegram-bind-desc');
+    var input = document.getElementById('telegram-bind-input');
+    var errorEl = document.getElementById('telegram-bind-error');
+
+    if (titleEl) titleEl.textContent = tgT('tg_bind_title');
+    if (descEl) {
+        descEl.textContent = tgT('tg_bind_desc');
+        descEl.classList.toggle('hidden', options.showDesc === false);
+    }
+    if (input) input.value = '';
+    if (errorEl) {
+        errorEl.textContent = '';
+        errorEl.classList.add('hidden');
+    }
+
+    var existing = await fetchUserTelegramUsername(userId);
+    if (existing && input) input.value = '@' + existing;
+
+    showTelegramBindModalElement();
+};
+
+window.coinrealmFetchTelegramUsername = fetchUserTelegramUsername;
+window.coinrealmRefreshTelegramBindUi = refreshTelegramBindStatusUi;
+window.coinrealmNormalizeTelegramUsername = normalizeTelegramUsername;
+
+async function callTelegramVerifyWorker(payload) {
+    if (!TELEGRAM_WORKER_URL || TELEGRAM_WORKER_URL === 'WORKER_URL_PLACEHOLDER') {
+        console.warn('Telegram Worker URL 未配置');
+        return { success: false, verified: false, error: 'Telegram worker URL not configured' };
+    }
+
+    var input = payload || {};
+    var requestPayload = {
+        task_id: input.task_id || input.taskId,
+        user_id: input.user_id || input.userId
+    };
+
+    if (input.action_index != null || input.actionIndex != null) {
+        requestPayload.action_index = input.action_index != null ? input.action_index : input.actionIndex;
+    }
+    if (input.subtask_only === true || input.subtaskOnly === true) {
+        requestPayload.subtask_only = true;
+    }
+
+    console.log('调用 Telegram Worker，URL：', TELEGRAM_WORKER_URL, '参数：', requestPayload);
+
+    var response = await fetch(TELEGRAM_WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestPayload)
+    });
+
+    var responseText = await response.text();
+    var workerResult = null;
+
+    try {
+        workerResult = responseText ? JSON.parse(responseText) : null;
+    } catch (_parseErr) {
+        workerResult = { success: false, error: responseText || 'Invalid worker response' };
+    }
+
+    console.log('Telegram Worker 返回：', workerResult);
+
+    if (!response.ok) {
+        return {
+            success: false,
+            verified: false,
+            httpStatus: response.status,
+            error: (workerResult && workerResult.error) || ('Worker request failed: ' + response.status),
+            reason: workerResult && (workerResult.reason || workerResult.error)
+        };
+    }
+
+    return workerResult || { success: false, verified: false, error: 'Empty worker response' };
+}
+
+async function verifyTelegramSubtask(taskId, userId, actionIndex) {
+    if (!taskId || !userId || actionIndex == null) {
+        return { success: false, verified: false, error: 'missing params' };
+    }
+
+    if (!TELEGRAM_WORKER_URL || TELEGRAM_WORKER_URL === 'WORKER_URL_PLACEHOLDER') {
+        return { success: false, verified: false, reason: 'Telegram Worker 未配置' };
+    }
+
+    try {
+        var workerResult = await callTelegramVerifyWorker({
+            task_id: taskId,
+            user_id: userId,
+            action_index: actionIndex,
+            subtask_only: true
+        });
+
+        if (workerResult.httpStatus) {
+            return {
+                success: false,
+                verified: false,
+                error: workerResult.error,
+                reason: workerResult.reason || workerResult.error
+            };
+        }
+
+        return {
+            success: workerResult.verified === true,
+            verified: workerResult.verified === true,
+            reason: workerResult.reason || workerResult.error || '',
+            action_index: workerResult.action_index
+        };
+    } catch (err) {
+        return {
+            success: false,
+            verified: false,
+            error: err && err.message ? err.message : String(err),
+            reason: err && err.message ? err.message : String(err)
+        };
+    }
+}
+
+function isTelegramVerificationTask(task) {
+    if (!isSimpleTaskType(task)) return false;
+    var platform = getTaskField(task, ['platform', 'verification_type'], '');
+    return platform === 'telegram';
+}
+
+function isAllowedTelegramAction(action) {
+    var key = String(action || '').trim().toLowerCase();
+    return key === 'join' || key === 'follow' || key === 'message';
+}
+
+function isTelegramVerifiableAction(task) {
+    if (!isTelegramVerificationTask(task)) return false;
+    var actions = parseCommaList(getTaskField(task, ['task_action'], ''));
+    if (!actions.length) return false;
+    return actions.every(function (action) {
+        return isAllowedTelegramAction(action);
+    });
+}
 window.coinrealmNormalizeTwitterUsername = normalizeTwitterUsername;
 
 function buildTwitterOAuthCallbackUrl() {
@@ -1571,13 +1972,16 @@ async function loadCurrentUserProfileCache() {
     }
     var result = await window.supabase
         .from('users')
-        .select('id, username, email, avatar_url, twitter_username')
+        .select('id, username, email, avatar_url, twitter_username, telegram_username')
         .eq('id', userId)
         .single();
     if (!result.error && result.data) {
         coinrealmCurrentUserProfile = result.data;
         if (typeof window.coinrealmRefreshTwitterBindUi === 'function') {
             window.coinrealmRefreshTwitterBindUi();
+        }
+        if (typeof window.coinrealmRefreshTelegramBindUi === 'function') {
+            window.coinrealmRefreshTelegramBindUi();
         }
         if (typeof window.coinrealmRefreshAuthArea === 'function') {
             window.coinrealmRefreshAuthArea();
@@ -1616,6 +2020,7 @@ window.addEventListener('DOMContentLoaded', function () {
     setTimeout(function () {
         loadCurrentUserProfileCache();
         initTwitterBindModal();
+        initTelegramBindModal();
     }, 300);
 });
 
@@ -2835,6 +3240,12 @@ window.addEventListener('hashchange', handleRoute);
       td_alert_twitter_verified: '验证通过！奖励已到账。',
       td_alert_twitter_not_verified: '暂未检测到操作，请确认已完成后再试。',
       td_alert_twitter_no_link: '任务未配置 Twitter 链接，请联系发布者。',
+      td_alert_telegram_no_link: '任务未配置 Telegram 链接，请联系发布者。',
+      td_alert_telegram_verified: '验证通过！奖励已到账。',
+      td_subtask_tg_join: '加入群组 {target}',
+      td_subtask_tg_follow: '关注频道 {target}',
+      td_subtask_tg_message: '发送消息 {target}',
+      td_subtask_tg_message_kw: '发送消息（关键词：{keyword}）',
       td_alert_simple_verifying: '任务已领取，正在验证中...',
       td_alert_claim_fail: '领取失败：',
       td_alert_already_claimed: '您已经领取过该任务',
@@ -2946,6 +3357,12 @@ window.addEventListener('hashchange', handleRoute);
       td_alert_twitter_verified: 'Verified! Your reward has been credited.',
       td_alert_twitter_not_verified: 'Action not detected yet. Please finish on Twitter and try again.',
       td_alert_twitter_no_link: 'This task has no Twitter link configured. Please contact the publisher.',
+      td_alert_telegram_no_link: 'This task has no Telegram link configured. Please contact the publisher.',
+      td_alert_telegram_verified: 'Verified! Reward credited.',
+      td_subtask_tg_join: 'Join group {target}',
+      td_subtask_tg_follow: 'Follow channel {target}',
+      td_subtask_tg_message: 'Send message {target}',
+      td_subtask_tg_message_kw: 'Send message (keyword: {keyword})',
       td_alert_simple_verifying: 'Task claimed. Verification in progress...',
       td_alert_claim_fail: 'Claim failed: ',
       td_alert_already_claimed: 'You have already claimed this task',
@@ -3054,6 +3471,37 @@ window.addEventListener('hashchange', handleRoute);
     });
   }
 
+  function isTelegramSimpleTask(task) {
+    if (!isSimpleTaskRecord(task)) return false;
+    var platform = getTaskField(task, ['platform', 'verification_type'], '');
+    return platform === 'telegram';
+  }
+
+  function isTelegramVerifiableActionLocal(task) {
+    if (!isTelegramSimpleTask(task)) return false;
+    var actions = parseTaskActionsList(task);
+    if (!actions.length) return false;
+    return actions.every(function (action) {
+      return isAllowedTelegramAction(action);
+    });
+  }
+
+  function isSimpleVerifiablePlatformTask(task) {
+    return isTwitterVerifiableActionLocal(task) || isTelegramVerifiableActionLocal(task);
+  }
+
+  function usesScreenshotVerification(task) {
+    return isTwitterVerifiableActionLocal(task);
+  }
+
+  function usesTelegramWorkerVerification(task) {
+    return isTelegramVerifiableActionLocal(task);
+  }
+
+  function getTaskPlatform(task) {
+    return String(getTaskField(task, ['platform', 'verification_type'], '') || '').trim().toLowerCase();
+  }
+
   function parseTaskActionsList(task) {
     return parseCommaList(getTaskField(task, ['task_action'], '')).map(function (action) {
       return action.toLowerCase();
@@ -3064,7 +3512,14 @@ window.addEventListener('hashchange', handleRoute);
     return parseCommaList(getTaskField(task, ['task_target'], ''));
   }
 
-  function normalizeSubtaskAction(action) {
+  function normalizeSubtaskAction(action, platform) {
+    var key = String(action || '').toLowerCase();
+    if (platform === 'telegram') {
+      if (key === 'join') return 'join';
+      if (key === 'follow') return 'follow';
+      if (key === 'message') return 'message';
+      return key;
+    }
     var map = {
       follow: 'follow',
       following: 'follow',
@@ -3076,12 +3531,23 @@ window.addEventListener('hashchange', handleRoute);
       reply: 'reply',
       comment: 'reply'
     };
-    return map[String(action || '').toLowerCase()] || String(action || '').toLowerCase();
+    return map[key] || key;
   }
 
-  function buildSubtaskOpenUrl(action, target) {
+  function buildTelegramOpenUrl(target) {
     var clean = String(target || '').trim();
     if (!clean) return '';
+    if (/^https?:\/\//i.test(clean)) return clean;
+    if (/^t\.me\//i.test(clean)) return 'https://' + clean.replace(/^\/+/, '');
+    if (clean.charAt(0) === '@') return 'https://t.me/' + encodeURIComponent(clean.slice(1));
+    return 'https://t.me/' + encodeURIComponent(clean);
+  }
+
+  function buildSubtaskOpenUrl(action, target, task) {
+    var platform = getTaskPlatform(task);
+    var clean = String(target || '').trim();
+    if (!clean) return '';
+    if (platform === 'telegram') return buildTelegramOpenUrl(clean);
     if (/^https?:\/\//i.test(clean)) return clean;
     if (action === 'follow') {
       var user = normalizeTwitterUsername(clean);
@@ -3092,6 +3558,16 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   function buildSubtaskLabel(action, target, task) {
+    var platform = getTaskPlatform(task);
+    if (platform === 'telegram') {
+      if (action === 'join') return tdT('td_subtask_tg_join', { target: target });
+      if (action === 'follow') return tdT('td_subtask_tg_follow', { target: target });
+      if (action === 'message') {
+        var tgKeyword = task ? String(getTaskField(task, ['task_keyword'], '') || '').trim() : '';
+        if (tgKeyword) return tdT('td_subtask_tg_message_kw', { keyword: tgKeyword, target: target });
+        return tdT('td_subtask_tg_message', { target: target });
+      }
+    }
     if (action === 'follow') {
       var user = normalizeTwitterUsername(target);
       return tdT('td_subtask_follow', { user: user ? '@' + user : target });
@@ -3107,10 +3583,11 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   function buildSubtasksFromTask(task) {
+    var platform = getTaskPlatform(task);
     var actions = parseTaskActionsList(task);
     var targets = parseTaskTargetsList(task);
     return actions.map(function (rawAction, index) {
-      var action = normalizeSubtaskAction(rawAction);
+      var action = normalizeSubtaskAction(rawAction, platform);
       var target = targets[index] || '';
       return {
         key: action + ':' + index,
@@ -3118,7 +3595,7 @@ window.addEventListener('hashchange', handleRoute);
         action: action,
         target: target,
         label: buildSubtaskLabel(action, target, task),
-        url: buildSubtaskOpenUrl(action, target)
+        url: buildSubtaskOpenUrl(action, target, task)
       };
     });
   }
@@ -3172,7 +3649,7 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   function isSimpleSubtaskMode() {
-    if (!currentTaskRecord || !currentSubmissionRecord || !isTwitterVerifiableActionLocal(currentTaskRecord)) {
+    if (!currentTaskRecord || !currentSubmissionRecord || !isSimpleVerifiablePlatformTask(currentTaskRecord)) {
       return false;
     }
     return currentSubmissionRecord.status !== 'approved'
@@ -3291,7 +3768,10 @@ window.addEventListener('hashchange', handleRoute);
       page.classList.toggle('task-detail-verify-success', show && verifyPanelSuccess);
     }
     if (section) section.classList.toggle('hidden', !show || verifyPanelActive);
-    if (verifySection) verifySection.classList.toggle('hidden', !show || !verifyPanelActive);
+    if (verifySection) {
+      var showScreenshot = show && verifyPanelActive && usesScreenshotVerification(currentTaskRecord);
+      verifySection.classList.toggle('hidden', !showScreenshot);
+    }
     if (show && !verifyPanelActive) renderSubtasksPanel();
     if (show && verifyPanelActive) renderScreenshotVerifyPanel();
   }
@@ -3703,13 +4183,20 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   function handleSubtaskGo(index) {
-    if (verifySubmitting || !currentTaskRecord || !currentUserId) return;
+    if (verifySubmitting || subtaskVerifyInProgress || !currentTaskRecord || !currentUserId) return;
     var subtasks = buildSubtasksFromTask(currentTaskRecord);
     var st = subtasks[index];
     if (!st || isSubtaskDone(st.key)) return;
 
     if (!st.url) {
-      alert(tdT('td_alert_twitter_no_link'));
+      alert(usesTelegramWorkerVerification(currentTaskRecord)
+        ? tdT('td_alert_telegram_no_link')
+        : tdT('td_alert_twitter_no_link'));
+      return;
+    }
+
+    if (usesTelegramWorkerVerification(currentTaskRecord)) {
+      handleTelegramSubtaskGo(index, st);
       return;
     }
 
@@ -3717,6 +4204,86 @@ window.addEventListener('hashchange', handleRoute);
     activeSubtaskIndex = index;
     window.open(st.url, '_blank', 'noopener,noreferrer');
     showScreenshotVerifyPanel(index);
+  }
+
+  async function handleTelegramSubtaskGo(index, st) {
+    var username = await fetchUserTelegramUsername(currentUserId);
+    if (!username) {
+      await openTelegramBindModal({
+        onSuccess: function () {
+          handleTelegramSubtaskGo(index, st);
+        }
+      });
+      return;
+    }
+
+    activeSubtaskKey = st.key;
+    activeSubtaskIndex = index;
+    subtaskUiState[st.key] = 'verifying';
+    delete subtaskFailReasons[st.key];
+    renderSubtasksPanel();
+    setupTaskDetailVisibilityListener();
+    window.open(st.url, '_blank', 'noopener,noreferrer');
+  }
+
+  async function fetchUserTelegramUsername(userId) {
+    return window.coinrealmFetchTelegramUsername
+      ? window.coinrealmFetchTelegramUsername(userId)
+      : '';
+  }
+
+  async function openTelegramBindModal(options) {
+    if (typeof window.coinrealmOpenTelegramBindModal !== 'function') return;
+    await window.coinrealmOpenTelegramBindModal(Object.assign({ showDesc: true }, options || {}));
+  }
+
+  async function runTelegramSubtaskVerification(index) {
+    if (subtaskVerifyInProgress || !currentTaskRecord || !currentUserId) return;
+
+    var subtasks = buildSubtasksFromTask(currentTaskRecord);
+    var st = subtasks[index];
+    if (!st || isSubtaskDone(st.key)) {
+      activeSubtaskKey = null;
+      activeSubtaskIndex = null;
+      return;
+    }
+
+    var username = await fetchUserTelegramUsername(currentUserId);
+    if (!username) {
+      setSubtaskFailed(st, tgT('tg_bind_desc'));
+      activeSubtaskKey = null;
+      activeSubtaskIndex = null;
+      renderSubtasksPanel();
+      await openTelegramBindModal({
+        onSuccess: function () {
+          runTelegramSubtaskVerification(index);
+        }
+      });
+      return;
+    }
+
+    subtaskVerifyInProgress = true;
+    subtaskUiState[st.key] = 'verifying';
+    delete subtaskFailReasons[st.key];
+    renderSubtasksPanel();
+
+    try {
+      var result = await verifyTelegramSubtask(currentTaskRecord.id, currentUserId, index);
+      if (result.verified) {
+        markSubtaskDone(st.key);
+        clearSubtaskFailure(st);
+      } else {
+        setSubtaskFailed(st, result.reason || result.error || tdT('td_subtask_fail_hint'));
+      }
+    } catch (err) {
+      setSubtaskFailed(st, err && err.message ? err.message : String(err));
+    } finally {
+      subtaskVerifyInProgress = false;
+      activeSubtaskKey = null;
+      activeSubtaskIndex = null;
+      renderSubtasksPanel();
+      updateBottomActionBar();
+    }
   }
 
   function normalizeTwitterUsername(value) {
@@ -3743,7 +4310,7 @@ window.addEventListener('hashchange', handleRoute);
       if (userId === task.publisher_id) return 'manage_task';
       if (!submission) return 'simple_can_claim';
 
-      if (isTwitterVerifiableActionLocal(task)) {
+      if (isSimpleVerifiablePlatformTask(task)) {
         if (submission.status === 'approved') return 'simple_completed';
         if (submission.status === 'rejected') return 'simple_retry';
         return 'simple_subtasks';
@@ -3946,7 +4513,9 @@ window.addEventListener('hashchange', handleRoute);
       subtaskFailReasons = {};
       updateTaskDetailSubtaskModeUi();
       updateBottomActionBar();
-      alert(tdT('td_alert_twitter_verified'));
+      alert(usesTelegramWorkerVerification(currentTaskRecord)
+        ? tdT('td_alert_telegram_verified')
+        : tdT('td_alert_twitter_verified'));
     } catch (err) {
       alert(tdT('td_alert_claim_fail') + (err && err.message ? err.message : String(err)));
     }
@@ -4031,7 +4600,9 @@ window.addEventListener('hashchange', handleRoute);
         updateTaskDetailSubtaskModeUi();
         updateBottomActionBar();
         if (options.showAlert !== false) {
-          alert(tdT('td_alert_twitter_verified'));
+          alert(usesTelegramWorkerVerification(currentTaskRecord)
+        ? tdT('td_alert_telegram_verified')
+        : tdT('td_alert_twitter_verified'));
         }
         return;
       }
@@ -4058,7 +4629,15 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   function setupTaskDetailVisibilityListener() {
-    /* Screenshot self-proof flow — no auto verification on tab focus */
+    if (taskDetailVisibilityBound) return;
+    taskDetailVisibilityBound = true;
+
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState !== 'visible') return;
+      if (activeSubtaskIndex == null || !currentTaskRecord) return;
+      if (!usesTelegramWorkerVerification(currentTaskRecord)) return;
+      runTelegramSubtaskVerification(activeSubtaskIndex);
+    });
   }
 
   function syncTwitterVerifyUiState() {
@@ -4163,7 +4742,7 @@ window.addEventListener('hashchange', handleRoute);
       return;
     }
 
-    if (isTwitterVerifiableActionLocal(currentTaskRecord)) {
+    if (isSimpleVerifiablePlatformTask(currentTaskRecord)) {
       twitterClaimInProgress = true;
       try {
         var inserted = await insertTwitterPendingSubmission(userId);
@@ -4706,10 +5285,16 @@ window.addEventListener('hashchange', handleRoute);
     if (subtasksList && !subtasksList.dataset.bound) {
       subtasksList.dataset.bound = '1';
       subtasksList.addEventListener('click', function (e) {
-        var btn = e.target.closest('.td-subtask-btn-go');
+        var btn = e.target.closest('.td-subtask-btn-go, .td-subtask-btn-retry');
         if (!btn || btn.disabled) return;
         var index = parseInt(btn.getAttribute('data-subtask-index'), 10);
         if (Number.isNaN(index)) return;
+        if (btn.classList.contains('td-subtask-btn-retry')) {
+          if (usesTelegramWorkerVerification(currentTaskRecord)) {
+            runTelegramSubtaskVerification(index);
+          }
+          return;
+        }
         handleSubtaskGo(index);
       });
     }
@@ -4919,6 +5504,18 @@ window.addEventListener('hashchange', handleRoute);
       ct_toggle_follow: '关注',
       ct_toggle_like: '点赞',
       ct_toggle_reply: '评论',
+      ct_toggle_tg_join: '加入群组',
+      ct_toggle_tg_follow: '关注频道',
+      ct_toggle_tg_message: '发送消息',
+      ct_label_target_tg_join: '加入群组',
+      ct_label_target_tg_follow: '关注频道',
+      ct_label_target_tg_message: '发送消息',
+      ct_ph_target_tg_join: '请输入群组链接，如 https://t.me/xxx',
+      ct_ph_target_tg_follow: '请输入频道链接，如 https://t.me/xxx',
+      ct_ph_target_tg_message: '请输入群组链接',
+      ct_ph_keyword_tg_message: '要求的关键词（可选）',
+      ct_alert_telegram_actions_required: '请至少选择一项 Telegram 任务动作',
+      ct_alert_telegram_target_required: '请填写所有已选动作对应的目标',
       ct_label_target_follow: '关注目标',
       ct_label_target_like: '点赞目标',
       ct_label_target_reply: '评论目标',
@@ -5032,6 +5629,18 @@ window.addEventListener('hashchange', handleRoute);
       ct_toggle_follow: 'Follow',
       ct_toggle_like: 'Like',
       ct_toggle_reply: 'Comment',
+      ct_toggle_tg_join: 'Join Group',
+      ct_toggle_tg_follow: 'Follow Channel',
+      ct_toggle_tg_message: 'Send Message',
+      ct_label_target_tg_join: 'Join Group',
+      ct_label_target_tg_follow: 'Follow Channel',
+      ct_label_target_tg_message: 'Send Message',
+      ct_ph_target_tg_join: 'Group link, e.g. https://t.me/xxx',
+      ct_ph_target_tg_follow: 'Channel link, e.g. https://t.me/xxx',
+      ct_ph_target_tg_message: 'Group link',
+      ct_ph_keyword_tg_message: 'Required keyword (optional)',
+      ct_alert_telegram_actions_required: 'Select at least one Telegram action',
+      ct_alert_telegram_target_required: 'Fill in the target for each selected action',
       ct_label_target_follow: 'Follow target',
       ct_label_target_like: 'Like target',
       ct_label_target_reply: 'Comment target',
@@ -5437,11 +6046,78 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   function getSelectedPlatformAction() {
-    if (getSelectedPlatform() === 'twitter') {
+    var platform = getSelectedPlatform();
+    if (platform === 'twitter') {
       return getSelectedTwitterActions().join(',');
+    }
+    if (platform === 'telegram') {
+      return getSelectedTelegramActions().join(',');
     }
     var select = document.getElementById('ct-task-action');
     return select ? String(select.value || '').trim() : '';
+  }
+
+  function getSelectedTelegramActions() {
+    var group = document.getElementById('ct-telegram-action-group');
+    if (!group) return [];
+    return Array.prototype.slice.call(group.querySelectorAll('.ct-action-toggle.selected'))
+      .map(function (btn) { return btn.getAttribute('data-action'); })
+      .filter(Boolean);
+  }
+
+  function updateTelegramMultiActionUi() {
+    var joinField = document.getElementById('ct-target-field-join');
+    var followField = document.getElementById('ct-target-field-tg-follow');
+    var messageField = document.getElementById('ct-target-field-message');
+    var joinSelected = !!document.querySelector('#ct-telegram-action-group .ct-action-toggle[data-action="join"].selected');
+    var followSelected = !!document.querySelector('#ct-telegram-action-group .ct-action-toggle[data-action="follow"].selected');
+    var messageSelected = !!document.querySelector('#ct-telegram-action-group .ct-action-toggle[data-action="message"].selected');
+    if (joinField) joinField.classList.toggle('hidden', !joinSelected);
+    if (followField) followField.classList.toggle('hidden', !followSelected);
+    if (messageField) messageField.classList.toggle('hidden', !messageSelected);
+    var keywordWrap = document.getElementById('ct-target-field-message-keyword');
+    if (keywordWrap) keywordWrap.classList.toggle('hidden', !messageSelected);
+  }
+
+  function resetTelegramMultiActionFields() {
+    var group = document.getElementById('ct-telegram-action-group');
+    if (group) {
+      group.querySelectorAll('.ct-action-toggle').forEach(function (btn) {
+        btn.classList.remove('selected');
+        btn.setAttribute('aria-pressed', 'false');
+      });
+    }
+    ['join', 'tg-follow', 'message'].forEach(function (key) {
+      var fieldId = key === 'tg-follow' ? 'ct-target-field-tg-follow' : 'ct-target-field-' + key;
+      var inputId = key === 'tg-follow' ? 'ct-target-input-tg-follow' : 'ct-target-input-' + key;
+      var field = document.getElementById(fieldId);
+      var input = document.getElementById(inputId);
+      if (input) input.value = '';
+      if (field) field.classList.add('hidden');
+    });
+    var keyword = document.getElementById('ct-target-keyword-message');
+    var keywordWrap = document.getElementById('ct-target-field-message-keyword');
+    if (keyword) keyword.value = '';
+    if (keywordWrap) keywordWrap.classList.add('hidden');
+  }
+
+  function toggleTelegramActionButton(btn) {
+    if (!btn || !btn.classList.contains('ct-action-toggle')) return;
+    btn.classList.toggle('selected');
+    btn.setAttribute('aria-pressed', btn.classList.contains('selected') ? 'true' : 'false');
+    updateTelegramMultiActionUi();
+    updateSubmitButtonState();
+  }
+
+  window.coinrealmToggleTelegramAction = toggleTelegramActionButton;
+
+  function initTelegramActionToggleGroup() {
+    var group = document.getElementById('ct-telegram-action-group');
+    if (!group || group.dataset.bound) return;
+    group.dataset.bound = '1';
+    group.querySelectorAll('.ct-action-toggle').forEach(function (btn) {
+      btn.setAttribute('aria-pressed', btn.classList.contains('selected') ? 'true' : 'false');
+    });
   }
 
   function getSelectedTwitterActions() {
@@ -5581,6 +6257,7 @@ window.addEventListener('hashchange', handleRoute);
     if (targetInput) targetInput.value = '';
     if (keywordInput) keywordInput.value = '';
     resetTwitterMultiActionFields();
+    resetTelegramMultiActionFields();
     updatePlatformKeywordVisibility();
   }
 
@@ -5591,6 +6268,7 @@ window.addEventListener('hashchange', handleRoute);
     var sqlHint = document.getElementById('ct-sql-migration-hint');
     var platform = getSelectedPlatform();
     var twitterConfig = document.getElementById('ct-config-twitter');
+    var telegramConfig = document.getElementById('ct-config-telegram');
     var genericConfig = document.getElementById('ct-config-generic');
 
     if (platformField) platformField.classList.toggle('hidden', !simple);
@@ -5613,19 +6291,31 @@ window.addEventListener('hashchange', handleRoute);
         actionSelect.disabled = true;
       }
       resetTwitterMultiActionFields();
+      resetTelegramMultiActionFields();
       updatePlatformKeywordVisibility();
       return;
     }
 
     if (platform === 'twitter') {
       if (twitterConfig) twitterConfig.classList.remove('hidden');
+      if (telegramConfig) telegramConfig.classList.add('hidden');
       if (genericConfig) genericConfig.classList.add('hidden');
       initTwitterActionToggleGroup();
       updateTwitterMultiActionUi();
       return;
     }
 
+    if (platform === 'telegram') {
+      if (twitterConfig) twitterConfig.classList.add('hidden');
+      if (telegramConfig) telegramConfig.classList.remove('hidden');
+      if (genericConfig) genericConfig.classList.add('hidden');
+      initTelegramActionToggleGroup();
+      updateTelegramMultiActionUi();
+      return;
+    }
+
     if (twitterConfig) twitterConfig.classList.add('hidden');
+    if (telegramConfig) telegramConfig.classList.add('hidden');
     if (genericConfig) genericConfig.classList.remove('hidden');
     rebuildPlatformActionOptions();
     updatePlatformTargetPlaceholder();
@@ -5650,6 +6340,35 @@ window.addEventListener('hashchange', handleRoute);
         taskAction: actions.join(','),
         taskTarget: targets.join(','),
         taskKeyword: taskKeyword
+      };
+    }
+
+    if (platform === 'telegram') {
+      var tgActions = getSelectedTelegramActions();
+      var tgTargets = tgActions.map(function (action) {
+        if (action === 'join') {
+          var joinInput = document.getElementById('ct-target-input-join');
+          return joinInput ? joinInput.value.trim() : '';
+        }
+        if (action === 'follow') {
+          var followInput = document.getElementById('ct-target-input-tg-follow');
+          return followInput ? followInput.value.trim() : '';
+        }
+        if (action === 'message') {
+          var msgInput = document.getElementById('ct-target-input-message');
+          return msgInput ? msgInput.value.trim() : '';
+        }
+        return '';
+      });
+      var msgKeywordInput = document.getElementById('ct-target-keyword-message');
+      var tgKeyword = tgActions.indexOf('message') !== -1 && msgKeywordInput
+        ? msgKeywordInput.value.trim()
+        : '';
+      return {
+        platform: platform,
+        taskAction: tgActions.join(','),
+        taskTarget: tgTargets.join(','),
+        taskKeyword: tgKeyword
       };
     }
 
@@ -5684,6 +6403,27 @@ window.addEventListener('hashchange', handleRoute);
         var input = document.getElementById('ct-target-input-' + actions[i]);
         if (!input || !input.value.trim()) {
           alert(ctT('ct_alert_twitter_target_required'));
+          return false;
+        }
+      }
+      return true;
+    }
+
+    if (fields.platform === 'telegram') {
+      var tgActions = getSelectedTelegramActions();
+      if (!tgActions.length) {
+        alert(ctT('ct_alert_telegram_actions_required'));
+        return false;
+      }
+      for (var j = 0; j < tgActions.length; j++) {
+        var tgAction = tgActions[j];
+        var tgInput = tgAction === 'join'
+          ? document.getElementById('ct-target-input-join')
+          : tgAction === 'follow'
+            ? document.getElementById('ct-target-input-tg-follow')
+            : document.getElementById('ct-target-input-message');
+        if (!tgInput || !tgInput.value.trim()) {
+          alert(ctT('ct_alert_telegram_target_required'));
           return false;
         }
       }
@@ -6817,6 +7557,8 @@ window.addEventListener('hashchange', handleRoute);
       pf_menu_settings: '设置（语言/通知/退出登录）',
       pf_menu_twitter_bind: '绑定 Twitter 账号',
       pf_twitter_unbound: '未绑定',
+      pf_menu_telegram_bind: '绑定 Telegram 账号',
+      pf_telegram_unbound: '未绑定',
       pf_level_master: '大师',
       pf_completion_rate: '{rate}% 完成率',
       pf_level_badge: 'Lv.{level} {label}',
@@ -6841,6 +7583,8 @@ window.addEventListener('hashchange', handleRoute);
       pf_menu_settings: 'Settings (Language/Notifications/Logout)',
       pf_menu_twitter_bind: 'Link Twitter Account',
       pf_twitter_unbound: 'Not linked',
+      pf_menu_telegram_bind: 'Link Telegram Account',
+      pf_telegram_unbound: 'Not linked',
       pf_level_master: 'Master',
       pf_completion_rate: '{rate}% completion rate',
       pf_level_badge: 'Lv.{level} {label}',
@@ -6929,6 +7673,10 @@ window.addEventListener('hashchange', handleRoute);
     if (!user) return;
 
     coinrealmCurrentUserProfile = user;
+
+    if (typeof window.coinrealmRefreshTelegramBindUi === 'function') {
+      window.coinrealmRefreshTelegramBindUi();
+    }
 
     var displayUsername = user.username || displayNameFromEmail(user.email);
     var crlmBalance = Number(user.crlm_balance) || 0;

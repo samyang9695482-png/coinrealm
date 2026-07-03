@@ -519,6 +519,31 @@
               </div>
             </div>
           </div>
+          <div id="ct-config-telegram" class="hidden">
+            <div class="create-task-field">
+              <label class="create-task-label" data-i18n="ct_label_action">任务动作</label>
+              <div id="ct-telegram-action-group" class="ct-action-toggle-group" role="group" aria-label="Telegram actions">
+                <button type="button" class="ct-action-toggle" data-action="join" data-i18n="ct_toggle_tg_join" onclick="window.coinrealmToggleTelegramAction && window.coinrealmToggleTelegramAction(this)">加入群组</button>
+                <button type="button" class="ct-action-toggle" data-action="follow" data-i18n="ct_toggle_tg_follow" onclick="window.coinrealmToggleTelegramAction && window.coinrealmToggleTelegramAction(this)">关注频道</button>
+                <button type="button" class="ct-action-toggle" data-action="message" data-i18n="ct_toggle_tg_message" onclick="window.coinrealmToggleTelegramAction && window.coinrealmToggleTelegramAction(this)">发送消息</button>
+              </div>
+            </div>
+            <div id="ct-target-field-join" class="create-task-field ct-action-target-field hidden">
+              <label class="create-task-label" for="ct-target-input-join" data-i18n="ct_label_target_tg_join">加入群组</label>
+              <input type="text" id="ct-target-input-join" class="create-task-input" data-placeholder="ct_ph_target_tg_join" placeholder="">
+            </div>
+            <div id="ct-target-field-tg-follow" class="create-task-field ct-action-target-field hidden">
+              <label class="create-task-label" for="ct-target-input-tg-follow" data-i18n="ct_label_target_tg_follow">关注频道</label>
+              <input type="text" id="ct-target-input-tg-follow" class="create-task-input" data-placeholder="ct_ph_target_tg_follow" placeholder="">
+            </div>
+            <div id="ct-target-field-message" class="create-task-field ct-action-target-field hidden">
+              <label class="create-task-label" for="ct-target-input-message" data-i18n="ct_label_target_tg_message">发送消息</label>
+              <input type="text" id="ct-target-input-message" class="create-task-input" data-placeholder="ct_ph_target_tg_message" placeholder="">
+              <div id="ct-target-field-message-keyword" class="ct-action-keyword-field hidden">
+                <input type="text" id="ct-target-keyword-message" class="create-task-input" data-placeholder="ct_ph_keyword_tg_message" placeholder="">
+              </div>
+            </div>
+          </div>
           <div id="ct-config-generic">
             <div class="create-task-field">
               <label class="create-task-label" for="ct-task-action" data-i18n="ct_label_action">任务动作</label>
@@ -709,6 +734,10 @@ ALTER TABLE tasks ADD COLUMN task_keyword TEXT;</pre>
         <button type="button" id="pf-twitter-bind-item" class="profile-menu-item profile-menu-item-action">
           <span id="pf-twitter-menu-label" data-i18n="pf_menu_twitter_bind">绑定 Twitter 账号</span>
           <span id="pf-twitter-menu-status" class="profile-menu-status profile-menu-status-muted" data-i18n="pf_twitter_unbound">未绑定</span>
+        </button>
+        <button type="button" id="pf-telegram-bind-item" class="profile-menu-item profile-menu-item-action">
+          <span id="pf-telegram-menu-label" data-i18n="pf_menu_telegram_bind">绑定 Telegram 账号</span>
+          <span id="pf-telegram-menu-status" class="profile-menu-status profile-menu-status-muted" data-i18n="pf_telegram_unbound">未绑定</span>
         </button>
         <a href="#invite" class="profile-menu-item" data-route="invite">
           <span data-i18n="pf_menu_invite">邀请好友</span>
@@ -1339,6 +1368,20 @@ ALTER TABLE tasks ADD COLUMN task_keyword TEXT;</pre>
     </div>
 
     <!-- 全局 Twitter 用户名绑定弹窗 -->
+    <div id="telegram-bind-modal" class="td-twitter-modal hidden" aria-hidden="true">
+      <div class="td-twitter-modal-overlay"></div>
+      <div class="td-twitter-modal-panel">
+        <h3 id="telegram-bind-title" class="td-twitter-modal-title" data-i18n="tg_bind_title">绑定 Telegram 账号</h3>
+        <p id="telegram-bind-desc" class="td-twitter-modal-desc hidden" data-i18n="tg_bind_desc">验证任务需要你的 Telegram 账号信息</p>
+        <input type="text" id="telegram-bind-input" class="td-twitter-token-input" data-placeholder="tg_bind_ph" autocomplete="off">
+        <p id="telegram-bind-error" class="td-twitter-modal-error hidden"></p>
+        <div class="td-twitter-modal-actions">
+          <button type="button" id="telegram-bind-cancel" class="td-twitter-modal-btn td-twitter-modal-cancel" data-i18n="tg_bind_cancel">取消</button>
+          <button type="button" id="telegram-bind-confirm" class="td-twitter-modal-btn td-twitter-modal-primary" data-i18n="tg_bind_confirm">确认绑定</button>
+        </div>
+      </div>
+    </div>
+
     <div id="twitter-bind-modal" class="td-twitter-modal hidden" aria-hidden="true">
       <div class="td-twitter-modal-overlay"></div>
       <div class="td-twitter-modal-card">
