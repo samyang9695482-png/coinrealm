@@ -552,21 +552,44 @@ function buildTwitterOAuthCallbackUrl() {
 
 async function callTwitterVerifyWorker(payload) {
     if (!TWITTER_VERIFY_WORKER_URL || TWITTER_VERIFY_WORKER_URL === 'WORKER_URL_PLACEHOLDER') {
-        return { success: false, error: 'Twitter worker URL not configured' };
+        console.warn('Twitter Worker URL 未配置');
+        return { success: false, verified: false, error: 'Twitter worker URL not configured' };
     }
+
+    var requestPayload = payload || {};
+    console.log('调用 Worker，URL：', TWITTER_VERIFY_WORKER_URL, '参数：', requestPayload);
 
     var response = await fetch(TWITTER_VERIFY_WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload || {})
+        body: JSON.stringify(requestPayload)
     });
 
     var responseText = await response.text();
+    var workerResult = null;
+
     try {
-        return responseText ? JSON.parse(responseText) : { success: false, error: 'Empty worker response' };
+        workerResult = responseText ? JSON.parse(responseText) : null;
     } catch (_parseErr) {
-        return { success: false, error: responseText || 'Invalid worker response' };
+        workerResult = { success: false, error: responseText || 'Invalid worker response' };
     }
+
+    console.log('Worker 返回状态：', response.status, '结果：', workerResult);
+
+    if (!response.ok) {
+        console.error('Worker 请求失败，HTTP', response.status, workerResult);
+        return {
+            success: false,
+            verified: false,
+            httpStatus: response.status,
+            error: (workerResult && workerResult.error) || ('Worker request failed: ' + response.status),
+            reason: workerResult && (workerResult.reason || workerResult.review_comment || workerResult.error),
+            review_comment: workerResult && workerResult.review_comment,
+            status: workerResult && workerResult.status
+        };
+    }
+
+    return workerResult || { success: false, verified: false, error: 'Empty worker response' };
 }
 
 async function hasUserTwitterOAuthBinding(userId) {
@@ -740,6 +763,7 @@ function isTwitterActionTask(task) {
 
 async function verifyTwitterTask(taskId, userId) {
     if (!window.supabase || !taskId || !userId) {
+        console.warn('verifyTwitterTask: missing params', { taskId: taskId, userId: userId });
         return { success: false, verified: false, error: 'missing params' };
     }
 
@@ -747,28 +771,35 @@ async function verifyTwitterTask(taskId, userId) {
         var workerResult = null;
 
         if (TWITTER_VERIFY_WORKER_URL && TWITTER_VERIFY_WORKER_URL !== 'WORKER_URL_PLACEHOLDER') {
-            var response = await fetch(TWITTER_VERIFY_WORKER_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ task_id: taskId, user_id: userId })
+            workerResult = await callTwitterVerifyWorker({
+                task_id: taskId,
+                user_id: userId
             });
 
-            var responseText = await response.text();
-            try {
-                workerResult = responseText ? JSON.parse(responseText) : null;
-            } catch (_parseErr) {
-                throw new Error(responseText || ('Worker request failed: ' + response.status));
-            }
-
-            if (!response.ok) {
-                throw new Error((workerResult && workerResult.error) || ('Worker request failed: ' + response.status));
+            if (workerResult.httpStatus) {
+                return {
+                    success: false,
+                    verified: false,
+                    error: workerResult.error,
+                    reason: workerResult.reason,
+                    review_comment: workerResult.review_comment
+                };
             }
         } else {
+            console.warn('verifyTwitterTask: Worker URL 未配置，使用本地模拟通过');
             workerResult = { success: true, status: 'approved', verified: true };
         }
 
         var verified = workerResult.verified === true ||
             (workerResult.success === true && workerResult.status === 'approved');
+
+        if (!verified && workerResult.reason) {
+            console.warn('verifyTwitterTask 未通过', {
+                taskId: taskId,
+                userId: userId,
+                reason: workerResult.reason || workerResult.review_comment || workerResult.error
+            });
+        }
 
         var subResult = await window.supabase
             .from('submissions')
@@ -801,35 +832,39 @@ async function verifyTwitterTask(taskId, userId) {
 
 async function verifyTwitterSubtask(taskId, userId, actionIndex) {
     if (!taskId || !userId || actionIndex == null) {
+        console.warn('verifyTwitterSubtask: missing params', { taskId: taskId, userId: userId, actionIndex: actionIndex });
         return { success: false, verified: false, error: 'missing params' };
     }
 
     if (!TWITTER_VERIFY_WORKER_URL || TWITTER_VERIFY_WORKER_URL === 'WORKER_URL_PLACEHOLDER') {
+        console.warn('verifyTwitterSubtask: Worker URL 未配置，跳过子任务验证');
         return { success: true, verified: true };
     }
 
     try {
-        var response = await fetch(TWITTER_VERIFY_WORKER_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                task_id: taskId,
-                user_id: userId,
-                action_index: actionIndex,
-                subtask_only: true
-            })
+        var workerResult = await callTwitterVerifyWorker({
+            task_id: taskId,
+            user_id: userId,
+            action_index: actionIndex,
+            subtask_only: true
         });
 
-        var responseText = await response.text();
-        var workerResult = null;
-        try {
-            workerResult = responseText ? JSON.parse(responseText) : null;
-        } catch (_parseErr) {
-            throw new Error(responseText || ('Worker request failed: ' + response.status));
+        if (workerResult.httpStatus) {
+            return {
+                success: false,
+                verified: false,
+                error: workerResult.error,
+                reason: workerResult.reason
+            };
         }
 
-        if (!response.ok) {
-            throw new Error((workerResult && workerResult.error) || ('Worker request failed: ' + response.status));
+        if (!workerResult.verified && workerResult.reason) {
+            console.warn('verifyTwitterSubtask 未通过', {
+                taskId: taskId,
+                userId: userId,
+                actionIndex: actionIndex,
+                reason: workerResult.reason
+            });
         }
 
         return {
@@ -2774,6 +2809,13 @@ window.addEventListener('hashchange', handleRoute);
 
     try {
       var result = await verifyTwitterSubtask(currentTaskRecord.id, currentUserId, index);
+      console.log('子任务验证结果', {
+        taskId: currentTaskRecord.id,
+        userId: currentUserId,
+        actionIndex: index,
+        verified: result.verified,
+        reason: result.reason || result.error
+      });
       if (result.verified) {
         markSubtaskDone(st.key);
         delete subtaskUiState[st.key];
