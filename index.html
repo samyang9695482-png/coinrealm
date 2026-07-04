@@ -703,7 +703,10 @@ ALTER TABLE tasks ADD COLUMN task_keyword TEXT;</pre>
       <!-- 资产卡片 -->
       <div class="profile-asset-card">
         <div class="profile-asset-left">
-          <div id="pf-crlm-balance" class="profile-crlm-balance">12,500 CRLM</div>
+          <div class="profile-balance-row">
+            <div id="pf-crlm-balance" class="profile-crlm-balance">12,500 CRLM</div>
+            <button type="button" id="pf-balance-ledger-btn" class="profile-balance-ledger-btn" data-i18n="pf_balance_ledger">明细</button>
+          </div>
           <div id="pf-usdt-value" class="profile-usdt-value">≈ 1,250 USDT</div>
         </div>
         <button type="button" class="profile-withdraw-btn" data-i18n="pf_btn_withdraw">提币</button>
@@ -1423,6 +1426,31 @@ ALTER TABLE tasks ADD COLUMN task_keyword TEXT;</pre>
         <div class="td-twitter-modal-actions">
           <button type="button" id="telegram-bind-cancel" class="td-twitter-modal-btn td-twitter-modal-cancel" data-i18n="tg_bind_cancel">取消</button>
           <button type="button" id="telegram-bind-confirm" class="td-twitter-modal-btn td-twitter-modal-primary" data-i18n="tg_bind_confirm">确认绑定</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="reward-celebration-modal" class="reward-celebration-modal td-twitter-modal hidden" aria-hidden="true">
+      <div class="td-twitter-modal-overlay reward-celebration-overlay"></div>
+      <div id="reward-confetti-layer" class="reward-confetti-layer" aria-hidden="true"></div>
+      <div class="reward-celebration-panel td-twitter-modal-panel">
+        <p id="reward-celebration-amount" class="reward-celebration-amount">+500 CRLM</p>
+        <p id="reward-celebration-desc" class="reward-celebration-desc" data-i18n="reward_sent_desc">奖励已发送至余额</p>
+        <div class="td-twitter-modal-actions">
+          <button type="button" id="reward-celebration-confirm" class="td-twitter-modal-btn td-twitter-modal-primary reward-celebration-confirm-btn" data-i18n="reward_confirm">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="balance-ledger-modal" class="td-twitter-modal hidden" aria-hidden="true">
+      <div class="td-twitter-modal-overlay"></div>
+      <div class="td-twitter-modal-panel balance-ledger-panel">
+        <h3 id="balance-ledger-title" class="td-twitter-modal-title" data-i18n="pf_ledger_title">CRLM 余额明细</h3>
+        <div id="balance-ledger-loading" class="balance-ledger-loading hidden" data-i18n="pf_ledger_loading">加载中...</div>
+        <div id="balance-ledger-empty" class="balance-ledger-empty hidden" data-i18n="pf_ledger_empty">暂无余额变动记录</div>
+        <ul id="balance-ledger-list" class="balance-ledger-list"></ul>
+        <div class="td-twitter-modal-actions">
+          <button type="button" id="balance-ledger-close" class="td-twitter-modal-btn td-twitter-modal-primary" data-i18n="reward_confirm">确定</button>
         </div>
       </div>
     </div>

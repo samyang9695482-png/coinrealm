@@ -400,7 +400,9 @@ const translations = {
         checkin_already: "今日已签到，已连续签到 {days} 天",
         checkin_login_required: "请先登录后再签到",
         checkin_fail: "签到失败：",
-        mining_streak: "连续挖矿第 {days} 天"
+        mining_streak: "连续挖矿第 {days} 天",
+        reward_sent_desc: "奖励已发送至余额",
+        reward_confirm: "确定"
     },
     en: {
         ads_banner: "Advertising Space (Web3 Ads)",
@@ -456,7 +458,9 @@ const translations = {
         checkin_already: "Already checked in today. Streak: {days} days",
         checkin_login_required: "Please sign in before checking in",
         checkin_fail: "Check-in failed: ",
-        mining_streak: "Mining streak: day {days}"
+        mining_streak: "Mining streak: day {days}",
+        reward_sent_desc: "Reward sent to your balance",
+        reward_confirm: "OK"
     }
 };
 
@@ -3349,6 +3353,97 @@ function formatCheckinText(key, vars) {
     return text;
 }
 
+var rewardCelebrationTimer = null;
+var rewardCelebrationInitialized = false;
+
+function formatRewardCelebrationAmount(amount) {
+    var value = Math.round(Number(amount) || 0);
+    return '+' + value.toLocaleString() + ' CRLM';
+}
+
+function spawnRewardConfetti() {
+    var layer = document.getElementById('reward-confetti-layer');
+    if (!layer) return;
+
+    layer.innerHTML = '';
+    var colors = ['#f0b90b', '#ff9800', '#ffb347', '#ffd700', '#f7a600'];
+    var count = Math.floor(Math.random() * 11) + 20;
+
+    for (var i = 0; i < count; i++) {
+        (function () {
+            var particle = document.createElement('span');
+            particle.className = 'reward-confetti-particle';
+            var size = 4 + Math.random() * 6;
+            var angle = Math.random() * Math.PI * 2;
+            var distance = 80 + Math.random() * 220;
+            var rise = -(120 + Math.random() * 260);
+            particle.style.width = size + 'px';
+            particle.style.height = size + 'px';
+            particle.style.background = colors[Math.floor(Math.random() * colors.length)];
+            particle.style.animationDelay = (Math.random() * 0.25).toFixed(2) + 's';
+            particle.style.setProperty('--tx', (Math.cos(angle) * distance).toFixed(1) + 'px');
+            particle.style.setProperty('--ty', (rise + Math.sin(angle) * 80).toFixed(1) + 'px');
+            layer.appendChild(particle);
+        })();
+    }
+
+    setTimeout(function () {
+        if (layer) layer.innerHTML = '';
+    }, 2200);
+}
+
+function hideRewardCelebration() {
+    var modal = document.getElementById('reward-celebration-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+    if (rewardCelebrationTimer) {
+        clearTimeout(rewardCelebrationTimer);
+        rewardCelebrationTimer = null;
+    }
+}
+
+function initRewardCelebrationModal() {
+    if (rewardCelebrationInitialized) return;
+    rewardCelebrationInitialized = true;
+
+    document.addEventListener('click', function (e) {
+        if (e.target.closest('#reward-celebration-confirm') || e.target.closest('#reward-celebration-modal .reward-celebration-overlay')) {
+            hideRewardCelebration();
+        }
+    });
+}
+
+function showRewardCelebration(rewardAmount, options) {
+    options = options || {};
+    initRewardCelebrationModal();
+
+    var modal = document.getElementById('reward-celebration-modal');
+    var amountEl = document.getElementById('reward-celebration-amount');
+    var descEl = document.getElementById('reward-celebration-desc');
+    var confirmBtn = document.getElementById('reward-celebration-confirm');
+    if (!modal || !amountEl) return;
+
+    amountEl.textContent = formatRewardCelebrationAmount(rewardAmount);
+    if (descEl) {
+        descEl.textContent = formatCheckinText('reward_sent_desc') || '奖励已发送至余额';
+    }
+    if (confirmBtn) {
+        confirmBtn.textContent = formatCheckinText('reward_confirm') || '确定';
+    }
+
+    spawnRewardConfetti();
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+
+    if (rewardCelebrationTimer) {
+        clearTimeout(rewardCelebrationTimer);
+    }
+    rewardCelebrationTimer = setTimeout(hideRewardCelebration, options.autoCloseMs || 3000);
+}
+
+window.coinrealmShowRewardCelebration = showRewardCelebration;
+
 function showMiningRewardToast(rewardAmount, consecutiveDays) {
     var toast = document.getElementById('mining-reward-toast');
     var rewardEl = document.getElementById('mining-reward-amount');
@@ -3496,7 +3591,7 @@ async function handleMiningButtonClick() {
 
     var result = await handleDailyCheckin();
     if (result && result.ok) {
-        spawnMiningParticles();
+        showRewardCelebration(result.reward);
     }
 }
 
@@ -3612,7 +3707,7 @@ async function handleDailyCheckin() {
             return { ok: false };
         }
 
-        showMiningRewardToast(finalReward, consecutiveDays);
+        showRewardCelebration(finalReward);
         setMiningButtonMined(consecutiveDays);
         writeBroadcast({
             user_id: userId,
@@ -4913,6 +5008,9 @@ window.addEventListener('hashchange', handleRoute);
         activeSubtaskIndex = null;
         renderScreenshotVerifyPanel();
         updateBottomActionBar();
+        if (typeof window.coinrealmShowRewardCelebration === 'function') {
+          window.coinrealmShowRewardCelebration(Number(currentTaskRecord.reward_amount) || 0);
+        }
         return;
       }
 
@@ -5241,6 +5339,9 @@ window.addEventListener('hashchange', handleRoute);
         await reloadCurrentSubmission();
         if (currentSubmissionRecord && currentSubmissionRecord.status === 'approved') {
           detailActionState = 'simple_completed';
+          if (typeof window.coinrealmShowRewardCelebration === 'function') {
+            window.coinrealmShowRewardCelebration(Number(currentTaskRecord.reward_amount) || 0);
+          }
         }
       } else {
         var failReason = result.reason || result.error || tdT('td_subtask_fail_hint');
@@ -5310,6 +5411,13 @@ window.addEventListener('hashchange', handleRoute);
       if (result.verified) {
         markSubtaskDone(st.key);
         clearSubtaskFailure(st);
+        await reloadCurrentSubmission();
+        if (currentSubmissionRecord && currentSubmissionRecord.status === 'approved') {
+          detailActionState = 'simple_completed';
+          if (typeof window.coinrealmShowRewardCelebration === 'function') {
+            window.coinrealmShowRewardCelebration(Number(currentTaskRecord.reward_amount) || 0);
+          }
+        }
       } else {
         setSubtaskFailed(st, result.reason || result.error || tdT('td_subtask_fail_hint'));
       }
@@ -5551,11 +5659,9 @@ window.addEventListener('hashchange', handleRoute);
       subtaskFailReasons = {};
       updateTaskDetailSubtaskModeUi();
       updateBottomActionBar();
-      alert(usesTelegramWorkerVerification(currentTaskRecord)
-        ? tdT('td_alert_telegram_verified')
-        : usesDiscordWorkerVerification(currentTaskRecord)
-          ? tdT('td_alert_discord_verified')
-          : tdT('td_alert_twitter_verified'));
+      if (typeof window.coinrealmShowRewardCelebration === 'function') {
+        window.coinrealmShowRewardCelebration(Number(currentTaskRecord.reward_amount) || 0);
+      }
     } catch (err) {
       alert(tdT('td_alert_claim_fail') + (err && err.message ? err.message : String(err)));
     }
@@ -5639,12 +5745,8 @@ window.addEventListener('hashchange', handleRoute);
         activeSubtaskKey = null;
         updateTaskDetailSubtaskModeUi();
         updateBottomActionBar();
-        if (options.showAlert !== false) {
-          alert(usesTelegramWorkerVerification(currentTaskRecord)
-        ? tdT('td_alert_telegram_verified')
-        : usesDiscordWorkerVerification(currentTaskRecord)
-          ? tdT('td_alert_discord_verified')
-          : tdT('td_alert_twitter_verified'));
+        if (options.showAlert !== false && typeof window.coinrealmShowRewardCelebration === 'function') {
+          window.coinrealmShowRewardCelebration(Number(currentTaskRecord.reward_amount) || 0);
         }
         return;
       }
@@ -8722,6 +8824,7 @@ window.addEventListener('hashchange', handleRoute);
 
   var profileInitialized = false;
   var avatarPickerInitialized = false;
+  var balanceLedgerInitialized = false;
   var selectedPresetAvatarPath = '';
 
   var profileTranslations = {
@@ -8751,7 +8854,14 @@ window.addEventListener('hashchange', handleRoute);
       pf_avatar_cancel: '取消',
       pf_avatar_confirm: '确认',
       pf_avatar_save_fail: '保存头像失败：',
-      pf_avatar_pick_required: '请先选择一个头像'
+      pf_avatar_pick_required: '请先选择一个头像',
+      pf_balance_ledger: '明细',
+      pf_ledger_title: 'CRLM 余额明细',
+      pf_ledger_loading: '加载中...',
+      pf_ledger_empty: '暂无余额变动记录',
+      pf_ledger_type_checkin: '签到奖励',
+      pf_ledger_type_task: '任务奖励',
+      pf_ledger_balance_after: '余额 {amount} CRLM'
     },
     en: {
       pf_btn_withdraw: 'Withdraw',
@@ -8779,7 +8889,14 @@ window.addEventListener('hashchange', handleRoute);
       pf_avatar_cancel: 'Cancel',
       pf_avatar_confirm: 'Confirm',
       pf_avatar_save_fail: 'Failed to save avatar: ',
-      pf_avatar_pick_required: 'Please select an avatar first'
+      pf_avatar_pick_required: 'Please select an avatar first',
+      pf_balance_ledger: 'History',
+      pf_ledger_title: 'CRLM Balance History',
+      pf_ledger_loading: 'Loading...',
+      pf_ledger_empty: 'No balance changes yet',
+      pf_ledger_type_checkin: 'Check-in Reward',
+      pf_ledger_type_task: 'Task Reward',
+      pf_ledger_balance_after: 'Balance {amount} CRLM'
     }
   };
 
@@ -8842,6 +8959,166 @@ window.addEventListener('hashchange', handleRoute);
     }
 
     return userResult.data;
+  }
+
+  function formatLedgerDateTime(value) {
+    if (!value) return '--';
+    var d = new Date(value);
+    if (Number.isNaN(d.getTime())) {
+      var dateOnly = String(value).slice(0, 10);
+      return dateOnly + ' 00:00';
+    }
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    var hh = String(d.getHours()).padStart(2, '0');
+    var mm = String(d.getMinutes()).padStart(2, '0');
+    return y + '-' + m + '-' + day + ' ' + hh + ':' + mm;
+  }
+
+  function hideBalanceLedgerModal() {
+    var modal = document.getElementById('balance-ledger-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+
+  async function fetchBalanceLedgerEntries(userId, currentBalance) {
+    if (!window.supabase || !userId) return [];
+
+    var entries = [];
+
+    var checkinsResult = await window.supabase
+      .from('checkins')
+      .select('checkin_date, reward_amount, created_at')
+      .eq('user_id', userId)
+      .order('checkin_date', { ascending: false })
+      .limit(20);
+
+    if (!checkinsResult.error) {
+      (checkinsResult.data || []).forEach(function (row) {
+        var amount = Number(row.reward_amount) || 0;
+        entries.push({
+          time: row.created_at || (String(row.checkin_date).slice(0, 10) + 'T12:00:00'),
+          typeLabel: pfT('pf_ledger_type_checkin'),
+          delta: amount,
+          income: true
+        });
+      });
+    }
+
+    var submissionsResult = await window.supabase
+      .from('submissions')
+      .select('reviewed_at, submitted_at, task_id, tasks(reward_amount, title)')
+      .eq('user_id', userId)
+      .eq('status', 'approved')
+      .order('reviewed_at', { ascending: false })
+      .limit(20);
+
+    if (!submissionsResult.error) {
+      (submissionsResult.data || []).forEach(function (row) {
+        var task = row.tasks || {};
+        var amount = Number(task.reward_amount) || 0;
+        entries.push({
+          time: row.reviewed_at || row.submitted_at || new Date().toISOString(),
+          typeLabel: pfT('pf_ledger_type_task'),
+          delta: amount,
+          income: true
+        });
+      });
+    }
+
+    entries.sort(function (a, b) {
+      return new Date(b.time).getTime() - new Date(a.time).getTime();
+    });
+
+    entries = entries.slice(0, 20);
+
+    var runningBalance = Number(currentBalance) || 0;
+    entries.forEach(function (entry) {
+      entry.balanceAfter = runningBalance;
+      runningBalance -= entry.delta;
+    });
+
+    return entries;
+  }
+
+  function renderBalanceLedgerList(entries) {
+    var listEl = document.getElementById('balance-ledger-list');
+    var emptyEl = document.getElementById('balance-ledger-empty');
+    if (!listEl) return;
+
+    if (!entries.length) {
+      listEl.innerHTML = '';
+      if (emptyEl) emptyEl.classList.remove('hidden');
+      return;
+    }
+
+    if (emptyEl) emptyEl.classList.add('hidden');
+    listEl.innerHTML = entries.map(function (entry) {
+      var amountClass = entry.income ? 'income' : 'expense';
+      var amountText = (entry.income ? '+' : '-') + formatNumber(Math.abs(entry.delta));
+      return (
+        '<li class="balance-ledger-item">' +
+          '<div class="balance-ledger-time">' + escapeHtml(formatLedgerDateTime(entry.time)) + '</div>' +
+          '<div class="balance-ledger-type">' + escapeHtml(entry.typeLabel) + '</div>' +
+          '<div class="balance-ledger-amount ' + amountClass + '">' + escapeHtml(amountText) + '</div>' +
+          '<div class="balance-ledger-balance">' + escapeHtml(pfT('pf_ledger_balance_after', { amount: formatNumber(entry.balanceAfter) })) + '</div>' +
+        '</li>'
+      );
+    }).join('');
+  }
+
+  async function openBalanceLedgerModal() {
+    if (!window.supabase) return;
+
+    var userId = await getCurrentUserId();
+    if (!userId) {
+      alert('请先登录');
+      return;
+    }
+
+    var modal = document.getElementById('balance-ledger-modal');
+    var loadingEl = document.getElementById('balance-ledger-loading');
+    var titleEl = document.getElementById('balance-ledger-title');
+    var closeBtn = document.getElementById('balance-ledger-close');
+    if (!modal) return;
+
+    if (titleEl) titleEl.textContent = pfT('pf_ledger_title');
+    if (closeBtn) {
+      var langData = translations[getLang()] || translations.zh;
+      closeBtn.textContent = langData.reward_confirm || '确定';
+    }
+    if (loadingEl) loadingEl.classList.remove('hidden');
+    renderBalanceLedgerList([]);
+
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+
+    var user = coinrealmCurrentUserProfile;
+    if (!user || String(user.id) !== String(userId)) {
+      user = await loadUserProfile();
+    }
+    var currentBalance = user ? Number(user.crlm_balance) || 0 : 0;
+    var entries = await fetchBalanceLedgerEntries(userId, currentBalance);
+    renderBalanceLedgerList(entries);
+    if (loadingEl) loadingEl.classList.add('hidden');
+  }
+
+  function initBalanceLedgerEvents() {
+    if (balanceLedgerInitialized) return;
+    balanceLedgerInitialized = true;
+
+    document.addEventListener('click', function (e) {
+      if (e.target.closest('#pf-balance-ledger-btn')) {
+        e.preventDefault();
+        openBalanceLedgerModal();
+        return;
+      }
+      if (e.target.closest('#balance-ledger-close') || e.target.closest('#balance-ledger-modal .td-twitter-modal-overlay')) {
+        hideBalanceLedgerModal();
+      }
+    });
   }
 
   function applyProfileI18n() {
@@ -9049,6 +9326,7 @@ window.addEventListener('hashchange', handleRoute);
     if (profileInitialized) return;
     profileInitialized = true;
     initAvatarPickerEvents();
+    initBalanceLedgerEvents();
 
     document.querySelectorAll('#profile-page .profile-menu-item[data-route]').forEach(function (item) {
       item.addEventListener('click', function (e) {
