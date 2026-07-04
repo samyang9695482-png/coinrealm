@@ -4842,16 +4842,6 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   async function handleDiscordSubtaskGo(index, st) {
-    var account = await fetchUserDiscordAccountLocal(currentUserId);
-    if (!account.userId) {
-      if (typeof window.coinrealmShowDiscordBindRequiredModal === 'function') {
-        window.coinrealmShowDiscordBindRequiredModal();
-      } else {
-        alert(dcT('dc_bind_required_msg'));
-      }
-      return;
-    }
-
     activeSubtaskKey = st.key;
     activeSubtaskIndex = index;
     subtaskUiState[st.key] = 'verifying';
