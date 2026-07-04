@@ -8861,6 +8861,14 @@ window.addEventListener('hashchange', handleRoute);
       pf_ledger_empty: '暂无余额变动记录',
       pf_ledger_type_checkin: '签到奖励',
       pf_ledger_type_task: '任务奖励',
+      pf_ledger_desc_task: '任务奖励：{title}',
+      pf_ledger_desc_checkin: '每日挖矿奖励（连续{days}天）',
+      pf_ledger_desc_publish: '发布任务：{title}',
+      pf_ledger_desc_refund: '任务退款：{title}',
+      pf_ledger_icon_task: '🎯',
+      pf_ledger_icon_checkin: '⛏️',
+      pf_ledger_icon_publish: '📝',
+      pf_ledger_icon_refund: '↩️',
       pf_ledger_balance_after: '余额 {amount} CRLM'
     },
     en: {
@@ -8896,6 +8904,14 @@ window.addEventListener('hashchange', handleRoute);
       pf_ledger_empty: 'No balance changes yet',
       pf_ledger_type_checkin: 'Check-in Reward',
       pf_ledger_type_task: 'Task Reward',
+      pf_ledger_desc_task: 'Task reward: {title}',
+      pf_ledger_desc_checkin: 'Daily mining reward (day {days} streak)',
+      pf_ledger_desc_publish: 'Published task: {title}',
+      pf_ledger_desc_refund: 'Task refund: {title}',
+      pf_ledger_icon_task: '🎯',
+      pf_ledger_icon_checkin: '⛏️',
+      pf_ledger_icon_publish: '📝',
+      pf_ledger_icon_refund: '↩️',
       pf_ledger_balance_after: 'Balance {amount} CRLM'
     }
   };
@@ -8976,6 +8992,46 @@ window.addEventListener('hashchange', handleRoute);
     return y + '-' + m + '-' + day + ' ' + hh + ':' + mm;
   }
 
+  function getLedgerTaskTitle(task, fallback) {
+    var title = task && task.title ? String(task.title).trim() : '';
+    return title || fallback || pfT('pf_ledger_type_task');
+  }
+
+  function isCrlmLedgerTask(task) {
+    var rewardType = String((task && task.reward_type) || 'CRLM').toUpperCase();
+    return rewardType === 'CRLM';
+  }
+
+  function resolveLedgerTaskStakeAmount(task) {
+    if (!task) return 0;
+    if (task.stake_amount != null && !Number.isNaN(Number(task.stake_amount))) {
+      return Number(task.stake_amount) || 0;
+    }
+    var reward = Number(task.reward_amount) || 0;
+    if (task.deposit_amount != null && !Number.isNaN(Number(task.deposit_amount))) {
+      return reward + (Number(task.deposit_amount) || 0);
+    }
+    var netReward = reward * 0.85;
+    return reward + netReward * 0.2;
+  }
+
+  function calculateLedgerTaskRefund(task) {
+    var maxParticipantsRaw = task && task.max_participants;
+    if (maxParticipantsRaw == null || maxParticipantsRaw === '') return 0;
+
+    var maxParticipants = parseFloat(maxParticipantsRaw);
+    var currentParticipants = parseFloat(task.current_participants) || 0;
+    if (Number.isNaN(maxParticipants) || maxParticipants <= 0) return 0;
+
+    var remainingSlots = Math.max(0, maxParticipants - currentParticipants);
+    if (remainingSlots <= 0) return 0;
+
+    var rewardAmount = parseFloat(task.reward_amount) || 0;
+    var perSlotReward = rewardAmount / maxParticipants;
+    var refundAmount = perSlotReward * remainingSlots;
+    return refundAmount * 0.85;
+  }
+
   function hideBalanceLedgerModal() {
     var modal = document.getElementById('balance-ledger-modal');
     if (!modal) return;
@@ -8987,45 +9043,112 @@ window.addEventListener('hashchange', handleRoute);
     if (!window.supabase || !userId) return [];
 
     var entries = [];
+    var queryLimit = 50;
 
-    var checkinsResult = await window.supabase
-      .from('checkins')
-      .select('checkin_date, reward_amount, created_at')
-      .eq('user_id', userId)
-      .order('checkin_date', { ascending: false })
-      .limit(20);
+    try {
+      var checkinsResult = await window.supabase
+        .from('checkins')
+        .select('checkin_date, reward_amount, consecutive_days, created_at')
+        .eq('user_id', userId)
+        .order('checkin_date', { ascending: false })
+        .limit(queryLimit);
 
-    if (!checkinsResult.error) {
-      (checkinsResult.data || []).forEach(function (row) {
-        var amount = Number(row.reward_amount) || 0;
-        entries.push({
-          time: row.created_at || (String(row.checkin_date).slice(0, 10) + 'T12:00:00'),
-          typeLabel: pfT('pf_ledger_type_checkin'),
-          delta: amount,
-          income: true
+      if (!checkinsResult.error) {
+        (checkinsResult.data || []).forEach(function (row) {
+          var amount = Number(row.reward_amount) || 0;
+          var streak = Number(row.consecutive_days) || 1;
+          entries.push({
+            time: row.created_at || (String(row.checkin_date).slice(0, 10) + 'T12:00:00'),
+            icon: pfT('pf_ledger_icon_checkin'),
+            description: pfT('pf_ledger_desc_checkin', { days: streak }),
+            delta: amount,
+            income: true
+          });
         });
-      });
+      }
+    } catch (checkinErr) {
+      console.warn('余额明细：签到记录查询失败', checkinErr);
     }
 
-    var submissionsResult = await window.supabase
-      .from('submissions')
-      .select('reviewed_at, submitted_at, task_id, tasks(reward_amount, title)')
-      .eq('user_id', userId)
-      .eq('status', 'approved')
-      .order('reviewed_at', { ascending: false })
-      .limit(20);
+    try {
+      var submissionsResult = await window.supabase
+        .from('submissions')
+        .select('reviewed_at, submitted_at, task_id, tasks(reward_amount, reward_type, title)')
+        .eq('user_id', userId)
+        .eq('status', 'approved')
+        .order('reviewed_at', { ascending: false })
+        .limit(queryLimit);
 
-    if (!submissionsResult.error) {
-      (submissionsResult.data || []).forEach(function (row) {
-        var task = row.tasks || {};
-        var amount = Number(task.reward_amount) || 0;
-        entries.push({
-          time: row.reviewed_at || row.submitted_at || new Date().toISOString(),
-          typeLabel: pfT('pf_ledger_type_task'),
-          delta: amount,
-          income: true
+      if (!submissionsResult.error) {
+        (submissionsResult.data || []).forEach(function (row) {
+          var task = row.tasks || {};
+          if (!isCrlmLedgerTask(task)) return;
+          var amount = Number(task.reward_amount) || 0;
+          if (amount <= 0) return;
+          entries.push({
+            time: row.reviewed_at || row.submitted_at || new Date().toISOString(),
+            icon: pfT('pf_ledger_icon_task'),
+            description: pfT('pf_ledger_desc_task', { title: getLedgerTaskTitle(task, '任务 #' + row.task_id) }),
+            delta: amount,
+            income: true
+          });
         });
-      });
+      }
+    } catch (submissionErr) {
+      console.warn('余额明细：任务奖励查询失败', submissionErr);
+    }
+
+    try {
+      var publishedResult = await window.supabase
+        .from('tasks')
+        .select('id, title, created_at, reward_amount, reward_type, stake_amount, deposit_amount, max_participants, current_participants, status')
+        .eq('publisher_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(queryLimit);
+
+      if (!publishedResult.error) {
+        (publishedResult.data || []).forEach(function (task) {
+          if (!isCrlmLedgerTask(task)) return;
+          var stakeAmount = resolveLedgerTaskStakeAmount(task);
+          if (stakeAmount <= 0) return;
+          entries.push({
+            time: task.created_at || new Date().toISOString(),
+            icon: pfT('pf_ledger_icon_publish'),
+            description: pfT('pf_ledger_desc_publish', { title: getLedgerTaskTitle(task, '任务 #' + task.id) }),
+            delta: stakeAmount,
+            income: false
+          });
+        });
+      }
+    } catch (publishErr) {
+      console.warn('余额明细：发布任务消耗查询失败', publishErr);
+    }
+
+    try {
+      var cancelledResult = await window.supabase
+        .from('tasks')
+        .select('id, title, created_at, updated_at, reward_amount, reward_type, stake_amount, deposit_amount, max_participants, current_participants, status')
+        .eq('publisher_id', userId)
+        .eq('status', 'cancelled')
+        .order('updated_at', { ascending: false })
+        .limit(queryLimit);
+
+      if (!cancelledResult.error) {
+        (cancelledResult.data || []).forEach(function (task) {
+          if (!isCrlmLedgerTask(task)) return;
+          var refundAmount = calculateLedgerTaskRefund(task);
+          if (refundAmount <= 0) return;
+          entries.push({
+            time: task.updated_at || task.created_at || new Date().toISOString(),
+            icon: pfT('pf_ledger_icon_refund'),
+            description: pfT('pf_ledger_desc_refund', { title: getLedgerTaskTitle(task, '任务 #' + task.id) }),
+            delta: refundAmount,
+            income: true
+          });
+        });
+      }
+    } catch (refundErr) {
+      console.warn('余额明细：任务退款查询失败', refundErr);
     }
 
     entries.sort(function (a, b) {
@@ -9037,7 +9160,7 @@ window.addEventListener('hashchange', handleRoute);
     var runningBalance = Number(currentBalance) || 0;
     entries.forEach(function (entry) {
       entry.balanceAfter = runningBalance;
-      runningBalance -= entry.delta;
+      runningBalance -= entry.income ? entry.delta : -entry.delta;
     });
 
     return entries;
@@ -9058,10 +9181,12 @@ window.addEventListener('hashchange', handleRoute);
     listEl.innerHTML = entries.map(function (entry) {
       var amountClass = entry.income ? 'income' : 'expense';
       var amountText = (entry.income ? '+' : '-') + formatNumber(Math.abs(entry.delta));
+      var icon = entry.icon || '';
+      var description = entry.description || '';
       return (
         '<li class="balance-ledger-item">' +
           '<div class="balance-ledger-time">' + escapeHtml(formatLedgerDateTime(entry.time)) + '</div>' +
-          '<div class="balance-ledger-type">' + escapeHtml(entry.typeLabel) + '</div>' +
+          '<div class="balance-ledger-type">' + escapeHtml(icon + ' ' + description) + '</div>' +
           '<div class="balance-ledger-amount ' + amountClass + '">' + escapeHtml(amountText) + '</div>' +
           '<div class="balance-ledger-balance">' + escapeHtml(pfT('pf_ledger_balance_after', { amount: formatNumber(entry.balanceAfter) })) + '</div>' +
         '</li>'
