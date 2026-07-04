@@ -1575,10 +1575,6 @@ async function verifyTelegramSubtask(taskId, userId, actionIndex) {
     }
 }
 
-        };
-    }
-}
-
 async function callDiscordVerifyWorker(payload) {
     if (!DISCORD_VERIFY_WORKER_URL || DISCORD_VERIFY_WORKER_URL === 'WORKER_URL_PLACEHOLDER') {
         console.warn('Discord Worker URL 未配置');
@@ -7494,31 +7490,27 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   function bindCreateTaskTypeHandlers() {
-    var typeSelect = document.getElementById('ct-task-type');
-    if (typeSelect && typeSelect.dataset.ctChangeBound !== '1') {
-      typeSelect.dataset.ctChangeBound = '1';
-      typeSelect.addEventListener('change', function () {
+    var page = document.getElementById('create-task-page');
+    if (!page || page.dataset.ctDelegateBound === '1') return;
+    page.dataset.ctDelegateBound = '1';
+
+    page.addEventListener('change', function (e) {
+      var target = e.target;
+      if (!target || !target.id) return;
+      if (target.id === 'ct-task-type') {
         updateCreateTaskTemplate();
         applyCreateTaskI18n();
-      });
-    }
-
-    var platformSelect = document.getElementById('ct-task-platform');
-    if (platformSelect && platformSelect.dataset.ctChangeBound !== '1') {
-      platformSelect.dataset.ctChangeBound = '1';
-      platformSelect.addEventListener('change', function () {
+        return;
+      }
+      if (target.id === 'ct-task-platform') {
         updatePlatformConfigUi();
         applyCreateTaskI18n();
-      });
-    }
-
-    var actionSelect = document.getElementById('ct-task-action');
-    if (actionSelect && actionSelect.dataset.ctChangeBound !== '1') {
-      actionSelect.dataset.ctChangeBound = '1';
-      actionSelect.addEventListener('change', function () {
+        return;
+      }
+      if (target.id === 'ct-task-action') {
         updatePlatformKeywordVisibility();
-      });
-    }
+      }
+    });
   }
 
   function initCreateTaskEvents() {
@@ -7617,6 +7609,7 @@ window.addEventListener('hashchange', handleRoute);
 
   function handleCreateTaskRoute() {
     restoreAppContentIfNeeded();
+    bindCreateTaskTypeHandlers();
 
     var route = window.location.hash.replace(/^#/, '') || 'home';
     var createTaskPage = document.getElementById('create-task-page');
