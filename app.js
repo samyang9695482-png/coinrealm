@@ -545,6 +545,8 @@ var DISCORD_OAUTH_CLIENT_ID = '1522853910480683209';
 var DISCORD_OAUTH_REDIRECT_URI = 'https://coinrealm.pages.dev';
 var DISCORD_OAUTH_SESSION_USER = 'coinrealm_discord_oauth_user_id';
 var DISCORD_OAUTH_SESSION_RETURN = 'coinrealm_discord_oauth_return_hash';
+var DISCORD_OAUTH_RESUME_SUBTASK = 'coinrealm_discord_oauth_resume_subtask';
+var DISCORD_OAUTH_RESUME_TASK = 'coinrealm_discord_oauth_resume_task';
 var TWITTER_OAUTH_SESSION_TOKEN = 'coinrealm_twitter_oauth_token_secret';
 var TWITTER_OAUTH_SESSION_USER = 'coinrealm_twitter_oauth_user_id';
 var TWITTER_OAUTH_SESSION_RETURN = 'coinrealm_twitter_oauth_return_hash';
@@ -1152,6 +1154,7 @@ window.coinrealmNormalizeTelegramUsername = normalizeTelegramUsername;
 var discordBindInitialized = false;
 var discordBindSubmitting = false;
 var discordBindOnSuccessCallback = null;
+var discordOAuthReturnInFlight = null;
 
 var discordBindTranslations = {
     zh: {
@@ -1380,6 +1383,11 @@ async function handleDiscordOAuthReturn() {
     var code = params.get('code');
     if (!code) return false;
 
+    if (discordOAuthReturnInFlight) {
+        return discordOAuthReturnInFlight;
+    }
+
+    discordOAuthReturnInFlight = (async function () {
     var oauthPending = sessionStorage.getItem('coinrealm_discord_oauth_pending') === '1';
     var userId = sessionStorage.getItem(DISCORD_OAUTH_SESSION_USER) || '';
     var returnHash = sessionStorage.getItem(DISCORD_OAUTH_SESSION_RETURN) || '#profile';
@@ -1420,10 +1428,21 @@ async function handleDiscordOAuthReturn() {
     }
 
     await refreshDiscordBindStatusUi();
-    alert(dcT('dc_bind_oauth_success') + (workerResult.discord_username ? '（' + workerResult.discord_username + '）' : ''));
+
+    var resumeTaskId = sessionStorage.getItem(DISCORD_OAUTH_RESUME_TASK);
+    if (!resumeTaskId) {
+        alert(dcT('dc_bind_oauth_success') + (workerResult.discord_username ? '（' + workerResult.discord_username + '）' : ''));
+    }
 
     discordBindOnSuccessCallback = null;
     return true;
+    })();
+
+    try {
+        return await discordOAuthReturnInFlight;
+    } finally {
+        discordOAuthReturnInFlight = null;
+    }
 }
 
 function initDiscordBindModal() {
@@ -1524,6 +1543,12 @@ window.coinrealmShowDiscordBindRequiredModal = showDiscordBindRequiredModal;
 window.coinrealmFetchDiscordAccount = fetchUserDiscordAccount;
 window.coinrealmRefreshDiscordBindUi = refreshDiscordBindStatusUi;
 window.coinrealmHandleDiscordOAuthReturn = handleDiscordOAuthReturn;
+window.coinrealmWaitForDiscordOAuthReturn = async function () {
+    if (discordOAuthReturnInFlight) {
+        await discordOAuthReturnInFlight.catch(function () {});
+    }
+};
+window.startDiscordOAuthFlow = startDiscordOAuthFlow;
 
 async function callTelegramVerifyWorker(payload) {
     if (!TELEGRAM_WORKER_URL || TELEGRAM_WORKER_URL === 'WORKER_URL_PLACEHOLDER') {
@@ -4841,6 +4866,43 @@ window.addEventListener('hashchange', handleRoute);
       : { userId: '', username: '' };
   }
 
+  function isDiscordBindRequiredReason(reason) {
+    var text = String(reason || '');
+    return text.indexOf('请先在个人中心绑定') !== -1
+      || /绑定.*Discord/i.test(text)
+      || /Discord.*绑定/i.test(text);
+  }
+
+  async function startDiscordOAuthForSubtask(index) {
+    if (!currentTaskRecord || !window.startDiscordOAuthFlow) return false;
+    sessionStorage.setItem(DISCORD_OAUTH_RESUME_SUBTASK, String(index));
+    sessionStorage.setItem(DISCORD_OAUTH_RESUME_TASK, String(currentTaskRecord.id));
+    await startDiscordOAuthFlow({ returnHash: window.location.hash || '#home' });
+    return true;
+  }
+
+  async function tryResumeDiscordSubtaskVerification() {
+    if (!currentTaskRecord || !currentUserId || !usesDiscordWorkerVerification(currentTaskRecord)) return;
+
+    var resumeIndex = sessionStorage.getItem(DISCORD_OAUTH_RESUME_SUBTASK);
+    var resumeTaskId = sessionStorage.getItem(DISCORD_OAUTH_RESUME_TASK);
+    if (resumeIndex == null || !resumeTaskId) return;
+    if (String(currentTaskRecord.id) !== String(resumeTaskId)) return;
+
+    if (typeof window.coinrealmWaitForDiscordOAuthReturn === 'function') {
+      await window.coinrealmWaitForDiscordOAuthReturn();
+    }
+
+    sessionStorage.removeItem(DISCORD_OAUTH_RESUME_SUBTASK);
+    sessionStorage.removeItem(DISCORD_OAUTH_RESUME_TASK);
+
+    var index = parseInt(resumeIndex, 10);
+    if (Number.isNaN(index)) return;
+
+    activeSubtaskIndex = index;
+    await runDiscordSubtaskVerification(index);
+  }
+
   async function handleDiscordSubtaskGo(index, st) {
     activeSubtaskKey = st.key;
     activeSubtaskIndex = index;
@@ -4864,10 +4926,7 @@ window.addEventListener('hashchange', handleRoute);
 
     var account = await fetchUserDiscordAccountLocal(currentUserId);
     if (!account.userId) {
-      setSubtaskFailed(st, dcT('dc_bind_required_msg'));
-      activeSubtaskKey = null;
-      activeSubtaskIndex = null;
-      renderSubtasksPanel();
+      await startDiscordOAuthForSubtask(index);
       return;
     }
 
@@ -4883,12 +4942,20 @@ window.addEventListener('hashchange', handleRoute);
       if (result.verified) {
         markSubtaskDone(st.key);
         clearSubtaskFailure(st);
+        if (typeof window.coinrealmRefreshDiscordBindUi === 'function') {
+          window.coinrealmRefreshDiscordBindUi();
+        }
         await reloadCurrentSubmission();
         if (currentSubmissionRecord && currentSubmissionRecord.status === 'approved') {
           detailActionState = 'simple_completed';
         }
       } else {
-        setSubtaskFailed(st, result.reason || result.error || tdT('td_subtask_fail_hint'));
+        var failReason = result.reason || result.error || tdT('td_subtask_fail_hint');
+        if (isDiscordBindRequiredReason(failReason)) {
+          await startDiscordOAuthForSubtask(index);
+          return;
+        }
+        setSubtaskFailed(st, failReason);
       }
     } catch (err) {
       setSubtaskFailed(st, err && err.message ? err.message : String(err));
@@ -5710,6 +5777,7 @@ window.addEventListener('hashchange', handleRoute);
     updateBottomActionBar();
     initTaskDetailImageLightbox();
     initTaskDetailEvents();
+    await tryResumeDiscordSubtaskVerification();
   }
 
   function renderTaskDetailImages(task) {
