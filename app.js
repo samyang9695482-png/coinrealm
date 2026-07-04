@@ -539,6 +539,12 @@ function buildTaskInsertPayload(userId, fields) {
 var TWITTER_VERIFY_WORKER_URL = 'https://coinrealm-twitter-verify.samyang9695482.workers.dev';
 var TELEGRAM_WORKER_URL = 'https://coinrealm-telegram-verify.samyang9695482.workers.dev';
 var TELEGRAM_VERIFY_WORKER_URL = TELEGRAM_WORKER_URL;
+var DISCORD_VERIFY_WORKER_URL = 'https://coinrealm-discord-verify.samyang9695482.workers.dev';
+var DISCORD_OAUTH_WORKER_URL = 'https://coinrealm-discord-oauth.samyang9695482.workers.dev';
+var DISCORD_OAUTH_CLIENT_ID = '1522853910480683209';
+var DISCORD_OAUTH_REDIRECT_URI = 'https://coinrealm.pages.dev';
+var DISCORD_OAUTH_SESSION_USER = 'coinrealm_discord_oauth_user_id';
+var DISCORD_OAUTH_SESSION_RETURN = 'coinrealm_discord_oauth_return_hash';
 var TWITTER_OAUTH_SESSION_TOKEN = 'coinrealm_twitter_oauth_token_secret';
 var TWITTER_OAUTH_SESSION_USER = 'coinrealm_twitter_oauth_user_id';
 var TWITTER_OAUTH_SESSION_RETURN = 'coinrealm_twitter_oauth_return_hash';
@@ -1143,6 +1149,339 @@ window.coinrealmFetchTelegramUsername = fetchUserTelegramUsername;
 window.coinrealmRefreshTelegramBindUi = refreshTelegramBindStatusUi;
 window.coinrealmNormalizeTelegramUsername = normalizeTelegramUsername;
 
+var discordBindInitialized = false;
+var discordBindSubmitting = false;
+var discordBindOnSuccessCallback = null;
+
+var discordBindTranslations = {
+    zh: {
+        dc_bind_title: '绑定 Discord 账号',
+        dc_bind_desc: '请先授权 CoinRealm 访问你的 Discord 账号',
+        dc_bind_authorize: '去授权',
+        dc_bind_cancel: '取消',
+        dc_bind_login_required: '请先登录',
+        dc_bind_oauth_fail: 'Discord 授权失败：',
+        dc_bind_oauth_success: 'Discord 账号已成功绑定',
+        dc_menu_unbound: '未绑定',
+        dc_profile_bind_label: '绑定 Discord 账号',
+        dc_profile_account_label: 'Discord 账号'
+    },
+    en: {
+        dc_bind_title: 'Link Discord Account',
+        dc_bind_desc: 'Authorize CoinRealm to access your Discord account first',
+        dc_bind_authorize: 'Authorize',
+        dc_bind_cancel: 'Cancel',
+        dc_bind_login_required: 'Please sign in first',
+        dc_bind_oauth_fail: 'Discord authorization failed: ',
+        dc_bind_oauth_success: 'Discord account linked successfully',
+        dc_menu_unbound: 'Not linked',
+        dc_profile_bind_label: 'Link Discord Account',
+        dc_profile_account_label: 'Discord Account'
+    }
+};
+
+function dcT(key) {
+    var dict = discordBindTranslations[getTwitterBindLang()];
+    return dict[key] || key;
+}
+
+function normalizeDiscordUsername(value) {
+    var text = String(value || '').trim();
+    if (!text) return '';
+    return text.replace(/^@+/, '').trim();
+}
+
+async function fetchUserDiscordAccount(userId) {
+    if (!window.supabase || !userId) return { userId: '', username: '' };
+
+    var result = await window.supabase
+        .from('users')
+        .select('discord_user_id, discord_username')
+        .eq('id', userId)
+        .maybeSingle();
+
+    if (result.error || !result.data || !result.data.discord_user_id) {
+        return { userId: '', username: '' };
+    }
+
+    return {
+        userId: String(result.data.discord_user_id),
+        username: normalizeDiscordUsername(result.data.discord_username || '')
+    };
+}
+
+function applyDiscordBindModalI18n() {
+    var modal = document.getElementById('discord-bind-modal');
+    if (!modal) return;
+
+    modal.querySelectorAll('[data-i18n]').forEach(function (el) {
+        var key = el.getAttribute('data-i18n');
+        if (discordBindTranslations[getTwitterBindLang()][key]) {
+            el.textContent = dcT(key);
+        }
+    });
+}
+
+function hideDiscordBindModal() {
+    var modal = document.getElementById('discord-bind-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+    discordBindOnSuccessCallback = null;
+
+    var errorEl = document.getElementById('discord-bind-error');
+    if (errorEl) {
+        errorEl.textContent = '';
+        errorEl.classList.add('hidden');
+    }
+}
+
+function showDiscordBindModalElement() {
+    var modal = document.getElementById('discord-bind-modal');
+    if (!modal) return;
+    applyDiscordBindModalI18n();
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function updateDiscordBindStatusUi(account) {
+    account = account || {};
+    var bound = !!account.userId;
+    var handleText = bound
+        ? (account.username ? account.username : ('ID ' + account.userId))
+        : dcT('dc_menu_unbound');
+    var profileLabel = document.getElementById('pf-discord-menu-label');
+    var profileStatus = document.getElementById('pf-discord-menu-status');
+
+    if (profileLabel) {
+        profileLabel.textContent = bound ? dcT('dc_profile_account_label') : dcT('dc_profile_bind_label');
+    }
+
+    if (profileStatus) {
+        profileStatus.textContent = handleText;
+        profileStatus.classList.toggle('profile-menu-status-muted', !bound);
+        profileStatus.classList.toggle('profile-menu-status-bound', bound);
+        if (!bound) profileStatus.setAttribute('data-i18n', 'pf_discord_unbound');
+    }
+}
+
+async function refreshDiscordBindStatusUi() {
+    var userId = await getCurrentUserId();
+    if (!userId) {
+        updateDiscordBindStatusUi(null);
+        return;
+    }
+
+    var cached = coinrealmCurrentUserProfile && coinrealmCurrentUserProfile.discord_user_id
+        ? {
+            userId: String(coinrealmCurrentUserProfile.discord_user_id),
+            username: normalizeDiscordUsername(coinrealmCurrentUserProfile.discord_username || '')
+        }
+        : null;
+    var account = cached && cached.userId ? cached : await fetchUserDiscordAccount(userId);
+
+    if (coinrealmCurrentUserProfile && account.userId) {
+        coinrealmCurrentUserProfile.discord_user_id = account.userId;
+        coinrealmCurrentUserProfile.discord_username = account.username;
+    }
+
+    updateDiscordBindStatusUi(account);
+}
+
+function buildDiscordOAuthUrl(state) {
+    var params = new URLSearchParams({
+        client_id: DISCORD_OAUTH_CLIENT_ID,
+        response_type: 'code',
+        redirect_uri: DISCORD_OAUTH_REDIRECT_URI,
+        scope: 'identify guilds.members.read',
+        state: state || ''
+    });
+    return 'https://discord.com/api/oauth2/authorize?' + params.toString();
+}
+
+async function startDiscordOAuthFlow(options) {
+    options = options || {};
+    var userId = await getAuthenticatedUserId();
+    if (!userId) {
+        alert(dcT('dc_bind_login_required'));
+        return { success: false };
+    }
+
+    var returnHash = options.returnHash || window.location.hash || '#home';
+    var state = encodeURIComponent(returnHash);
+    sessionStorage.setItem(DISCORD_OAUTH_SESSION_USER, userId);
+    sessionStorage.setItem(DISCORD_OAUTH_SESSION_RETURN, returnHash);
+    window.location.href = buildDiscordOAuthUrl(state);
+    return { success: true, redirecting: true };
+}
+
+async function callDiscordOAuthWorker(payload) {
+    if (!DISCORD_OAUTH_WORKER_URL || DISCORD_OAUTH_WORKER_URL === 'WORKER_URL_PLACEHOLDER') {
+        return { success: false, error: 'Discord OAuth worker URL not configured' };
+    }
+
+    var response = await fetch(DISCORD_OAUTH_WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {})
+    });
+
+    var responseText = await response.text();
+    var workerResult = null;
+    try {
+        workerResult = responseText ? JSON.parse(responseText) : null;
+    } catch (_parseErr) {
+        workerResult = { success: false, error: responseText || 'Invalid worker response' };
+    }
+
+    if (!response.ok) {
+        return {
+            success: false,
+            error: (workerResult && workerResult.error) || ('Worker request failed: ' + response.status),
+            reason: workerResult && (workerResult.reason || workerResult.error)
+        };
+    }
+
+    return workerResult || { success: false, error: 'Empty worker response' };
+}
+
+async function handleDiscordOAuthReturn() {
+    var params = new URLSearchParams(window.location.search);
+    var code = params.get('code');
+    if (!code) return false;
+
+    var userId = sessionStorage.getItem(DISCORD_OAUTH_SESSION_USER) || '';
+    var returnHash = sessionStorage.getItem(DISCORD_OAUTH_SESSION_RETURN) || '#profile';
+    var stateHash = params.get('state');
+
+    sessionStorage.removeItem(DISCORD_OAUTH_SESSION_USER);
+    sessionStorage.removeItem(DISCORD_OAUTH_SESSION_RETURN);
+
+    var cleanUrl = window.location.origin + window.location.pathname + (stateHash || returnHash);
+    window.history.replaceState(null, '', cleanUrl);
+
+    if (!userId) {
+        userId = await getAuthenticatedUserId();
+    }
+    if (!userId) {
+        alert(dcT('dc_bind_login_required'));
+        return true;
+    }
+
+    var workerResult = await callDiscordOAuthWorker({
+        code: code,
+        user_id: userId,
+        redirect_uri: DISCORD_OAUTH_REDIRECT_URI
+    });
+
+    if (!workerResult || !workerResult.success) {
+        alert(dcT('dc_bind_oauth_fail') + ((workerResult && (workerResult.reason || workerResult.error)) || ''));
+        return true;
+    }
+
+    if (coinrealmCurrentUserProfile) {
+        coinrealmCurrentUserProfile.discord_user_id = workerResult.discord_user_id || '';
+        coinrealmCurrentUserProfile.discord_username = workerResult.discord_username || '';
+    }
+
+    await refreshDiscordBindStatusUi();
+    alert(dcT('dc_bind_oauth_success') + (workerResult.discord_username ? '（' + workerResult.discord_username + '）' : ''));
+
+    var callback = discordBindOnSuccessCallback;
+    discordBindOnSuccessCallback = null;
+    if (typeof callback === 'function') {
+        callback({
+            userId: workerResult.discord_user_id,
+            username: workerResult.discord_username
+        });
+    }
+
+    return true;
+}
+
+function initDiscordBindModal() {
+    if (discordBindInitialized) return;
+    discordBindInitialized = true;
+
+    document.addEventListener('click', function (e) {
+        if (e.target.closest('#pf-discord-bind-item')) {
+            e.preventDefault();
+            window.coinrealmOpenDiscordBindModal();
+            return;
+        }
+        if (e.target.closest('#discord-bind-cancel')) {
+            hideDiscordBindModal();
+            return;
+        }
+        if (e.target.closest('#discord-bind-modal .td-twitter-modal-overlay')) {
+            hideDiscordBindModal();
+            return;
+        }
+        if (e.target.closest('#discord-bind-authorize')) {
+            startDiscordOAuthFromModal();
+        }
+    });
+
+    applyDiscordBindModalI18n();
+}
+
+async function startDiscordOAuthFromModal() {
+    if (discordBindSubmitting) return;
+
+    var userId = await getAuthenticatedUserId();
+    if (!userId) {
+        alert(dcT('dc_bind_login_required'));
+        return;
+    }
+
+    discordBindSubmitting = true;
+    var authBtn = document.getElementById('discord-bind-authorize');
+    if (authBtn) authBtn.disabled = true;
+
+    try {
+        await startDiscordOAuthFlow({ returnHash: window.location.hash || '#profile' });
+    } finally {
+        discordBindSubmitting = false;
+        if (authBtn) authBtn.disabled = false;
+    }
+}
+
+window.coinrealmOpenDiscordBindModal = async function (options) {
+    options = options || {};
+    if (!window.supabase) return;
+
+    initDiscordBindModal();
+
+    var userId = await getAuthenticatedUserId();
+    if (!userId) {
+        alert(dcT('dc_bind_login_required'));
+        return;
+    }
+
+    var account = await fetchUserDiscordAccount(userId);
+    if (account.userId) {
+        updateDiscordBindStatusUi(account);
+        if (typeof options.onSuccess === 'function') {
+            options.onSuccess(account);
+        }
+        return;
+    }
+
+    discordBindOnSuccessCallback = typeof options.onSuccess === 'function' ? options.onSuccess : null;
+
+    var errorEl = document.getElementById('discord-bind-error');
+    if (errorEl) {
+        errorEl.textContent = '';
+        errorEl.classList.add('hidden');
+    }
+
+    showDiscordBindModalElement();
+};
+
+window.coinrealmFetchDiscordAccount = fetchUserDiscordAccount;
+window.coinrealmRefreshDiscordBindUi = refreshDiscordBindStatusUi;
+window.coinrealmHandleDiscordOAuthReturn = handleDiscordOAuthReturn;
+
 async function callTelegramVerifyWorker(payload) {
     if (!TELEGRAM_WORKER_URL || TELEGRAM_WORKER_URL === 'WORKER_URL_PLACEHOLDER') {
         console.warn('Telegram Worker URL 未配置');
@@ -1236,6 +1575,89 @@ async function verifyTelegramSubtask(taskId, userId, actionIndex) {
     }
 }
 
+        };
+    }
+}
+
+async function callDiscordVerifyWorker(payload) {
+    if (!DISCORD_VERIFY_WORKER_URL || DISCORD_VERIFY_WORKER_URL === 'WORKER_URL_PLACEHOLDER') {
+        console.warn('Discord Worker URL 未配置');
+        return { success: false, verified: false, error: 'Discord worker URL not configured' };
+    }
+
+    var requestPayload = {
+        task_id: (payload && payload.task_id) || (payload && payload.taskId),
+        user_id: (payload && payload.user_id) || (payload && payload.userId)
+    };
+
+    console.log('调用 Discord Worker，URL：', DISCORD_VERIFY_WORKER_URL, '参数：', requestPayload);
+
+    var response = await fetch(DISCORD_VERIFY_WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestPayload)
+    });
+
+    var responseText = await response.text();
+    var workerResult = null;
+
+    try {
+        workerResult = responseText ? JSON.parse(responseText) : null;
+    } catch (_parseErr) {
+        workerResult = { success: false, error: responseText || 'Invalid worker response' };
+    }
+
+    console.log('Discord Worker 返回：', workerResult);
+
+    if (!response.ok) {
+        return {
+            success: false,
+            verified: false,
+            httpStatus: response.status,
+            error: (workerResult && workerResult.error) || ('Worker request failed: ' + response.status),
+            reason: workerResult && (workerResult.reason || workerResult.error)
+        };
+    }
+
+    return workerResult || { success: false, verified: false, error: 'Empty worker response' };
+}
+
+async function verifyDiscordSubtask(taskId, userId) {
+    if (!taskId || !userId) {
+        return { success: false, verified: false, error: 'missing params' };
+    }
+
+    if (!DISCORD_VERIFY_WORKER_URL || DISCORD_VERIFY_WORKER_URL === 'WORKER_URL_PLACEHOLDER') {
+        return { success: false, verified: false, reason: 'Discord Worker 未配置' };
+    }
+
+    try {
+        var workerResult = await callDiscordVerifyWorker({ task_id: taskId, user_id: userId });
+
+        if (workerResult.httpStatus) {
+            return {
+                success: false,
+                verified: false,
+                error: workerResult.error,
+                reason: workerResult.reason || workerResult.error
+            };
+        }
+
+        return {
+            success: workerResult.verified === true,
+            verified: workerResult.verified === true,
+            reason: workerResult.reason || workerResult.error || ''
+        };
+    } catch (err) {
+        return {
+            success: false,
+            verified: false,
+            error: err && err.message ? err.message : String(err),
+            reason: err && err.message ? err.message : String(err)
+        };
+    }
+}
+
 function isTelegramVerificationTask(task) {
     if (!isSimpleTaskType(task)) return false;
     var platform = String(getTaskField(task, ['platform', 'verification_type'], '') || '').trim().toLowerCase();
@@ -1256,8 +1678,28 @@ function isTelegramVerifiableAction(task) {
     });
 }
 
+function isDiscordVerificationTask(task) {
+    if (!isSimpleTaskType(task)) return false;
+    var platform = String(getTaskField(task, ['platform', 'verification_type'], '') || '').trim().toLowerCase();
+    return platform === 'discord';
+}
+
+function isAllowedDiscordAction(action) {
+    var key = String(action || '').trim().toLowerCase();
+    return key === 'join' || key === 'message';
+}
+
+function isDiscordVerifiableAction(task) {
+    if (!isDiscordVerificationTask(task)) return false;
+    var actions = parseCommaList(getTaskField(task, ['task_action'], ''));
+    if (!actions.length) return false;
+    return actions.every(function (action) {
+        return isAllowedDiscordAction(action);
+    });
+}
+
 function isSimplePlatformVerifiableTask(task) {
-    return isTwitterVerifiableAction(task) || isTelegramVerifiableAction(task);
+    return isTwitterVerifiableAction(task) || isTelegramVerifiableAction(task) || isDiscordVerifiableAction(task);
 }
 
 async function insertSimplePendingSubmission(taskId, userId, taskMeta) {
@@ -1473,6 +1915,9 @@ window.coinrealmHasUserTwitterOAuth = hasUserTwitterOAuthBinding;
 window.addEventListener('DOMContentLoaded', function () {
     handleTwitterOAuthReturn().catch(function (err) {
         console.warn('Twitter OAuth callback failed', err);
+    });
+    handleDiscordOAuthReturn().catch(function (err) {
+        console.warn('Discord OAuth callback failed', err);
     });
 });
 
@@ -2022,7 +2467,7 @@ async function loadCurrentUserProfileCache() {
     }
     var result = await window.supabase
         .from('users')
-        .select('id, username, email, avatar_url, twitter_username, telegram_username')
+        .select('id, username, email, avatar_url, twitter_username, telegram_username, discord_user_id, discord_username')
         .eq('id', userId)
         .single();
     if (!result.error && result.data) {
@@ -2032,6 +2477,9 @@ async function loadCurrentUserProfileCache() {
         }
         if (typeof window.coinrealmRefreshTelegramBindUi === 'function') {
             window.coinrealmRefreshTelegramBindUi();
+        }
+        if (typeof window.coinrealmRefreshDiscordBindUi === 'function') {
+            window.coinrealmRefreshDiscordBindUi();
         }
         if (typeof window.coinrealmRefreshAuthArea === 'function') {
             window.coinrealmRefreshAuthArea();
@@ -3294,10 +3742,15 @@ window.addEventListener('hashchange', handleRoute);
       td_alert_twitter_no_link: '任务未配置 Twitter 链接，请联系发布者。',
       td_alert_telegram_no_link: '任务未配置 Telegram 链接，请联系发布者。',
       td_alert_telegram_verified: '验证通过！奖励已到账。',
+      td_alert_discord_no_link: '任务未配置 Discord 邀请链接，请联系发布者。',
+      td_alert_discord_verified: '验证通过！奖励已到账。',
       td_subtask_tg_join: '加入群组',
       td_subtask_tg_follow: '关注频道',
       td_subtask_tg_message: '发送消息',
       td_subtask_tg_message_kw: '发送消息（关键词：{keyword}）',
+      td_subtask_dc_join: '加入服务器',
+      td_subtask_dc_message: '发送消息',
+      td_subtask_dc_message_kw: '发送消息（关键词：{keyword}）',
       td_alert_simple_verifying: '任务已领取，正在验证中...',
       td_alert_claim_fail: '领取失败：',
       td_alert_already_claimed: '您已经领取过该任务',
@@ -3413,10 +3866,15 @@ window.addEventListener('hashchange', handleRoute);
       td_alert_twitter_no_link: 'This task has no Twitter link configured. Please contact the publisher.',
       td_alert_telegram_no_link: 'This task has no Telegram link configured. Please contact the publisher.',
       td_alert_telegram_verified: 'Verified! Reward credited.',
+      td_alert_discord_no_link: 'This task has no Discord invite link configured. Please contact the publisher.',
+      td_alert_discord_verified: 'Verified! Reward credited.',
       td_subtask_tg_join: 'Join group',
       td_subtask_tg_follow: 'Follow channel',
       td_subtask_tg_message: 'Send message',
       td_subtask_tg_message_kw: 'Send message (keyword: {keyword})',
+      td_subtask_dc_join: 'Join server',
+      td_subtask_dc_message: 'Send message',
+      td_subtask_dc_message_kw: 'Send message (keyword: {keyword})',
       td_alert_simple_verifying: 'Task claimed. Verification in progress...',
       td_alert_claim_fail: 'Claim failed: ',
       td_alert_already_claimed: 'You have already claimed this task',
@@ -3540,8 +3998,25 @@ window.addEventListener('hashchange', handleRoute);
     });
   }
 
+  function isDiscordSimpleTask(task) {
+    if (!isSimpleTaskRecord(task)) return false;
+    var platform = String(getTaskField(task, ['platform', 'verification_type'], '') || '').trim().toLowerCase();
+    return platform === 'discord';
+  }
+
+  function isDiscordVerifiableActionLocal(task) {
+    if (!isDiscordSimpleTask(task)) return false;
+    var actions = parseTaskActionsList(task);
+    if (!actions.length) return false;
+    return actions.every(function (action) {
+      return isAllowedDiscordAction(action);
+    });
+  }
+
   function isSimpleVerifiablePlatformTask(task) {
-    return isTwitterVerifiableActionLocal(task) || isTelegramVerifiableActionLocal(task);
+    return isTwitterVerifiableActionLocal(task)
+      || isTelegramVerifiableActionLocal(task)
+      || isDiscordVerifiableActionLocal(task);
   }
 
   function usesScreenshotVerification(task) {
@@ -3550,6 +4025,10 @@ window.addEventListener('hashchange', handleRoute);
 
   function usesTelegramWorkerVerification(task) {
     return isTelegramVerifiableActionLocal(task);
+  }
+
+  function usesDiscordWorkerVerification(task) {
+    return isDiscordVerifiableActionLocal(task);
   }
 
   function getTaskPlatform(task) {
@@ -3571,6 +4050,11 @@ window.addEventListener('hashchange', handleRoute);
     if (platform === 'telegram') {
       if (key === 'join') return 'join';
       if (key === 'follow') return 'follow';
+      if (key === 'message') return 'message';
+      return key;
+    }
+    if (platform === 'discord') {
+      if (key === 'join') return 'join';
       if (key === 'message') return 'message';
       return key;
     }
@@ -3597,11 +4081,23 @@ window.addEventListener('hashchange', handleRoute);
     return 'https://t.me/' + encodeURIComponent(clean);
   }
 
+  function buildDiscordOpenUrl(target) {
+    var clean = String(target || '').trim();
+    if (!clean) return '';
+    if (/^https?:\/\//i.test(clean)) return clean;
+    if (/^discord(?:app)?\.com\/invite\//i.test(clean) || /^discord\.gg\//i.test(clean)) {
+      return 'https://' + clean.replace(/^\/+/, '');
+    }
+    if (/^[A-Za-z0-9-]+$/.test(clean)) return 'https://discord.gg/' + encodeURIComponent(clean);
+    return clean;
+  }
+
   function buildSubtaskOpenUrl(action, target, task) {
     var platform = getTaskPlatform(task);
     var clean = String(target || '').trim();
     if (!clean) return '';
     if (platform === 'telegram') return buildTelegramOpenUrl(clean);
+    if (platform === 'discord') return buildDiscordOpenUrl(clean);
     if (/^https?:\/\//i.test(clean)) return clean;
     if (action === 'follow') {
       var user = normalizeTwitterUsername(clean);
@@ -3620,6 +4116,14 @@ window.addEventListener('hashchange', handleRoute);
         var tgKeyword = task ? String(getTaskField(task, ['task_keyword'], '') || '').trim() : '';
         if (tgKeyword) return tdT('td_subtask_tg_message_kw', { keyword: tgKeyword });
         return tdT('td_subtask_tg_message');
+      }
+    }
+    if (platform === 'discord') {
+      if (action === 'join') return tdT('td_subtask_dc_join');
+      if (action === 'message') {
+        var dcKeyword = task ? String(getTaskField(task, ['task_keyword'], '') || '').trim() : '';
+        if (dcKeyword) return tdT('td_subtask_dc_message_kw', { keyword: dcKeyword });
+        return tdT('td_subtask_dc_message');
       }
     }
     if (action === 'follow') {
@@ -4246,14 +4750,23 @@ window.addEventListener('hashchange', handleRoute);
     if (!st || isSubtaskDone(st.key)) return;
 
     if (!st.url) {
-      alert(usesTelegramWorkerVerification(currentTaskRecord)
-        ? tdT('td_alert_telegram_no_link')
-        : tdT('td_alert_twitter_no_link'));
+      if (usesTelegramWorkerVerification(currentTaskRecord)) {
+        alert(tdT('td_alert_telegram_no_link'));
+      } else if (usesDiscordWorkerVerification(currentTaskRecord)) {
+        alert(tdT('td_alert_discord_no_link'));
+      } else {
+        alert(tdT('td_alert_twitter_no_link'));
+      }
       return;
     }
 
     if (usesTelegramWorkerVerification(currentTaskRecord)) {
       handleTelegramSubtaskGo(index, st);
+      return;
+    }
+
+    if (usesDiscordWorkerVerification(currentTaskRecord)) {
+      handleDiscordSubtaskGo(index, st);
       return;
     }
 
@@ -4281,6 +4794,92 @@ window.addEventListener('hashchange', handleRoute);
     renderSubtasksPanel();
     setupTaskDetailVisibilityListener();
     window.open(st.url, '_blank', 'noopener,noreferrer');
+  }
+
+  async function fetchUserDiscordAccountLocal(userId) {
+    return window.coinrealmFetchDiscordAccount
+      ? window.coinrealmFetchDiscordAccount(userId)
+      : { userId: '', username: '' };
+  }
+
+  async function openDiscordBindModal(options) {
+    if (typeof window.coinrealmOpenDiscordBindModal !== 'function') return;
+    await window.coinrealmOpenDiscordBindModal(Object.assign({ showDesc: true }, options || {}));
+  }
+
+  async function handleDiscordSubtaskGo(index, st) {
+    var account = await fetchUserDiscordAccountLocal(currentUserId);
+    if (!account.userId) {
+      await openDiscordBindModal({
+        onSuccess: function () {
+          handleDiscordSubtaskGo(index, st);
+        }
+      });
+      return;
+    }
+
+    activeSubtaskKey = st.key;
+    activeSubtaskIndex = index;
+    subtaskUiState[st.key] = 'verifying';
+    delete subtaskFailReasons[st.key];
+    renderSubtasksPanel();
+    setupTaskDetailVisibilityListener();
+    window.open(st.url, '_blank', 'noopener,noreferrer');
+  }
+
+  async function runDiscordSubtaskVerification(index) {
+    if (subtaskVerifyInProgress || !currentTaskRecord || !currentUserId) return;
+
+    var subtasks = buildSubtasksFromTask(currentTaskRecord);
+    var st = subtasks[index];
+    if (!st || isSubtaskDone(st.key)) {
+      activeSubtaskKey = null;
+      activeSubtaskIndex = null;
+      return;
+    }
+
+    var account = await fetchUserDiscordAccountLocal(currentUserId);
+    if (!account.userId) {
+      setSubtaskFailed(st, dcT('dc_bind_desc'));
+      activeSubtaskKey = null;
+      activeSubtaskIndex = null;
+      renderSubtasksPanel();
+      await openDiscordBindModal({
+        onSuccess: function () {
+          runDiscordSubtaskVerification(index);
+        }
+      });
+      return;
+    }
+
+    subtaskVerifyInProgress = true;
+    subtaskUiState[st.key] = 'verifying';
+    delete subtaskFailReasons[st.key];
+    renderSubtasksPanel();
+
+    try {
+      var result = typeof verifyDiscordSubtask === 'function'
+        ? await verifyDiscordSubtask(currentTaskRecord.id, currentUserId)
+        : { verified: false, reason: 'Discord Worker 未配置' };
+      if (result.verified) {
+        markSubtaskDone(st.key);
+        clearSubtaskFailure(st);
+        await reloadCurrentSubmission();
+        if (currentSubmissionRecord && currentSubmissionRecord.status === 'approved') {
+          detailActionState = 'simple_completed';
+        }
+      } else {
+        setSubtaskFailed(st, result.reason || result.error || tdT('td_subtask_fail_hint'));
+      }
+    } catch (err) {
+      setSubtaskFailed(st, err && err.message ? err.message : String(err));
+    } finally {
+      subtaskVerifyInProgress = false;
+      activeSubtaskKey = null;
+      activeSubtaskIndex = null;
+      renderSubtasksPanel();
+      updateBottomActionBar();
+    }
   }
 
   async function fetchUserTelegramUsername(userId) {
@@ -4572,7 +5171,9 @@ window.addEventListener('hashchange', handleRoute);
       updateBottomActionBar();
       alert(usesTelegramWorkerVerification(currentTaskRecord)
         ? tdT('td_alert_telegram_verified')
-        : tdT('td_alert_twitter_verified'));
+        : usesDiscordWorkerVerification(currentTaskRecord)
+          ? tdT('td_alert_discord_verified')
+          : tdT('td_alert_twitter_verified'));
     } catch (err) {
       alert(tdT('td_alert_claim_fail') + (err && err.message ? err.message : String(err)));
     }
@@ -4659,7 +5260,9 @@ window.addEventListener('hashchange', handleRoute);
         if (options.showAlert !== false) {
           alert(usesTelegramWorkerVerification(currentTaskRecord)
         ? tdT('td_alert_telegram_verified')
-        : tdT('td_alert_twitter_verified'));
+        : usesDiscordWorkerVerification(currentTaskRecord)
+          ? tdT('td_alert_discord_verified')
+          : tdT('td_alert_twitter_verified'));
         }
         return;
       }
@@ -4692,8 +5295,13 @@ window.addEventListener('hashchange', handleRoute);
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState !== 'visible') return;
       if (activeSubtaskIndex == null || !currentTaskRecord) return;
-      if (!usesTelegramWorkerVerification(currentTaskRecord)) return;
-      runTelegramSubtaskVerification(activeSubtaskIndex);
+      if (usesTelegramWorkerVerification(currentTaskRecord)) {
+        runTelegramSubtaskVerification(activeSubtaskIndex);
+        return;
+      }
+      if (usesDiscordWorkerVerification(currentTaskRecord)) {
+        runDiscordSubtaskVerification(activeSubtaskIndex);
+      }
     });
   }
 
@@ -5354,6 +5962,8 @@ window.addEventListener('hashchange', handleRoute);
         if (btn.classList.contains('td-subtask-btn-retry')) {
           if (usesTelegramWorkerVerification(currentTaskRecord)) {
             runTelegramSubtaskVerification(index);
+          } else if (usesDiscordWorkerVerification(currentTaskRecord)) {
+            runDiscordSubtaskVerification(index);
           }
           return;
         }
@@ -5569,6 +6179,13 @@ window.addEventListener('hashchange', handleRoute);
       ct_toggle_tg_join: '加入群组',
       ct_toggle_tg_follow: '关注频道',
       ct_toggle_tg_message: '发送消息',
+      ct_toggle_dc_join: '加入服务器',
+      ct_toggle_dc_message: '发送消息',
+      ct_label_target_dc_invite: '服务器邀请链接',
+      ct_ph_target_dc_invite: '请输入服务器邀请链接，如 https://discord.gg/xxx',
+      ct_ph_keyword_dc_message: '消息中需包含的关键词（可选）',
+      ct_alert_discord_actions_required: '请至少选择一项 Discord 任务动作',
+      ct_alert_discord_target_required: '请填写 Discord 服务器邀请链接',
       ct_label_target_tg_join: '加入群组',
       ct_label_target_tg_follow: '关注频道',
       ct_label_target_tg_message: '发送消息',
@@ -5694,6 +6311,13 @@ window.addEventListener('hashchange', handleRoute);
       ct_toggle_tg_join: 'Join Group',
       ct_toggle_tg_follow: 'Follow Channel',
       ct_toggle_tg_message: 'Send Message',
+      ct_toggle_dc_join: 'Join Server',
+      ct_toggle_dc_message: 'Send Message',
+      ct_label_target_dc_invite: 'Server Invite Link',
+      ct_ph_target_dc_invite: 'Enter server invite link, e.g. https://discord.gg/xxx',
+      ct_ph_keyword_dc_message: 'Keyword required in message (optional)',
+      ct_alert_discord_actions_required: 'Select at least one Discord action',
+      ct_alert_discord_target_required: 'Enter the Discord server invite link',
       ct_label_target_tg_join: 'Join Group',
       ct_label_target_tg_follow: 'Follow Channel',
       ct_label_target_tg_message: 'Send Message',
@@ -6115,6 +6739,9 @@ window.addEventListener('hashchange', handleRoute);
     if (platform === 'telegram') {
       return getSelectedTelegramActions().join(',');
     }
+    if (platform === 'discord') {
+      return getSelectedDiscordActions().join(',');
+    }
     var select = document.getElementById('ct-task-action');
     return select ? String(select.value || '').trim() : '';
   }
@@ -6175,6 +6802,60 @@ window.addEventListener('hashchange', handleRoute);
 
   function initTelegramActionToggleGroup() {
     var group = document.getElementById('ct-telegram-action-group');
+    if (!group || group.dataset.bound) return;
+    group.dataset.bound = '1';
+    group.querySelectorAll('.ct-action-toggle').forEach(function (btn) {
+      btn.setAttribute('aria-pressed', btn.classList.contains('selected') ? 'true' : 'false');
+    });
+  }
+
+  function getSelectedDiscordActions() {
+    var group = document.getElementById('ct-discord-action-group');
+    if (!group) return [];
+    return Array.prototype.slice.call(group.querySelectorAll('.ct-action-toggle.selected'))
+      .map(function (btn) { return btn.getAttribute('data-action'); })
+      .filter(Boolean);
+  }
+
+  function updateDiscordMultiActionUi() {
+    var joinSelected = !!document.querySelector('#ct-discord-action-group .ct-action-toggle[data-action="join"].selected');
+    var messageSelected = !!document.querySelector('#ct-discord-action-group .ct-action-toggle[data-action="message"].selected');
+    var targetField = document.getElementById('ct-target-field-discord');
+    var keywordField = document.getElementById('ct-target-field-discord-keyword');
+    if (targetField) targetField.classList.toggle('hidden', !joinSelected && !messageSelected);
+    if (keywordField) keywordField.classList.toggle('hidden', !messageSelected);
+  }
+
+  function resetDiscordMultiActionFields() {
+    var group = document.getElementById('ct-discord-action-group');
+    if (group) {
+      group.querySelectorAll('.ct-action-toggle').forEach(function (btn) {
+        btn.classList.remove('selected');
+        btn.setAttribute('aria-pressed', 'false');
+      });
+    }
+    var targetField = document.getElementById('ct-target-field-discord');
+    var targetInput = document.getElementById('ct-target-input-discord');
+    var keywordField = document.getElementById('ct-target-field-discord-keyword');
+    var keywordInput = document.getElementById('ct-target-keyword-discord');
+    if (targetInput) targetInput.value = '';
+    if (keywordInput) keywordInput.value = '';
+    if (targetField) targetField.classList.add('hidden');
+    if (keywordField) keywordField.classList.add('hidden');
+  }
+
+  function toggleDiscordActionButton(btn) {
+    if (!btn || !btn.classList.contains('ct-action-toggle')) return;
+    btn.classList.toggle('selected');
+    btn.setAttribute('aria-pressed', btn.classList.contains('selected') ? 'true' : 'false');
+    updateDiscordMultiActionUi();
+    updateSubmitButtonState();
+  }
+
+  window.coinrealmToggleDiscordAction = toggleDiscordActionButton;
+
+  function initDiscordActionToggleGroup() {
+    var group = document.getElementById('ct-discord-action-group');
     if (!group || group.dataset.bound) return;
     group.dataset.bound = '1';
     group.querySelectorAll('.ct-action-toggle').forEach(function (btn) {
@@ -6320,6 +7001,7 @@ window.addEventListener('hashchange', handleRoute);
     if (keywordInput) keywordInput.value = '';
     resetTwitterMultiActionFields();
     resetTelegramMultiActionFields();
+    resetDiscordMultiActionFields();
     updatePlatformKeywordVisibility();
   }
 
@@ -6331,6 +7013,7 @@ window.addEventListener('hashchange', handleRoute);
     var platform = getSelectedPlatform();
     var twitterConfig = document.getElementById('ct-config-twitter');
     var telegramConfig = document.getElementById('ct-config-telegram');
+    var discordConfig = document.getElementById('ct-config-discord');
     var genericConfig = document.getElementById('ct-config-generic');
 
     if (platformField) platformField.classList.toggle('hidden', !simple);
@@ -6354,6 +7037,7 @@ window.addEventListener('hashchange', handleRoute);
       }
       resetTwitterMultiActionFields();
       resetTelegramMultiActionFields();
+      resetDiscordMultiActionFields();
       updatePlatformKeywordVisibility();
       return;
     }
@@ -6361,6 +7045,7 @@ window.addEventListener('hashchange', handleRoute);
     if (platform === 'twitter') {
       if (twitterConfig) twitterConfig.classList.remove('hidden');
       if (telegramConfig) telegramConfig.classList.add('hidden');
+      if (discordConfig) discordConfig.classList.add('hidden');
       if (genericConfig) genericConfig.classList.add('hidden');
       initTwitterActionToggleGroup();
       updateTwitterMultiActionUi();
@@ -6370,14 +7055,26 @@ window.addEventListener('hashchange', handleRoute);
     if (platform === 'telegram') {
       if (twitterConfig) twitterConfig.classList.add('hidden');
       if (telegramConfig) telegramConfig.classList.remove('hidden');
+      if (discordConfig) discordConfig.classList.add('hidden');
       if (genericConfig) genericConfig.classList.add('hidden');
       initTelegramActionToggleGroup();
       updateTelegramMultiActionUi();
       return;
     }
 
+    if (platform === 'discord') {
+      if (twitterConfig) twitterConfig.classList.add('hidden');
+      if (telegramConfig) telegramConfig.classList.add('hidden');
+      if (discordConfig) discordConfig.classList.remove('hidden');
+      if (genericConfig) genericConfig.classList.add('hidden');
+      initDiscordActionToggleGroup();
+      updateDiscordMultiActionUi();
+      return;
+    }
+
     if (twitterConfig) twitterConfig.classList.add('hidden');
     if (telegramConfig) telegramConfig.classList.add('hidden');
+    if (discordConfig) discordConfig.classList.add('hidden');
     if (genericConfig) genericConfig.classList.remove('hidden');
     rebuildPlatformActionOptions();
     updatePlatformTargetPlaceholder();
@@ -6431,6 +7128,23 @@ window.addEventListener('hashchange', handleRoute);
         taskAction: tgActions.join(','),
         taskTarget: tgTargets.join(','),
         taskKeyword: tgKeyword
+      };
+    }
+
+    if (platform === 'discord') {
+      var dcActions = getSelectedDiscordActions();
+      var inviteInput = document.getElementById('ct-target-input-discord');
+      var inviteUrl = inviteInput ? inviteInput.value.trim() : '';
+      var dcTargets = dcActions.map(function () { return inviteUrl; });
+      var dcKeywordInput = document.getElementById('ct-target-keyword-discord');
+      var dcKeyword = dcActions.indexOf('message') !== -1 && dcKeywordInput
+        ? dcKeywordInput.value.trim()
+        : '';
+      return {
+        platform: platform,
+        taskAction: dcActions.join(','),
+        taskTarget: dcTargets.join(','),
+        taskKeyword: dcKeyword
       };
     }
 
@@ -6488,6 +7202,20 @@ window.addEventListener('hashchange', handleRoute);
           alert(ctT('ct_alert_telegram_target_required'));
           return false;
         }
+      }
+      return true;
+    }
+
+    if (fields.platform === 'discord') {
+      var dcActions = getSelectedDiscordActions();
+      if (!dcActions.length) {
+        alert(ctT('ct_alert_discord_actions_required'));
+        return false;
+      }
+      var dcInviteInput = document.getElementById('ct-target-input-discord');
+      if (!dcInviteInput || !dcInviteInput.value.trim()) {
+        alert(ctT('ct_alert_discord_target_required'));
+        return false;
       }
       return true;
     }
@@ -7621,6 +8349,8 @@ window.addEventListener('hashchange', handleRoute);
       pf_twitter_unbound: '未绑定',
       pf_menu_telegram_bind: '绑定 Telegram 账号',
       pf_telegram_unbound: '未绑定',
+      pf_menu_discord_bind: '绑定 Discord 账号',
+      pf_discord_unbound: '未绑定',
       pf_level_master: '大师',
       pf_completion_rate: '{rate}% 完成率',
       pf_level_badge: 'Lv.{level} {label}',
@@ -7647,6 +8377,8 @@ window.addEventListener('hashchange', handleRoute);
       pf_twitter_unbound: 'Not linked',
       pf_menu_telegram_bind: 'Link Telegram Account',
       pf_telegram_unbound: 'Not linked',
+      pf_menu_discord_bind: 'Link Discord Account',
+      pf_discord_unbound: 'Not linked',
       pf_level_master: 'Master',
       pf_completion_rate: '{rate}% completion rate',
       pf_level_badge: 'Lv.{level} {label}',
@@ -7738,6 +8470,10 @@ window.addEventListener('hashchange', handleRoute);
 
     if (typeof window.coinrealmRefreshTelegramBindUi === 'function') {
       window.coinrealmRefreshTelegramBindUi();
+    }
+
+    if (typeof window.coinrealmRefreshDiscordBindUi === 'function') {
+      window.coinrealmRefreshDiscordBindUi();
     }
 
     var displayUsername = user.username || displayNameFromEmail(user.email);
