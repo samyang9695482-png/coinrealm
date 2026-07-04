@@ -1412,6 +1412,10 @@ img {
     z-index: 9999;
 }
 
+#discord-bind-required-modal.td-twitter-modal {
+    z-index: 9999;
+}
+
 .td-discord-auth-btn {
     background: #5865F2 !important;
     color: #fff !important;

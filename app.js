@@ -1156,9 +1156,12 @@ var discordBindOnSuccessCallback = null;
 var discordBindTranslations = {
     zh: {
         dc_bind_title: '绑定 Discord 账号',
-        dc_bind_desc: '请先授权 CoinRealm 访问你的 Discord 账号',
+        dc_bind_desc: '请先授权 CoinRealm 访问你的 Discord 账号，后续做任务时将自动验证。',
         dc_bind_authorize: '去授权',
         dc_bind_cancel: '取消',
+        dc_bind_required_title: '需要绑定 Discord',
+        dc_bind_required_msg: '请先在个人中心绑定 Discord 账号',
+        dc_bind_required_go: '前往个人中心',
         dc_bind_login_required: '请先登录',
         dc_bind_oauth_fail: 'Discord 授权失败：',
         dc_bind_oauth_success: 'Discord 账号已成功绑定',
@@ -1168,9 +1171,12 @@ var discordBindTranslations = {
     },
     en: {
         dc_bind_title: 'Link Discord Account',
-        dc_bind_desc: 'Authorize CoinRealm to access your Discord account first',
+        dc_bind_desc: 'Authorize CoinRealm to access your Discord account. Task verification will use this binding automatically.',
         dc_bind_authorize: 'Authorize',
         dc_bind_cancel: 'Cancel',
+        dc_bind_required_title: 'Discord Link Required',
+        dc_bind_required_msg: 'Please link your Discord account in Profile first',
+        dc_bind_required_go: 'Go to Profile',
         dc_bind_login_required: 'Please sign in first',
         dc_bind_oauth_fail: 'Discord authorization failed: ',
         dc_bind_oauth_success: 'Discord account linked successfully',
@@ -1211,14 +1217,18 @@ async function fetchUserDiscordAccount(userId) {
 }
 
 function applyDiscordBindModalI18n() {
-    var modal = document.getElementById('discord-bind-modal');
-    if (!modal) return;
-
-    modal.querySelectorAll('[data-i18n]').forEach(function (el) {
-        var key = el.getAttribute('data-i18n');
-        if (discordBindTranslations[getTwitterBindLang()][key]) {
-            el.textContent = dcT(key);
-        }
+    var modals = [
+        document.getElementById('discord-bind-modal'),
+        document.getElementById('discord-bind-required-modal')
+    ];
+    modals.forEach(function (modal) {
+        if (!modal) return;
+        modal.querySelectorAll('[data-i18n]').forEach(function (el) {
+            var key = el.getAttribute('data-i18n');
+            if (discordBindTranslations[getTwitterBindLang()][key]) {
+                el.textContent = dcT(key);
+            }
+        });
     });
 }
 
@@ -1240,6 +1250,25 @@ function showDiscordBindModalElement() {
     var modal = document.getElementById('discord-bind-modal');
     if (!modal) return;
     applyDiscordBindModalI18n();
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function hideDiscordBindRequiredModal() {
+    var modal = document.getElementById('discord-bind-required-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+function showDiscordBindRequiredModal() {
+    initDiscordBindModal();
+    applyDiscordBindModalI18n();
+    var modal = document.getElementById('discord-bind-required-modal');
+    if (!modal) {
+        alert(dcT('dc_bind_required_msg'));
+        return;
+    }
     modal.classList.remove('hidden');
     modal.setAttribute('aria-hidden', 'false');
 }
@@ -1307,10 +1336,11 @@ async function startDiscordOAuthFlow(options) {
         return { success: false };
     }
 
-    var returnHash = options.returnHash || window.location.hash || '#home';
+    var returnHash = options.returnHash || window.location.hash || '#profile';
     var state = encodeURIComponent(returnHash);
     sessionStorage.setItem(DISCORD_OAUTH_SESSION_USER, userId);
     sessionStorage.setItem(DISCORD_OAUTH_SESSION_RETURN, returnHash);
+    sessionStorage.setItem('coinrealm_discord_oauth_pending', '1');
     window.location.href = buildDiscordOAuthUrl(state);
     return { success: true, redirecting: true };
 }
@@ -1350,14 +1380,19 @@ async function handleDiscordOAuthReturn() {
     var code = params.get('code');
     if (!code) return false;
 
+    var oauthPending = sessionStorage.getItem('coinrealm_discord_oauth_pending') === '1';
     var userId = sessionStorage.getItem(DISCORD_OAUTH_SESSION_USER) || '';
     var returnHash = sessionStorage.getItem(DISCORD_OAUTH_SESSION_RETURN) || '#profile';
     var stateHash = params.get('state');
 
     sessionStorage.removeItem(DISCORD_OAUTH_SESSION_USER);
     sessionStorage.removeItem(DISCORD_OAUTH_SESSION_RETURN);
+    sessionStorage.removeItem('coinrealm_discord_oauth_pending');
 
-    var cleanUrl = window.location.origin + window.location.pathname + (stateHash || returnHash);
+    if (!oauthPending && !userId) return false;
+
+    var targetHash = stateHash ? decodeURIComponent(stateHash) : returnHash;
+    var cleanUrl = window.location.origin + window.location.pathname + targetHash;
     window.history.replaceState(null, '', cleanUrl);
 
     if (!userId) {
@@ -1387,15 +1422,7 @@ async function handleDiscordOAuthReturn() {
     await refreshDiscordBindStatusUi();
     alert(dcT('dc_bind_oauth_success') + (workerResult.discord_username ? '（' + workerResult.discord_username + '）' : ''));
 
-    var callback = discordBindOnSuccessCallback;
     discordBindOnSuccessCallback = null;
-    if (typeof callback === 'function') {
-        callback({
-            userId: workerResult.discord_user_id,
-            username: workerResult.discord_username
-        });
-    }
-
     return true;
 }
 
@@ -1419,6 +1446,23 @@ function initDiscordBindModal() {
         }
         if (e.target.closest('#discord-bind-authorize')) {
             startDiscordOAuthFromModal();
+            return;
+        }
+        if (e.target.closest('#discord-bind-required-cancel')) {
+            hideDiscordBindRequiredModal();
+            return;
+        }
+        if (e.target.closest('#discord-bind-required-modal .td-twitter-modal-overlay')) {
+            hideDiscordBindRequiredModal();
+            return;
+        }
+        if (e.target.closest('#discord-bind-required-profile')) {
+            hideDiscordBindRequiredModal();
+            if (typeof window.coinrealmApplyRoute === 'function') {
+                window.coinrealmApplyRoute('profile');
+            } else {
+                window.location.hash = 'profile';
+            }
         }
     });
 
@@ -1461,13 +1505,10 @@ window.coinrealmOpenDiscordBindModal = async function (options) {
     var account = await fetchUserDiscordAccount(userId);
     if (account.userId) {
         updateDiscordBindStatusUi(account);
-        if (typeof options.onSuccess === 'function') {
-            options.onSuccess(account);
-        }
         return;
     }
 
-    discordBindOnSuccessCallback = typeof options.onSuccess === 'function' ? options.onSuccess : null;
+    discordBindOnSuccessCallback = null;
 
     var errorEl = document.getElementById('discord-bind-error');
     if (errorEl) {
@@ -1477,6 +1518,8 @@ window.coinrealmOpenDiscordBindModal = async function (options) {
 
     showDiscordBindModalElement();
 };
+
+window.coinrealmShowDiscordBindRequiredModal = showDiscordBindRequiredModal;
 
 window.coinrealmFetchDiscordAccount = fetchUserDiscordAccount;
 window.coinrealmRefreshDiscordBindUi = refreshDiscordBindStatusUi;
@@ -4798,19 +4841,14 @@ window.addEventListener('hashchange', handleRoute);
       : { userId: '', username: '' };
   }
 
-  async function openDiscordBindModal(options) {
-    if (typeof window.coinrealmOpenDiscordBindModal !== 'function') return;
-    await window.coinrealmOpenDiscordBindModal(Object.assign({ showDesc: true }, options || {}));
-  }
-
   async function handleDiscordSubtaskGo(index, st) {
     var account = await fetchUserDiscordAccountLocal(currentUserId);
     if (!account.userId) {
-      await openDiscordBindModal({
-        onSuccess: function () {
-          handleDiscordSubtaskGo(index, st);
-        }
-      });
+      if (typeof window.coinrealmShowDiscordBindRequiredModal === 'function') {
+        window.coinrealmShowDiscordBindRequiredModal();
+      } else {
+        alert(dcT('dc_bind_required_msg'));
+      }
       return;
     }
 
@@ -4836,15 +4874,10 @@ window.addEventListener('hashchange', handleRoute);
 
     var account = await fetchUserDiscordAccountLocal(currentUserId);
     if (!account.userId) {
-      setSubtaskFailed(st, dcT('dc_bind_desc'));
+      setSubtaskFailed(st, dcT('dc_bind_required_msg'));
       activeSubtaskKey = null;
       activeSubtaskIndex = null;
       renderSubtasksPanel();
-      await openDiscordBindModal({
-        onSuccess: function () {
-          runDiscordSubtaskVerification(index);
-        }
-      });
       return;
     }
 
