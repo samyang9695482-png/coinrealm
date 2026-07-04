@@ -6068,7 +6068,6 @@ window.addEventListener('hashchange', handleRoute);
 
   var userLevel = 0;
   var userBalance = 500;
-  var createTaskInitialized = false;
   var ctUploadedImages = [];
   var ctImageUploadInProgress = false;
   var ctImageUploadSeq = 0;
@@ -7494,9 +7493,40 @@ window.addEventListener('hashchange', handleRoute);
     });
   }
 
+  function bindCreateTaskTypeHandlers() {
+    var typeSelect = document.getElementById('ct-task-type');
+    if (typeSelect && typeSelect.dataset.ctChangeBound !== '1') {
+      typeSelect.dataset.ctChangeBound = '1';
+      typeSelect.addEventListener('change', function () {
+        updateCreateTaskTemplate();
+        applyCreateTaskI18n();
+      });
+    }
+
+    var platformSelect = document.getElementById('ct-task-platform');
+    if (platformSelect && platformSelect.dataset.ctChangeBound !== '1') {
+      platformSelect.dataset.ctChangeBound = '1';
+      platformSelect.addEventListener('change', function () {
+        updatePlatformConfigUi();
+        applyCreateTaskI18n();
+      });
+    }
+
+    var actionSelect = document.getElementById('ct-task-action');
+    if (actionSelect && actionSelect.dataset.ctChangeBound !== '1') {
+      actionSelect.dataset.ctChangeBound = '1';
+      actionSelect.addEventListener('change', function () {
+        updatePlatformKeywordVisibility();
+      });
+    }
+  }
+
   function initCreateTaskEvents() {
-    if (createTaskInitialized) return;
-    createTaskInitialized = true;
+    var page = document.getElementById('create-task-page');
+    if (!page || page.dataset.ctInit === '1') return;
+    page.dataset.ctInit = '1';
+
+    bindCreateTaskTypeHandlers();
     var rewardInput = document.getElementById('ct-reward-amount');
     if (rewardInput) {
         rewardInput.addEventListener('input', function () {
@@ -7518,29 +7548,6 @@ window.addEventListener('hashchange', handleRoute);
             updateSubmitButtonState();
         });
     });
-
-    var typeSelect = document.getElementById('ct-task-type');
-    if (typeSelect) {
-      typeSelect.addEventListener('change', function () {
-        updateCreateTaskTemplate();
-        applyCreateTaskI18n();
-      });
-    }
-
-    var platformSelect = document.getElementById('ct-task-platform');
-    if (platformSelect) {
-      platformSelect.addEventListener('change', function () {
-        updatePlatformConfigUi();
-        applyCreateTaskI18n();
-      });
-    }
-
-    var actionSelect = document.getElementById('ct-task-action');
-    if (actionSelect) {
-      actionSelect.addEventListener('change', function () {
-        updatePlatformKeywordVisibility();
-      });
-    }
 
     var imageList = document.getElementById('ct-image-list');
     var imageInput = document.getElementById('ct-image-input');
@@ -7593,6 +7600,7 @@ window.addEventListener('hashchange', handleRoute);
     }
 
     initCreateTaskEvents();
+    bindCreateTaskTypeHandlers();
     bindSubmitButton();
     applyCreateTaskI18n();
     updateCreateTaskTemplate();
@@ -7604,7 +7612,6 @@ window.addEventListener('hashchange', handleRoute);
     if (!appContentEl || !APP_CONTENT_HTML) return;
     if (!document.getElementById('home-page')) {
       appContentEl.innerHTML = APP_CONTENT_HTML;
-      createTaskInitialized = false;
     }
   }
 
