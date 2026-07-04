@@ -540,7 +540,7 @@ var TWITTER_VERIFY_WORKER_URL = 'https://coinrealm-twitter-verify.samyang9695482
 var TELEGRAM_WORKER_URL = 'https://coinrealm-telegram-verify.samyang9695482.workers.dev';
 var TELEGRAM_VERIFY_WORKER_URL = TELEGRAM_WORKER_URL;
 var DISCORD_VERIFY_WORKER_URL = 'https://coinrealm-discord-verify.samyang9695482.workers.dev';
-var DISCORD_OAUTH_WORKER_URL = 'https://coinrealm-discord-oauth.samyang9695482.workers.dev';
+var DISCORD_OAUTH_WORKER_URL = DISCORD_VERIFY_WORKER_URL;
 var DISCORD_OAUTH_CLIENT_ID = '1522853910480683209';
 var DISCORD_OAUTH_REDIRECT_URI = 'https://coinrealm.pages.dev';
 var DISCORD_OAUTH_SESSION_USER = 'coinrealm_discord_oauth_user_id';
@@ -1410,11 +1410,15 @@ async function startDiscordOAuthFlow(options) {
 }
 
 async function callDiscordOAuthWorker(payload) {
-    if (!DISCORD_OAUTH_WORKER_URL || DISCORD_OAUTH_WORKER_URL === 'WORKER_URL_PLACEHOLDER') {
-        return { success: false, error: 'Discord OAuth worker URL not configured' };
+    var workerUrl = DISCORD_VERIFY_WORKER_URL || DISCORD_OAUTH_WORKER_URL;
+    if (!workerUrl || workerUrl === 'WORKER_URL_PLACEHOLDER') {
+        return { success: false, error: 'Discord OAuth worker URL not configured', reason: 'Discord OAuth worker URL not configured' };
     }
 
-    var response = await fetch(DISCORD_OAUTH_WORKER_URL, {
+    console.log('准备发送 code 到 Worker：', payload && payload.code);
+    console.log('Discord OAuth Worker URL：', workerUrl, '参数：', payload);
+
+    var response = await fetch(workerUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload || {})
@@ -1425,8 +1429,10 @@ async function callDiscordOAuthWorker(payload) {
     try {
         workerResult = responseText ? JSON.parse(responseText) : null;
     } catch (_parseErr) {
-        workerResult = { success: false, error: responseText || 'Invalid worker response' };
+        workerResult = { success: false, error: responseText || 'Invalid worker response', reason: responseText || 'Invalid worker response' };
     }
+
+    console.log('Worker 返回：', workerResult);
 
     if (!response.ok) {
         return {
@@ -1436,7 +1442,27 @@ async function callDiscordOAuthWorker(payload) {
         };
     }
 
-    return workerResult || { success: false, error: 'Empty worker response' };
+    return workerResult || { success: false, error: 'Empty worker response', reason: 'Empty worker response' };
+}
+
+async function resolveDiscordOAuthUserId(sessionUserId) {
+    var userId = sessionUserId || '';
+    if (userId) return userId;
+
+    userId = await getAuthenticatedUserId();
+    if (userId) return userId;
+
+    userId = await getCurrentUserId();
+    if (userId) return userId;
+
+    await new Promise(function (resolve) {
+        setTimeout(resolve, 400);
+    });
+
+    userId = await getAuthenticatedUserId();
+    if (userId) return userId;
+
+    return await getCurrentUserId();
 }
 
 async function handleDiscordOAuthReturn() {
@@ -1458,34 +1484,21 @@ async function handleDiscordOAuthReturn() {
     }
 
     discordOAuthReturnInFlight = (async function () {
-    var oauthPending = sessionStorage.getItem('coinrealm_discord_oauth_pending') === '1';
-    var userId = sessionStorage.getItem(DISCORD_OAUTH_SESSION_USER) || '';
-    var returnHash = sessionStorage.getItem(DISCORD_OAUTH_SESSION_RETURN) || '#profile';
+    var returnHash = sessionStorage.getItem(DISCORD_OAUTH_SESSION_RETURN) || window.location.hash || '#profile';
     var resumeTaskId = sessionStorage.getItem(DISCORD_OAUTH_RESUME_TASK) || '';
     var targetHash = resolveDiscordOAuthReturnHash(params, returnHash);
-
-    clearDiscordOAuthCallbackUrl({
-        targetHash: targetHash,
-        resumeTaskId: resumeTaskId
-    });
+    var sessionUserId = sessionStorage.getItem(DISCORD_OAUTH_SESSION_USER) || '';
 
     sessionStorage.removeItem(DISCORD_OAUTH_SESSION_USER);
     sessionStorage.removeItem(DISCORD_OAUTH_SESSION_RETURN);
     sessionStorage.removeItem('coinrealm_discord_oauth_pending');
 
-    if (!oauthPending && !userId) {
-        sessionStorage.removeItem(DISCORD_OAUTH_RESUME_SUBTASK);
-        sessionStorage.removeItem(DISCORD_OAUTH_RESUME_TASK);
-        return false;
-    }
-
-    if (!userId) {
-        userId = await getAuthenticatedUserId();
-    }
+    var userId = await resolveDiscordOAuthUserId(sessionUserId);
     if (!userId) {
         sessionStorage.removeItem(DISCORD_OAUTH_RESUME_SUBTASK);
         sessionStorage.removeItem(DISCORD_OAUTH_RESUME_TASK);
         alert(dcT('dc_bind_login_required'));
+        clearDiscordOAuthCallbackUrl({ targetHash: targetHash, resumeTaskId: resumeTaskId });
         return true;
     }
 
@@ -1494,6 +1507,8 @@ async function handleDiscordOAuthReturn() {
         user_id: userId,
         redirect_uri: DISCORD_OAUTH_REDIRECT_URI
     });
+
+    clearDiscordOAuthCallbackUrl({ targetHash: targetHash, resumeTaskId: resumeTaskId });
 
     if (!workerResult || !workerResult.success) {
         sessionStorage.removeItem(DISCORD_OAUTH_RESUME_SUBTASK);
@@ -5921,6 +5936,10 @@ window.addEventListener('hashchange', handleRoute);
     updateBottomActionBar();
     initTaskDetailImageLightbox();
     initTaskDetailEvents();
+
+    if (new URLSearchParams(window.location.search).get('code') && typeof window.coinrealmHandleDiscordOAuthReturn === 'function') {
+      await window.coinrealmHandleDiscordOAuthReturn();
+    }
     await tryResumeDiscordSubtaskVerification();
   }
 
