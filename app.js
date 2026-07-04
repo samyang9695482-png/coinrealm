@@ -1170,6 +1170,7 @@ var discordBindTranslations = {
         dc_bind_required_go: '前往个人中心',
         dc_bind_login_required: '请先登录',
         dc_bind_oauth_fail: 'Discord 授权失败：',
+        dc_bind_oauth_cancelled: '授权失败或已取消',
         dc_bind_oauth_success: 'Discord 账号已成功绑定',
         dc_menu_unbound: '未绑定',
         dc_profile_bind_label: '绑定 Discord 账号',
@@ -1185,6 +1186,7 @@ var discordBindTranslations = {
         dc_bind_required_go: 'Go to Profile',
         dc_bind_login_required: 'Please sign in first',
         dc_bind_oauth_fail: 'Discord authorization failed: ',
+        dc_bind_oauth_cancelled: 'Authorization failed or cancelled',
         dc_bind_oauth_success: 'Discord account linked successfully',
         dc_menu_unbound: 'Not linked',
         dc_profile_bind_label: 'Link Discord Account',
@@ -1341,16 +1343,68 @@ function extractTaskIdFromDiscordRouteHash(hash) {
     return new URLSearchParams(query).get('id') || '';
 }
 
+function extractTaskIdFromDiscordOAuthState(stateValue) {
+    var text = String(stateValue || '').trim();
+    if (!text) return '';
+
+    if (text.indexOf('task-detail') !== -1) {
+        return extractTaskIdFromDiscordRouteHash(text);
+    }
+
+    if (/^[0-9a-f-]{36}$/i.test(text)) {
+        return text;
+    }
+
+    return '';
+}
+
+function buildDiscordOAuthState(options) {
+    options = options || {};
+    var taskId = String(options.taskId || '').trim();
+    if (!taskId && options.returnHash) {
+        taskId = extractTaskIdFromDiscordRouteHash(options.returnHash);
+    }
+    if (taskId) {
+        return 'task-detail?id=' + encodeURIComponent(taskId);
+    }
+    return String(options.returnHash || '#profile').replace(/^#/, '') || 'profile';
+}
+
 function resolveDiscordOAuthReturnHash(params, returnHash) {
-    var stateHash = params.get('state');
-    if (stateHash) {
+    var stateParam = params.get('state');
+    if (stateParam) {
         try {
-            return normalizeDiscordRouteHash(decodeURIComponent(stateHash));
+            var decodedState = decodeURIComponent(stateParam);
+            console.log('[discord-oauth] 解析 state 参数：', decodedState);
+            if (decodedState.indexOf('task-detail') !== -1 || /^[0-9a-f-]{36}$/i.test(decodedState)) {
+                return normalizeDiscordRouteHash(decodedState);
+            }
         } catch (_decodeErr) {
-            return normalizeDiscordRouteHash(stateHash);
+            console.log('[discord-oauth] state 解码失败，使用原始值：', stateParam);
         }
+        return normalizeDiscordRouteHash(stateParam);
     }
     return normalizeDiscordRouteHash(returnHash || '#profile');
+}
+
+function restoreDiscordOAuthTaskRoute(params, returnHash) {
+    var targetHash = resolveDiscordOAuthReturnHash(params, returnHash);
+    var resumeTaskId = sessionStorage.getItem(DISCORD_OAUTH_RESUME_TASK) || '';
+    var taskId = resumeTaskId || extractTaskIdFromDiscordOAuthState(params.get('state')) || extractTaskIdFromDiscordRouteHash(targetHash);
+
+    if (!taskId) {
+        console.log('[discord-oauth] 未解析到任务 ID，targetHash：', targetHash);
+        return '';
+    }
+
+    var hashValue = 'task-detail?id=' + encodeURIComponent(taskId);
+    console.log('[discord-oauth] 恢复到任务详情页：', hashValue);
+
+    if (window.location.hash.replace(/^#/, '') !== hashValue) {
+        window.location.hash = hashValue;
+    }
+
+    return taskId;
 }
 
 function clearDiscordOAuthCallbackUrl(options) {
@@ -1361,16 +1415,19 @@ function clearDiscordOAuthCallbackUrl(options) {
     var nextUrl;
 
     if (taskId) {
-        nextUrl = window.location.origin + window.location.pathname + '#task-detail?id=' + encodeURIComponent(taskId);
-    } else {
-        nextUrl = window.location.origin + window.location.pathname + targetHash;
-    }
-
-    window.history.replaceState(null, '', nextUrl);
-
-    if (window.location.search) {
+        var hashValue = 'task-detail?id=' + encodeURIComponent(taskId);
+        nextUrl = window.location.origin + window.location.pathname + '#' + hashValue;
+        console.log('[discord-oauth] 清理 URL，跳转到：', nextUrl);
         window.history.replaceState(null, '', nextUrl);
+        if (window.location.hash.replace(/^#/, '') !== hashValue) {
+            window.location.hash = hashValue;
+        }
+        return;
     }
+
+    nextUrl = window.location.origin + window.location.pathname + targetHash;
+    console.log('[discord-oauth] 清理 URL，跳转到：', nextUrl);
+    window.history.replaceState(null, '', nextUrl);
 
     if (!window.location.search) {
         var hashBody = nextUrl.split('#')[1] || '';
@@ -1401,11 +1458,28 @@ async function startDiscordOAuthFlow(options) {
 
     var returnHash = options.returnHash || window.location.hash || '#profile';
     returnHash = normalizeDiscordRouteHash(returnHash);
+    var taskId = options.taskId || extractTaskIdFromDiscordRouteHash(returnHash);
+    if (taskId) {
+        returnHash = '#task-detail?id=' + encodeURIComponent(taskId);
+    }
+    var oauthState = buildDiscordOAuthState({ taskId: taskId, returnHash: returnHash });
+    var authorizeUrl = buildDiscordOAuthUrl(oauthState);
+
+    console.log('[discord-oauth] 生成授权链接', {
+        taskId: taskId,
+        returnHash: returnHash,
+        oauthState: oauthState,
+        authorizeUrl: authorizeUrl
+    });
+
     sessionStorage.setItem(DISCORD_OAUTH_SESSION_USER, userId);
     sessionStorage.setItem(DISCORD_OAUTH_SESSION_RETURN, returnHash);
     sessionStorage.setItem('coinrealm_discord_oauth_pending', '1');
     sessionStorage.removeItem(DISCORD_OAUTH_PROCESSED_CODE);
-    window.location.href = buildDiscordOAuthUrl(returnHash);
+    if (taskId) {
+        sessionStorage.setItem(DISCORD_OAUTH_RESUME_TASK, String(taskId));
+    }
+    window.location.href = authorizeUrl;
     return { success: true, redirecting: true };
 }
 
@@ -1466,12 +1540,51 @@ async function resolveDiscordOAuthUserId(sessionUserId) {
 }
 
 async function handleDiscordOAuthReturn() {
+    console.log('当前 URL：', window.location.href);
+
     var params = new URLSearchParams(window.location.search);
     var code = params.get('code');
-    if (!code) return false;
+    var oauthError = params.get('error');
+    var oauthState = params.get('state');
+
+    console.log('[discord-oauth] 回调参数', {
+        hasCode: !!code,
+        codePreview: code ? String(code).slice(0, 8) + '...' : '',
+        oauthState: oauthState,
+        oauthError: oauthError
+    });
+
+    if (!code && oauthError) {
+        console.log('[discord-oauth] Discord 返回错误：', oauthError, params.get('error_description'));
+        restoreDiscordOAuthTaskRoute(params, sessionStorage.getItem(DISCORD_OAUTH_SESSION_RETURN));
+        sessionStorage.removeItem(DISCORD_OAUTH_RESUME_SUBTASK);
+        sessionStorage.removeItem(DISCORD_OAUTH_RESUME_TASK);
+        clearDiscordOAuthCallbackUrl({
+            targetHash: resolveDiscordOAuthReturnHash(params, sessionStorage.getItem(DISCORD_OAUTH_SESSION_RETURN)),
+            resumeTaskId: sessionStorage.getItem(DISCORD_OAUTH_RESUME_TASK)
+        });
+        alert(dcT('dc_bind_oauth_cancelled'));
+        return true;
+    }
+
+    if (!code) {
+        return false;
+    }
+
+    if (!String(code).trim()) {
+        console.log('[discord-oauth] code 为空字符串');
+        restoreDiscordOAuthTaskRoute(params, sessionStorage.getItem(DISCORD_OAUTH_SESSION_RETURN));
+        clearDiscordOAuthCallbackUrl({
+            targetHash: resolveDiscordOAuthReturnHash(params, sessionStorage.getItem(DISCORD_OAUTH_SESSION_RETURN)),
+            resumeTaskId: sessionStorage.getItem(DISCORD_OAUTH_RESUME_TASK)
+        });
+        alert(dcT('dc_bind_oauth_cancelled'));
+        return true;
+    }
 
     var processedCode = sessionStorage.getItem(DISCORD_OAUTH_PROCESSED_CODE);
     if (processedCode === code) {
+        restoreDiscordOAuthTaskRoute(params, sessionStorage.getItem(DISCORD_OAUTH_SESSION_RETURN));
         clearDiscordOAuthCallbackUrl({
             targetHash: resolveDiscordOAuthReturnHash(params, sessionStorage.getItem(DISCORD_OAUTH_SESSION_RETURN)),
             resumeTaskId: sessionStorage.getItem(DISCORD_OAUTH_RESUME_TASK)
@@ -1485,9 +1598,11 @@ async function handleDiscordOAuthReturn() {
 
     discordOAuthReturnInFlight = (async function () {
     var returnHash = sessionStorage.getItem(DISCORD_OAUTH_SESSION_RETURN) || window.location.hash || '#profile';
-    var resumeTaskId = sessionStorage.getItem(DISCORD_OAUTH_RESUME_TASK) || '';
+    var resumeTaskId = sessionStorage.getItem(DISCORD_OAUTH_RESUME_TASK) || extractTaskIdFromDiscordOAuthState(oauthState) || '';
     var targetHash = resolveDiscordOAuthReturnHash(params, returnHash);
     var sessionUserId = sessionStorage.getItem(DISCORD_OAUTH_SESSION_USER) || '';
+
+    restoreDiscordOAuthTaskRoute(params, returnHash);
 
     sessionStorage.removeItem(DISCORD_OAUTH_SESSION_USER);
     sessionStorage.removeItem(DISCORD_OAUTH_SESSION_RETURN);
@@ -1502,6 +1617,8 @@ async function handleDiscordOAuthReturn() {
         return true;
     }
 
+    console.log('[discord-oauth] 准备绑定，userId：', userId, 'taskId：', resumeTaskId);
+
     var workerResult = await callDiscordOAuthWorker({
         code: code,
         user_id: userId,
@@ -1513,7 +1630,12 @@ async function handleDiscordOAuthReturn() {
     if (!workerResult || !workerResult.success) {
         sessionStorage.removeItem(DISCORD_OAUTH_RESUME_SUBTASK);
         sessionStorage.removeItem(DISCORD_OAUTH_RESUME_TASK);
-        alert(dcT('dc_bind_oauth_fail') + ((workerResult && (workerResult.reason || workerResult.error)) || ''));
+        var failReason = (workerResult && (workerResult.reason || workerResult.error)) || '';
+        if (String(failReason).indexOf('缺少 code') !== -1) {
+            alert(dcT('dc_bind_oauth_cancelled'));
+        } else {
+            alert(dcT('dc_bind_oauth_fail') + failReason);
+        }
         return true;
     }
 
@@ -1607,7 +1729,11 @@ async function startDiscordOAuthFromModal() {
     if (authBtn) authBtn.disabled = true;
 
     try {
-        await startDiscordOAuthFlow({ returnHash: window.location.hash || '#profile' });
+        var taskId = discordBindPendingTaskId || extractTaskIdFromDiscordRouteHash(window.location.hash);
+        var returnHash = taskId
+            ? ('#task-detail?id=' + encodeURIComponent(taskId))
+            : (window.location.hash || '#profile');
+        await startDiscordOAuthFlow({ returnHash: returnHash, taskId: taskId });
     } finally {
         discordBindSubmitting = false;
         if (authBtn) authBtn.disabled = false;
@@ -3780,6 +3906,17 @@ function handleRoute() {
 }
 
 function applyInitialRoute() {
+    var oauthParams = new URLSearchParams(window.location.search);
+    if (oauthParams.get('code') || oauthParams.get('error')) {
+        console.log('[discord-oauth] 检测到 OAuth 回调，跳过默认首页路由');
+        if (typeof window.coinrealmHandleDiscordOAuthReturn === 'function') {
+            window.coinrealmHandleDiscordOAuthReturn().catch(function (err) {
+                console.warn('Discord OAuth callback failed', err);
+            });
+        }
+        return;
+    }
+
     var baseRoute = getRouteBaseFromHash();
     if (typeof window.coinrealmApplyRoute === 'function') {
         window.coinrealmApplyRoute(baseRoute);
@@ -5937,7 +6074,8 @@ window.addEventListener('hashchange', handleRoute);
     initTaskDetailImageLightbox();
     initTaskDetailEvents();
 
-    if (new URLSearchParams(window.location.search).get('code') && typeof window.coinrealmHandleDiscordOAuthReturn === 'function') {
+    if ((new URLSearchParams(window.location.search).get('code') || new URLSearchParams(window.location.search).get('error'))
+        && typeof window.coinrealmHandleDiscordOAuthReturn === 'function') {
       await window.coinrealmHandleDiscordOAuthReturn();
     }
     await tryResumeDiscordSubtaskVerification();
