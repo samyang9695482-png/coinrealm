@@ -6457,6 +6457,12 @@ img {
     max-height: min(80vh, 640px);
     display: flex;
     flex-direction: column;
+    background: #ffffff;
+    opacity: 1;
+}
+
+#balance-ledger-modal .balance-ledger-panel .td-twitter-modal-title {
+    color: #1a1a2e;
 }
 
 .balance-ledger-list {
@@ -6472,7 +6478,7 @@ img {
     grid-template-columns: 1fr auto;
     gap: 4px 12px;
     padding: 12px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 .balance-ledger-item:last-child {
@@ -6482,12 +6488,12 @@ img {
 .balance-ledger-time {
     grid-column: 1 / -1;
     font-size: 12px;
-    color: rgba(255, 255, 255, 0.55);
+    color: #666;
 }
 
 .balance-ledger-type {
     font-size: 14px;
-    color: rgba(255, 255, 255, 0.92);
+    color: #1a1a2e;
 }
 
 .balance-ledger-amount {
@@ -6507,7 +6513,7 @@ img {
 .balance-ledger-balance {
     grid-column: 1 / -1;
     font-size: 12px;
-    color: rgba(255, 255, 255, 0.45);
+    color: #999;
 }
 
 .balance-ledger-loading,
@@ -6515,7 +6521,7 @@ img {
     padding: 24px 0;
     text-align: center;
     font-size: 14px;
-    color: rgba(255, 255, 255, 0.65);
+    color: #666;
 }
 
 .balance-ledger-loading.hidden,

@@ -9303,10 +9303,40 @@ window.addEventListener('hashchange', handleRoute);
     }
 
     var progressEl = document.getElementById('pf-stat-progress');
-    if (progressEl) progressEl.textContent = '0';
-
     var completedEl = document.getElementById('pf-stat-completed');
-    if (completedEl) completedEl.textContent = '0';
+    var progressCount = 0;
+    var completedCount = 0;
+
+    if (window.supabase && user.id) {
+      try {
+        var progressResult = await window.supabase
+          .from('submissions')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .in('status', ['pending', 'submitted', 'verifying']);
+        if (!progressResult.error && progressResult.count != null) {
+          progressCount = progressResult.count;
+        }
+      } catch (progressErr) {
+        console.warn('个人中心：进行中任务统计失败', progressErr);
+      }
+
+      try {
+        var completedResult = await window.supabase
+          .from('submissions')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .eq('status', 'approved');
+        if (!completedResult.error && completedResult.count != null) {
+          completedCount = completedResult.count;
+        }
+      } catch (completedErr) {
+        console.warn('个人中心：已完成任务统计失败', completedErr);
+      }
+    }
+
+    if (progressEl) progressEl.textContent = String(progressCount);
+    if (completedEl) completedEl.textContent = String(completedCount);
 
     var earningsEl = document.getElementById('pf-stat-earnings');
     if (earningsEl) earningsEl.textContent = formatNumber(crlmBalance);
