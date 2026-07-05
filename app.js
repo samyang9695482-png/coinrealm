@@ -555,7 +555,6 @@ var DISCORD_OAUTH_PROCESSED_CODE = 'coinrealm_discord_oauth_processed_code';
 var CRLM_CONTRACT_ADDRESS = '0x1378bbf6CC9f2A624f0B1c2Fd478Aa6F7B153d2e';
 var CRLM_POLYGON_RPC = 'https://polygon.llamarpc.com';
 var WITHDRAW_WORKER_URL = 'https://coinrealm-withdraw.samyang9695482.workers.dev';
-// CRLM 合约 ABI 见 contracts/CRLM.json，链上转账在 withdraw-worker 中使用
 
 var WITHDRAW_SETTINGS_DEFAULTS = {
   withdraw_min_amount: 10,
@@ -597,9 +596,15 @@ async function fetchWithdrawSettings() {
   return settings;
 }
 
+function getWithdrawWorkerUrl() {
+  return String(WITHDRAW_WORKER_URL || '').replace(/\/$/, '');
+}
+
 function invalidateWithdrawSettingsCache() {
   cachedWithdrawSettings = null;
 }
+
+// CRLM 合约 ABI 见 contracts/CRLM.json，链上转账在 withdraw-worker 中使用
 var TWITTER_OAUTH_SESSION_TOKEN = 'coinrealm_twitter_oauth_token_secret';
 var TWITTER_OAUTH_SESSION_USER = 'coinrealm_twitter_oauth_user_id';
 var TWITTER_OAUTH_SESSION_RETURN = 'coinrealm_twitter_oauth_return_hash';
@@ -9563,15 +9568,30 @@ window.addEventListener('hashchange', handleRoute);
     }
 
     try {
-      var response = await fetch(WITHDRAW_WORKER_URL.replace(/\/$/, ''), {
+      var withdrawApiUrl = getWithdrawWorkerUrl();
+      var requestPayload = {
+        user_id: userId,
+        amount: amount,
+        wallet_address: walletAddress
+      };
+
+      console.log('调用提币 Worker，URL：', withdrawApiUrl);
+      console.log('提币 Worker 请求方法：POST');
+      console.log('提币 Worker 请求头：', { 'Content-Type': 'application/json' });
+      console.log('提币 Worker 请求参数：', requestPayload);
+
+      var response = await fetch(withdrawApiUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: userId,
-          amount: amount,
-          wallet_address: walletAddress
-        })
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json'
+        },
+        body: JSON.stringify(requestPayload),
+        mode: 'cors',
+        credentials: 'omit'
       });
+
+      console.log('提币 Worker HTTP 状态：', response.status, response.statusText);
 
       var result = {};
       try {
@@ -9579,6 +9599,8 @@ window.addEventListener('hashchange', handleRoute);
       } catch (_jsonErr) {
         result = {};
       }
+
+      console.log('提币 Worker 返回：', result);
 
       if (!response.ok || !result.success) {
         var reason = result.error || result.reason || ('HTTP ' + response.status);
@@ -9609,7 +9631,8 @@ window.addEventListener('hashchange', handleRoute);
         });
       }
     } catch (err) {
-      console.error('提币请求失败:', err);
+      console.error('提币 Worker 网络请求失败:', err);
+      console.error('提币 Worker 请求 URL：', getWithdrawWorkerUrl());
       showWithdrawError(pfT('pf_withdraw_err_failed') + (err && err.message ? err.message : String(err)));
     } finally {
       withdrawSubmitting = false;
