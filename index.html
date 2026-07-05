@@ -706,10 +706,10 @@ ALTER TABLE tasks ADD COLUMN task_keyword TEXT;</pre>
           <div class="profile-balance-row">
             <div id="pf-crlm-balance" class="profile-crlm-balance">12,500 CRLM</div>
             <button type="button" id="pf-balance-ledger-btn" class="profile-balance-ledger-btn" data-i18n="pf_balance_ledger">明细</button>
+            <button type="button" id="pf-withdraw-btn" class="profile-withdraw-btn profile-balance-withdraw-btn" data-i18n="pf_btn_withdraw">提币</button>
           </div>
           <div id="pf-usdt-value" class="profile-usdt-value">≈ 1,250 USDT</div>
         </div>
-        <button type="button" class="profile-withdraw-btn" data-i18n="pf_btn_withdraw">提币</button>
       </div>
 
       <!-- 数据统计行 -->
@@ -1272,6 +1272,7 @@ ALTER TABLE tasks ADD COLUMN task_keyword TEXT;</pre>
           <button type="button" class="admin-tab" data-admin-tab="tasks" data-i18n="ad_tab_tasks">任务管理</button>
           <button type="button" class="admin-tab" data-admin-tab="users" data-i18n="ad_tab_users">用户管理</button>
           <button type="button" class="admin-tab" data-admin-tab="broadcasts" data-i18n="ad_tab_broadcasts">广播管理</button>
+          <button type="button" class="admin-tab" data-admin-tab="withdraw" data-i18n="ad_tab_withdraw">提币设置</button>
         </div>
 
         <section id="admin-panel-dashboard" class="admin-panel">
@@ -1312,6 +1313,21 @@ ALTER TABLE tasks ADD COLUMN task_keyword TEXT;</pre>
         <section id="admin-panel-broadcasts" class="admin-panel hidden">
           <h2 class="admin-section-title" data-i18n="ad_broadcasts_title">广播管理</h2>
           <div id="ad-broadcast-list" class="admin-list"></div>
+        </section>
+
+        <section id="admin-panel-withdraw" class="admin-panel hidden">
+          <h2 class="admin-section-title" data-i18n="ad_withdraw_title">提币设置</h2>
+          <form id="ad-withdraw-form" class="admin-form admin-withdraw-form">
+            <label class="admin-label" for="ad-withdraw-min" data-i18n="ad_withdraw_min">最小提币金额（CRLM）</label>
+            <input type="number" id="ad-withdraw-min" class="admin-input" min="1" step="1" value="10">
+            <label class="admin-label" for="ad-withdraw-max-tx" data-i18n="ad_withdraw_max_tx">单笔提币上限（CRLM）</label>
+            <input type="number" id="ad-withdraw-max-tx" class="admin-input" min="1" step="1" value="5000">
+            <label class="admin-label" for="ad-withdraw-max-daily-user" data-i18n="ad_withdraw_max_daily_user">每日提币上限（CRLM）</label>
+            <input type="number" id="ad-withdraw-max-daily-user" class="admin-input" min="1" step="1" value="10000">
+            <label class="admin-label" for="ad-withdraw-max-daily-global" data-i18n="ad_withdraw_max_daily_global">全局每日提币上限（CRLM）</label>
+            <input type="number" id="ad-withdraw-max-daily-global" class="admin-input" min="1" step="1" value="100000">
+            <button type="button" id="ad-withdraw-save-btn" class="admin-primary-btn" data-i18n="ad_btn_save_withdraw">保存</button>
+          </form>
         </section>
 
         <div id="ad-official-modal" class="admin-modal hidden" aria-hidden="true">
@@ -1438,6 +1454,29 @@ ALTER TABLE tasks ADD COLUMN task_keyword TEXT;</pre>
         <p id="reward-celebration-desc" class="reward-celebration-desc" data-i18n="reward_sent_desc">奖励已发送至余额</p>
         <div class="td-twitter-modal-actions">
           <button type="button" id="reward-celebration-confirm" class="td-twitter-modal-btn td-twitter-modal-primary reward-celebration-confirm-btn" data-i18n="reward_confirm">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="withdraw-modal" class="td-twitter-modal hidden" aria-hidden="true">
+      <div class="td-twitter-modal-overlay"></div>
+      <div class="td-twitter-modal-panel withdraw-modal-panel">
+        <h3 id="withdraw-modal-title" class="td-twitter-modal-title" data-i18n="pf_withdraw_title">提现 CRLM</h3>
+        <div id="withdraw-form-wrap" class="withdraw-form-wrap">
+          <p class="withdraw-balance-line">
+            <span data-i18n="pf_withdraw_balance_label">当前余额</span>：
+            <strong id="withdraw-current-balance">0</strong> CRLM
+          </p>
+          <label class="withdraw-field-label" for="withdraw-amount-input" data-i18n="pf_withdraw_amount_label">提现金额</label>
+          <input type="number" id="withdraw-amount-input" class="td-twitter-token-input withdraw-input" min="10" step="1" inputmode="decimal" autocomplete="off">
+          <label class="withdraw-field-label" for="withdraw-wallet-input" data-i18n="pf_withdraw_wallet_label">接收钱包地址</label>
+          <input type="text" id="withdraw-wallet-input" class="td-twitter-token-input withdraw-input" placeholder="0x..." autocomplete="off" spellcheck="false">
+          <p id="withdraw-hint" class="withdraw-hint">最小提币 10 CRLM，预计几分钟内到账。</p>
+          <p id="withdraw-error" class="td-twitter-modal-error hidden"></p>
+          <div class="td-twitter-modal-actions">
+            <button type="button" id="withdraw-cancel-btn" class="td-twitter-modal-btn td-twitter-modal-cancel" data-i18n="pf_withdraw_cancel">取消</button>
+            <button type="button" id="withdraw-confirm-btn" class="td-twitter-modal-btn td-twitter-modal-primary" data-i18n="pf_withdraw_confirm">确认提币</button>
+          </div>
         </div>
       </div>
     </div>

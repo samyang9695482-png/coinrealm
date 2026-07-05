@@ -552,6 +552,54 @@ var DISCORD_OAUTH_SESSION_RETURN = 'coinrealm_discord_oauth_return_hash';
 var DISCORD_OAUTH_RESUME_SUBTASK = 'coinrealm_discord_oauth_resume_subtask';
 var DISCORD_OAUTH_RESUME_TASK = 'coinrealm_discord_oauth_resume_task';
 var DISCORD_OAUTH_PROCESSED_CODE = 'coinrealm_discord_oauth_processed_code';
+var CRLM_CONTRACT_ADDRESS = '0x1378bbf6CC9f2A624f0B1c2Fd478Aa6F7B153d2e';
+var CRLM_POLYGON_RPC = 'https://polygon.llamarpc.com';
+var WITHDRAW_WORKER_URL = 'https://coinrealm-withdraw.samyang9695482.workers.dev';
+// CRLM 合约 ABI 见 contracts/CRLM.json，链上转账在 withdraw-worker 中使用
+
+var WITHDRAW_SETTINGS_DEFAULTS = {
+  withdraw_min_amount: 10,
+  withdraw_max_per_tx: 5000,
+  withdraw_max_daily_user: 10000,
+  withdraw_max_daily_global: 100000
+};
+var cachedWithdrawSettings = null;
+
+async function fetchWithdrawSettings() {
+  if (cachedWithdrawSettings) return cachedWithdrawSettings;
+
+  var settings = Object.assign({}, WITHDRAW_SETTINGS_DEFAULTS);
+  if (!window.supabase) {
+    cachedWithdrawSettings = settings;
+    return settings;
+  }
+
+  try {
+    var keys = Object.keys(WITHDRAW_SETTINGS_DEFAULTS);
+    var result = await window.supabase
+      .from('settings')
+      .select('key, value')
+      .in('key', keys);
+
+    if (!result.error && result.data) {
+      result.data.forEach(function (row) {
+        var num = Number(row.value);
+        if (row.key && Number.isFinite(num)) {
+          settings[row.key] = num;
+        }
+      });
+    }
+  } catch (settingsErr) {
+    console.warn('加载提币设置失败:', settingsErr);
+  }
+
+  cachedWithdrawSettings = settings;
+  return settings;
+}
+
+function invalidateWithdrawSettingsCache() {
+  cachedWithdrawSettings = null;
+}
 var TWITTER_OAUTH_SESSION_TOKEN = 'coinrealm_twitter_oauth_token_secret';
 var TWITTER_OAUTH_SESSION_USER = 'coinrealm_twitter_oauth_user_id';
 var TWITTER_OAUTH_SESSION_RETURN = 'coinrealm_twitter_oauth_return_hash';
@@ -3426,7 +3474,7 @@ function showRewardCelebration(rewardAmount, options) {
 
     amountEl.textContent = formatRewardCelebrationAmount(rewardAmount);
     if (descEl) {
-        descEl.textContent = formatCheckinText('reward_sent_desc') || '奖励已发送至余额';
+        descEl.textContent = options.description || formatCheckinText('reward_sent_desc') || '奖励已发送至余额';
     }
     if (confirmBtn) {
         confirmBtn.textContent = formatCheckinText('reward_confirm') || '确定';
@@ -8825,6 +8873,8 @@ window.addEventListener('hashchange', handleRoute);
   var profileInitialized = false;
   var avatarPickerInitialized = false;
   var balanceLedgerInitialized = false;
+  var withdrawInitialized = false;
+  var withdrawSubmitting = false;
   var selectedPresetAvatarPath = '';
 
   var profileTranslations = {
@@ -8869,7 +8919,24 @@ window.addEventListener('hashchange', handleRoute);
       pf_ledger_icon_checkin: '⛏️',
       pf_ledger_icon_publish: '📝',
       pf_ledger_icon_refund: '↩️',
-      pf_ledger_balance_after: '余额 {amount} CRLM'
+      pf_ledger_balance_after: '余额 {amount} CRLM',
+      pf_withdraw_title: '提现 CRLM',
+      pf_withdraw_balance_label: '当前余额',
+      pf_withdraw_amount_label: '提现金额',
+      pf_withdraw_wallet_label: '接收钱包地址',
+      pf_withdraw_hint: '最小提币 {min} CRLM，预计几分钟内到账。',
+      pf_withdraw_cancel: '取消',
+      pf_withdraw_confirm: '确认提币',
+      pf_withdraw_confirming: '处理中...',
+      pf_withdraw_success_celebration: '提币成功！{amount} CRLM 已发送到你的钱包',
+      pf_withdraw_err_login: '请先登录',
+      pf_withdraw_err_amount: '请输入有效的提现金额',
+      pf_withdraw_err_min: '最低提币金额为 {min} CRLM',
+      pf_withdraw_err_max: '单笔提币不能超过 {max} CRLM',
+      pf_withdraw_err_balance: '提现金额不能超过当前余额',
+      pf_withdraw_err_wallet: '请输入有效的钱包地址',
+      pf_withdraw_err_worker: '提币服务暂不可用，请稍后再试',
+      pf_withdraw_err_failed: '提币失败：'
     },
     en: {
       pf_btn_withdraw: 'Withdraw',
@@ -8912,7 +8979,24 @@ window.addEventListener('hashchange', handleRoute);
       pf_ledger_icon_checkin: '⛏️',
       pf_ledger_icon_publish: '📝',
       pf_ledger_icon_refund: '↩️',
-      pf_ledger_balance_after: 'Balance {amount} CRLM'
+      pf_ledger_balance_after: 'Balance {amount} CRLM',
+      pf_withdraw_title: 'Withdraw CRLM',
+      pf_withdraw_balance_label: 'Current balance',
+      pf_withdraw_amount_label: 'Withdraw amount',
+      pf_withdraw_wallet_label: 'Receiving wallet address',
+      pf_withdraw_hint: 'Minimum withdrawal {min} CRLM. Funds usually arrive within a few minutes.',
+      pf_withdraw_cancel: 'Cancel',
+      pf_withdraw_confirm: 'Confirm Withdrawal',
+      pf_withdraw_confirming: 'Processing...',
+      pf_withdraw_success_celebration: 'Withdrawal successful! {amount} CRLM sent to your wallet.',
+      pf_withdraw_err_login: 'Please log in first',
+      pf_withdraw_err_amount: 'Please enter a valid withdrawal amount',
+      pf_withdraw_err_min: 'Minimum withdrawal is {min} CRLM',
+      pf_withdraw_err_max: 'Maximum per withdrawal is {max} CRLM',
+      pf_withdraw_err_balance: 'Amount cannot exceed your current balance',
+      pf_withdraw_err_wallet: 'Please enter a valid wallet address',
+      pf_withdraw_err_worker: 'Withdrawal service is unavailable. Please try again later.',
+      pf_withdraw_err_failed: 'Withdrawal failed: '
     }
   };
 
@@ -9246,6 +9330,255 @@ window.addEventListener('hashchange', handleRoute);
     });
   }
 
+  function isValidWithdrawWalletAddress(address) {
+    var value = String(address || '').trim();
+    return value.indexOf('0x') === 0 && value.length > 10;
+  }
+
+  function hideWithdrawModal() {
+    var modal = document.getElementById('withdraw-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+
+  function resetWithdrawModalForm() {
+    var formWrap = document.getElementById('withdraw-form-wrap');
+    var errorEl = document.getElementById('withdraw-error');
+    var amountInput = document.getElementById('withdraw-amount-input');
+    var walletInput = document.getElementById('withdraw-wallet-input');
+    var confirmBtn = document.getElementById('withdraw-confirm-btn');
+
+    if (formWrap) formWrap.classList.remove('hidden');
+    if (errorEl) {
+      errorEl.textContent = '';
+      errorEl.classList.add('hidden');
+    }
+    if (amountInput) amountInput.value = '';
+    if (walletInput) walletInput.value = '';
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = pfT('pf_withdraw_confirm');
+    }
+  }
+
+  function updateWithdrawModalHint(settings) {
+    var hintEl = document.getElementById('withdraw-hint');
+    var minAmount = settings && settings.withdraw_min_amount != null
+      ? Number(settings.withdraw_min_amount)
+      : WITHDRAW_SETTINGS_DEFAULTS.withdraw_min_amount;
+    if (hintEl) {
+      hintEl.textContent = pfT('pf_withdraw_hint', { min: formatNumber(minAmount) });
+    }
+  }
+
+  function applyWithdrawModalI18n() {
+    var modal = document.getElementById('withdraw-modal');
+    if (!modal) return;
+
+    modal.querySelectorAll('[data-i18n]').forEach(function (el) {
+      var key = el.getAttribute('data-i18n');
+      if (profileTranslations[getLang()][key]) {
+        el.textContent = pfT(key);
+      }
+    });
+
+    var confirmBtn = document.getElementById('withdraw-confirm-btn');
+    if (confirmBtn && !withdrawSubmitting) {
+      confirmBtn.textContent = pfT('pf_withdraw_confirm');
+    }
+  }
+
+  async function openWithdrawModal() {
+    if (!window.supabase) return;
+
+    var userId = await getCurrentUserId();
+    if (!userId) {
+      alert(pfT('pf_withdraw_err_login'));
+      return;
+    }
+
+    var modal = document.getElementById('withdraw-modal');
+    if (!modal) return;
+
+    var user = coinrealmCurrentUserProfile;
+    if (!user || String(user.id) !== String(userId)) {
+      user = await loadUserProfile();
+    }
+    if (!user) return;
+
+    coinrealmCurrentUserProfile = user;
+    var currentBalance = Number(user.crlm_balance) || 0;
+    var settings = await fetchWithdrawSettings();
+    var minAmount = Number(settings.withdraw_min_amount) || WITHDRAW_SETTINGS_DEFAULTS.withdraw_min_amount;
+
+    resetWithdrawModalForm();
+    applyWithdrawModalI18n();
+    updateWithdrawModalHint(settings);
+
+    var balanceEl = document.getElementById('withdraw-current-balance');
+    if (balanceEl) balanceEl.textContent = formatNumber(currentBalance);
+
+    var amountInput = document.getElementById('withdraw-amount-input');
+    if (amountInput) {
+      amountInput.min = String(minAmount);
+      amountInput.max = String(currentBalance);
+    }
+
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+  }
+
+  function showWithdrawError(message) {
+    var errorEl = document.getElementById('withdraw-error');
+    if (!errorEl) return;
+    errorEl.textContent = message || pfT('pf_withdraw_err_failed');
+    errorEl.classList.remove('hidden');
+  }
+
+  async function submitWithdrawRequest() {
+    if (withdrawSubmitting) return;
+    if (!window.supabase) return;
+
+    var userId = await getCurrentUserId();
+    if (!userId) {
+      alert(pfT('pf_withdraw_err_login'));
+      return;
+    }
+
+    if (!WITHDRAW_WORKER_URL || WITHDRAW_WORKER_URL === 'WORKER_URL_PLACEHOLDER') {
+      showWithdrawError(pfT('pf_withdraw_err_worker'));
+      return;
+    }
+
+    var amountInput = document.getElementById('withdraw-amount-input');
+    var walletInput = document.getElementById('withdraw-wallet-input');
+    var confirmBtn = document.getElementById('withdraw-confirm-btn');
+    var amount = Number(amountInput && amountInput.value);
+    var walletAddress = walletInput ? String(walletInput.value || '').trim() : '';
+    var settings = await fetchWithdrawSettings();
+    var minAmount = Number(settings.withdraw_min_amount) || WITHDRAW_SETTINGS_DEFAULTS.withdraw_min_amount;
+    var maxPerTx = Number(settings.withdraw_max_per_tx) || WITHDRAW_SETTINGS_DEFAULTS.withdraw_max_per_tx;
+
+    var user = coinrealmCurrentUserProfile;
+    var currentBalance = user ? Number(user.crlm_balance) || 0 : 0;
+    if (!user || String(user.id) !== String(userId)) {
+      user = await loadUserProfile();
+      currentBalance = user ? Number(user.crlm_balance) || 0 : 0;
+    }
+
+    var errorEl = document.getElementById('withdraw-error');
+    if (errorEl) {
+      errorEl.textContent = '';
+      errorEl.classList.add('hidden');
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      showWithdrawError(pfT('pf_withdraw_err_amount'));
+      return;
+    }
+    if (amount < minAmount) {
+      showWithdrawError(pfT('pf_withdraw_err_min', { min: formatNumber(minAmount) }));
+      return;
+    }
+    if (amount > maxPerTx) {
+      showWithdrawError(pfT('pf_withdraw_err_max', { max: formatNumber(maxPerTx) }));
+      return;
+    }
+    if (amount > currentBalance) {
+      showWithdrawError(pfT('pf_withdraw_err_balance'));
+      return;
+    }
+    if (!isValidWithdrawWalletAddress(walletAddress)) {
+      showWithdrawError(pfT('pf_withdraw_err_wallet'));
+      return;
+    }
+
+    withdrawSubmitting = true;
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = pfT('pf_withdraw_confirming');
+    }
+
+    try {
+      var response = await fetch(WITHDRAW_WORKER_URL.replace(/\/$/, ''), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: userId,
+          amount: amount,
+          wallet_address: walletAddress
+        })
+      });
+
+      var result = {};
+      try {
+        result = await response.json();
+      } catch (_jsonErr) {
+        result = {};
+      }
+
+      if (!response.ok || !result.success) {
+        var reason = result.error || result.reason || ('HTTP ' + response.status);
+        showWithdrawError(pfT('pf_withdraw_err_failed') + reason);
+        return;
+      }
+
+      if (user && result.crlm_balance != null) {
+        user.crlm_balance = result.crlm_balance;
+        coinrealmCurrentUserProfile = user;
+      }
+
+      hideWithdrawModal();
+
+      var crlmEl = document.getElementById('pf-crlm-balance');
+      if (crlmEl && user) {
+        crlmEl.textContent = formatNumber(Number(user.crlm_balance) || 0) + ' CRLM';
+      }
+      var earningsEl = document.getElementById('pf-stat-earnings');
+      if (earningsEl && user) {
+        earningsEl.textContent = formatNumber(Number(user.crlm_balance) || 0);
+      }
+
+      if (typeof window.coinrealmShowRewardCelebration === 'function') {
+        window.coinrealmShowRewardCelebration(amount, {
+          description: pfT('pf_withdraw_success_celebration', { amount: formatNumber(amount) }),
+          autoCloseMs: 4000
+        });
+      }
+    } catch (err) {
+      console.error('提币请求失败:', err);
+      showWithdrawError(pfT('pf_withdraw_err_failed') + (err && err.message ? err.message : String(err)));
+    } finally {
+      withdrawSubmitting = false;
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = pfT('pf_withdraw_confirm');
+      }
+    }
+  }
+
+  function initWithdrawEvents() {
+    if (withdrawInitialized) return;
+    withdrawInitialized = true;
+
+    document.addEventListener('click', function (e) {
+      if (e.target.closest('#pf-withdraw-btn')) {
+        e.preventDefault();
+        openWithdrawModal();
+        return;
+      }
+      if (e.target.closest('#withdraw-cancel-btn') || e.target.closest('#withdraw-modal .td-twitter-modal-overlay')) {
+        hideWithdrawModal();
+        return;
+      }
+      if (e.target.closest('#withdraw-confirm-btn')) {
+        e.preventDefault();
+        submitWithdrawRequest();
+      }
+    });
+  }
+
   function applyProfileI18n() {
     document.querySelectorAll('#profile-page [data-i18n]').forEach(function (el) {
       var key = el.getAttribute('data-i18n');
@@ -9482,6 +9815,7 @@ window.addEventListener('hashchange', handleRoute);
     profileInitialized = true;
     initAvatarPickerEvents();
     initBalanceLedgerEvents();
+    initWithdrawEvents();
 
     document.querySelectorAll('#profile-page .profile-menu-item[data-route]').forEach(function (item) {
       item.addEventListener('click', function (e) {
@@ -9500,6 +9834,8 @@ window.addEventListener('hashchange', handleRoute);
       appContentEl.innerHTML = APP_CONTENT_HTML;
       profileInitialized = false;
       avatarPickerInitialized = false;
+      balanceLedgerInitialized = false;
+      withdrawInitialized = false;
     }
   }
 
@@ -14776,10 +15112,20 @@ window.addEventListener('hashchange', handleRoute);
       ad_tab_tasks: '任务管理',
       ad_tab_users: '用户管理',
       ad_tab_broadcasts: '广播管理',
+      ad_tab_withdraw: '提币设置',
       ad_dashboard_title: '数据看板',
       ad_tasks_title: '任务管理',
       ad_users_title: '用户管理',
       ad_broadcasts_title: '广播管理',
+      ad_withdraw_title: '提币设置',
+      ad_withdraw_min: '最小提币金额（CRLM）',
+      ad_withdraw_max_tx: '单笔提币上限（CRLM）',
+      ad_withdraw_max_daily_user: '每日提币上限（CRLM）',
+      ad_withdraw_max_daily_global: '全局每日提币上限（CRLM）',
+      ad_btn_save_withdraw: '保存',
+      ad_withdraw_save_ok: '提币设置已保存',
+      ad_withdraw_save_fail: '保存提币设置失败：',
+      ad_withdraw_invalid: '请输入有效的限额数值',
       ad_stat_users: '总用户数',
       ad_stat_tasks: '总任务数',
       ad_stat_active: '进行中任务',
@@ -14855,10 +15201,20 @@ window.addEventListener('hashchange', handleRoute);
       ad_tab_tasks: 'Tasks',
       ad_tab_users: 'Users',
       ad_tab_broadcasts: 'Broadcasts',
+      ad_tab_withdraw: 'Withdraw Settings',
       ad_dashboard_title: 'Dashboard',
       ad_tasks_title: 'Task Management',
       ad_users_title: 'User Management',
       ad_broadcasts_title: 'Broadcast Management',
+      ad_withdraw_title: 'Withdraw Settings',
+      ad_withdraw_min: 'Minimum withdrawal (CRLM)',
+      ad_withdraw_max_tx: 'Max per withdrawal (CRLM)',
+      ad_withdraw_max_daily_user: 'Daily limit per user (CRLM)',
+      ad_withdraw_max_daily_global: 'Global daily limit (CRLM)',
+      ad_btn_save_withdraw: 'Save',
+      ad_withdraw_save_ok: 'Withdraw settings saved',
+      ad_withdraw_save_fail: 'Failed to save withdraw settings: ',
+      ad_withdraw_invalid: 'Please enter valid limit values',
       ad_stat_users: 'Total Users',
       ad_stat_tasks: 'Total Tasks',
       ad_stat_active: 'Active Tasks',
@@ -15459,7 +15815,58 @@ window.addEventListener('hashchange', handleRoute);
     } else if (adminTab === 'broadcasts') {
       await loadAdminBroadcasts();
       renderBroadcastList();
+    } else if (adminTab === 'withdraw') {
+      await loadAdminWithdrawSettings();
     }
+  }
+
+  async function loadAdminWithdrawSettings() {
+    var settings = await fetchWithdrawSettings();
+    var minEl = document.getElementById('ad-withdraw-min');
+    var maxTxEl = document.getElementById('ad-withdraw-max-tx');
+    var maxDailyUserEl = document.getElementById('ad-withdraw-max-daily-user');
+    var maxDailyGlobalEl = document.getElementById('ad-withdraw-max-daily-global');
+
+    if (minEl) minEl.value = String(settings.withdraw_min_amount);
+    if (maxTxEl) maxTxEl.value = String(settings.withdraw_max_per_tx);
+    if (maxDailyUserEl) maxDailyUserEl.value = String(settings.withdraw_max_daily_user);
+    if (maxDailyGlobalEl) maxDailyGlobalEl.value = String(settings.withdraw_max_daily_global);
+  }
+
+  async function saveAdminWithdrawSettings() {
+    if (!window.supabase) return;
+
+    var min = Number(document.getElementById('ad-withdraw-min') && document.getElementById('ad-withdraw-min').value);
+    var maxTx = Number(document.getElementById('ad-withdraw-max-tx') && document.getElementById('ad-withdraw-max-tx').value);
+    var maxDailyUser = Number(document.getElementById('ad-withdraw-max-daily-user') && document.getElementById('ad-withdraw-max-daily-user').value);
+    var maxDailyGlobal = Number(document.getElementById('ad-withdraw-max-daily-global') && document.getElementById('ad-withdraw-max-daily-global').value);
+
+    if (!Number.isFinite(min) || min <= 0 ||
+        !Number.isFinite(maxTx) || maxTx <= 0 ||
+        !Number.isFinite(maxDailyUser) || maxDailyUser <= 0 ||
+        !Number.isFinite(maxDailyGlobal) || maxDailyGlobal <= 0) {
+      alert(adT('ad_withdraw_invalid'));
+      return;
+    }
+
+    var rows = [
+      { key: 'withdraw_min_amount', value: String(min) },
+      { key: 'withdraw_max_per_tx', value: String(maxTx) },
+      { key: 'withdraw_max_daily_user', value: String(maxDailyUser) },
+      { key: 'withdraw_max_daily_global', value: String(maxDailyGlobal) }
+    ];
+
+    var result = await window.supabase
+      .from('settings')
+      .upsert(rows, { onConflict: 'key' });
+
+    if (result.error) {
+      alert(adT('ad_withdraw_save_fail') + result.error.message);
+      return;
+    }
+
+    invalidateWithdrawSettingsCache();
+    alert(adT('ad_withdraw_save_ok'));
   }
 
   function initAdminEvents() {
@@ -15546,6 +15953,11 @@ window.addEventListener('hashchange', handleRoute);
     var grantConfirm = document.getElementById('ad-grant-confirm');
     if (grantCancel) grantCancel.addEventListener('click', closeGrantModal);
     if (grantConfirm) grantConfirm.addEventListener('click', confirmGrantCrlm);
+
+    var withdrawSaveBtn = document.getElementById('ad-withdraw-save-btn');
+    if (withdrawSaveBtn) {
+      withdrawSaveBtn.addEventListener('click', saveAdminWithdrawSettings);
+    }
 
     document.querySelectorAll('#ad-cancel-modal .admin-modal-overlay, #ad-official-modal .admin-modal-overlay, #ad-grant-modal .admin-modal-overlay').forEach(function (overlay) {
       overlay.addEventListener('click', function () {

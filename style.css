@@ -3054,6 +3054,10 @@ img {
         padding: 16px;
     }
 
+    .profile-balance-withdraw-btn {
+        width: auto;
+    }
+
     .profile-withdraw-btn {
         width: 100%;
         text-align: center;
@@ -6374,6 +6378,84 @@ img {
 .profile-balance-ledger-btn:hover {
     background: rgba(240, 185, 11, 0.18);
     opacity: 0.9;
+}
+
+.profile-balance-withdraw-btn {
+    padding: 2px 12px;
+    font-size: 12px;
+    border-width: 1px;
+}
+
+.withdraw-modal-panel {
+    width: min(92vw, 420px);
+    background: #ffffff;
+    opacity: 1;
+}
+
+.withdraw-form-wrap,
+.withdraw-success-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.withdraw-success-wrap.hidden,
+.withdraw-form-wrap.hidden {
+    display: none;
+}
+
+.withdraw-balance-line {
+    margin: 0 0 8px;
+    font-size: 14px;
+    color: #666;
+}
+
+.withdraw-balance-line strong {
+    color: #1a1a2e;
+    font-weight: 700;
+}
+
+.withdraw-field-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #333;
+    margin-top: 4px;
+}
+
+.withdraw-input {
+    margin-bottom: 0;
+}
+
+.withdraw-hint {
+    margin: 4px 0 8px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #888;
+}
+
+.admin-withdraw-form {
+    max-width: 420px;
+}
+
+.admin-withdraw-form .admin-primary-btn {
+    margin-top: 8px;
+    align-self: flex-start;
+}
+
+.withdraw-success-text {
+    margin: 0 0 16px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #1a1a2e;
+    word-break: break-all;
+}
+
+#withdraw-modal .withdraw-modal-panel .td-twitter-modal-title {
+    color: #1a1a2e;
+}
+
+#withdraw-modal .withdraw-modal-panel .td-twitter-modal-error {
+    margin-top: 0;
 }
 
 .reward-celebration-modal {
