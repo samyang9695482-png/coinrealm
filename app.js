@@ -8936,7 +8936,8 @@ window.addEventListener('hashchange', handleRoute);
       pf_withdraw_err_balance: '提现金额不能超过当前余额',
       pf_withdraw_err_wallet: '请输入有效的钱包地址',
       pf_withdraw_err_worker: '提币服务暂不可用，请稍后再试',
-      pf_withdraw_err_failed: '提币失败：'
+      pf_withdraw_err_failed: '提币失败：',
+      pf_balance_fetch_fail: '获取余额失败，请稍后重试'
     },
     en: {
       pf_btn_withdraw: 'Withdraw',
@@ -8996,7 +8997,8 @@ window.addEventListener('hashchange', handleRoute);
       pf_withdraw_err_balance: 'Amount cannot exceed your current balance',
       pf_withdraw_err_wallet: 'Please enter a valid wallet address',
       pf_withdraw_err_worker: 'Withdrawal service is unavailable. Please try again later.',
-      pf_withdraw_err_failed: 'Withdrawal failed: '
+      pf_withdraw_err_failed: 'Withdrawal failed: ',
+      pf_balance_fetch_fail: 'Failed to load balance. Please try again later.'
     }
   };
 
@@ -9030,6 +9032,56 @@ window.addEventListener('hashchange', handleRoute);
     var n = Number(level) || 0;
     if (n >= 5) return pfT('pf_level_master');
     return '';
+  }
+
+  async function fetchCurrentUserCrlmBalance() {
+    if (!window.supabase) {
+      return { ok: false, error: pfT('pf_balance_fetch_fail') };
+    }
+
+    var userId = await getCurrentUserId();
+    if (!userId) {
+      return { ok: false, error: pfT('pf_withdraw_err_login') };
+    }
+
+    try {
+      var result = await window.supabase
+        .from('users')
+        .select('id, crlm_balance')
+        .eq('id', userId)
+        .single();
+
+      if (result.error || !result.data) {
+        console.error('获取 CRLM 余额失败:', result.error);
+        return { ok: false, error: pfT('pf_balance_fetch_fail') };
+      }
+
+      var balance = Number(result.data.crlm_balance);
+      if (!Number.isFinite(balance)) balance = 0;
+
+      if (coinrealmCurrentUserProfile && String(coinrealmCurrentUserProfile.id) === String(userId)) {
+        coinrealmCurrentUserProfile.crlm_balance = balance;
+      }
+
+      return { ok: true, balance: balance, userId: userId };
+    } catch (balanceErr) {
+      console.error('获取 CRLM 余额失败:', balanceErr);
+      return { ok: false, error: pfT('pf_balance_fetch_fail') };
+    }
+  }
+
+  function renderProfileCrlmBalanceDisplay(balanceResult) {
+    var crlmEl = document.getElementById('pf-crlm-balance');
+    var earningsEl = document.getElementById('pf-stat-earnings');
+
+    if (!balanceResult || !balanceResult.ok) {
+      var failText = (balanceResult && balanceResult.error) || pfT('pf_balance_fetch_fail');
+      if (crlmEl) crlmEl.textContent = failText;
+      return;
+    }
+
+    if (crlmEl) crlmEl.textContent = formatNumber(balanceResult.balance) + ' CRLM';
+    if (earningsEl) earningsEl.textContent = formatNumber(balanceResult.balance);
   }
 
   async function loadUserProfile() {
@@ -9401,32 +9453,42 @@ window.addEventListener('hashchange', handleRoute);
     var modal = document.getElementById('withdraw-modal');
     if (!modal) return;
 
-    var user = coinrealmCurrentUserProfile;
-    if (!user || String(user.id) !== String(userId)) {
-      user = await loadUserProfile();
-    }
-    if (!user) return;
-
-    coinrealmCurrentUserProfile = user;
-    var currentBalance = Number(user.crlm_balance) || 0;
-    var settings = await fetchWithdrawSettings();
-    var minAmount = Number(settings.withdraw_min_amount) || WITHDRAW_SETTINGS_DEFAULTS.withdraw_min_amount;
-
     resetWithdrawModalForm();
     applyWithdrawModalI18n();
-    updateWithdrawModalHint(settings);
-
-    var balanceEl = document.getElementById('withdraw-current-balance');
-    if (balanceEl) balanceEl.textContent = formatNumber(currentBalance);
-
-    var amountInput = document.getElementById('withdraw-amount-input');
-    if (amountInput) {
-      amountInput.min = String(minAmount);
-      amountInput.max = String(currentBalance);
-    }
 
     modal.classList.remove('hidden');
     modal.setAttribute('aria-hidden', 'false');
+
+    var balanceEl = document.getElementById('withdraw-current-balance');
+    var confirmBtn = document.getElementById('withdraw-confirm-btn');
+    var amountInput = document.getElementById('withdraw-amount-input');
+    if (balanceEl) balanceEl.textContent = pfT('pf_ledger_loading');
+
+    var balanceResult = await fetchCurrentUserCrlmBalance();
+    var settings = await fetchWithdrawSettings();
+    var minAmount = Number(settings.withdraw_min_amount) || WITHDRAW_SETTINGS_DEFAULTS.withdraw_min_amount;
+
+    updateWithdrawModalHint(settings);
+
+    if (!balanceResult.ok) {
+      if (balanceEl) balanceEl.textContent = balanceResult.error;
+      if (confirmBtn) confirmBtn.disabled = true;
+      if (amountInput) {
+        amountInput.min = String(minAmount);
+        amountInput.removeAttribute('max');
+      }
+      showWithdrawError(balanceResult.error);
+      return;
+    }
+
+    if (balanceEl) balanceEl.textContent = formatNumber(balanceResult.balance);
+    renderProfileCrlmBalanceDisplay(balanceResult);
+
+    if (amountInput) {
+      amountInput.min = String(minAmount);
+      amountInput.max = String(balanceResult.balance);
+    }
+    if (confirmBtn) confirmBtn.disabled = false;
   }
 
   function showWithdrawError(message) {
@@ -9604,7 +9666,6 @@ window.addEventListener('hashchange', handleRoute);
     }
 
     var displayUsername = user.username || displayNameFromEmail(user.email);
-    var crlmBalance = Number(user.crlm_balance) || 0;
     var usdtBalance = Number(user.usdt_balance) || 0;
     var reputationScore = user.reputation_score != null ? user.reputation_score : 0;
     var levelNum = user.level != null ? user.level : 0;
@@ -9625,10 +9686,8 @@ window.addEventListener('hashchange', handleRoute);
       reputationEl.textContent = pfT('pf_completion_rate', { rate: reputationScore });
     }
 
-    var crlmEl = document.getElementById('pf-crlm-balance');
-    if (crlmEl) {
-      crlmEl.textContent = formatNumber(crlmBalance) + ' CRLM';
-    }
+    var balanceResult = await fetchCurrentUserCrlmBalance();
+    renderProfileCrlmBalanceDisplay(balanceResult);
 
     var usdtEl = document.getElementById('pf-usdt-value');
     if (usdtEl) {
@@ -9670,9 +9729,6 @@ window.addEventListener('hashchange', handleRoute);
 
     if (progressEl) progressEl.textContent = String(progressCount);
     if (completedEl) completedEl.textContent = String(completedCount);
-
-    var earningsEl = document.getElementById('pf-stat-earnings');
-    if (earningsEl) earningsEl.textContent = formatNumber(crlmBalance);
 
     var avatarEl = document.getElementById('pf-avatar');
     if (avatarEl) {
