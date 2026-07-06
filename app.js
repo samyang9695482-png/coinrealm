@@ -555,6 +555,11 @@ var DISCORD_OAUTH_PROCESSED_CODE = 'coinrealm_discord_oauth_processed_code';
 var CRLM_CONTRACT_ADDRESS = '0x1378bbf6CC9f2A624f0B1c2Fd478Aa6F7B153d2e';
 var CRLM_POLYGON_RPC = 'https://polygon.llamarpc.com';
 var WITHDRAW_WORKER_URL = 'https://coinrealm-withdraw.samyang9695482.workers.dev';
+// 平台充币收款地址（Polygon）
+var DEPOSIT_WALLET_ADDRESS = '0x6f6ecc7fe6a3c5f8a50b5bd9a91dfd76e4ecf5b2';
+// 平台提币出款地址（Polygon，Worker 使用 PLATFORM_PRIVATE_KEY 对应钱包）
+var WITHDRAW_WALLET_ADDRESS = '0x29a186c7824f2d60601676c3530e7cdee6832f67';
+var PLATFORM_WALLET_ADDRESS = WITHDRAW_WALLET_ADDRESS;
 
 var WITHDRAW_SETTINGS_DEFAULTS = {
   withdraw_min_amount: 10,
@@ -602,6 +607,27 @@ function getWithdrawWorkerUrl() {
 
 function invalidateWithdrawSettingsCache() {
   cachedWithdrawSettings = null;
+}
+
+async function fetchDepositWalletAddress() {
+  var configured = String(DEPOSIT_WALLET_ADDRESS || '').trim();
+  if (configured) return configured;
+
+  if (window.supabase) {
+    try {
+      var result = await window.supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'deposit_wallet_address')
+        .maybeSingle();
+      if (!result.error && result.data && result.data.value) {
+        return String(result.data.value).trim();
+      }
+    } catch (settingsErr) {
+      console.warn('读取充币地址失败:', settingsErr);
+    }
+  }
+  return '';
 }
 
 // CRLM 合约 ABI 见 contracts/CRLM.json，链上转账在 withdraw-worker 中使用
@@ -8879,12 +8905,15 @@ window.addEventListener('hashchange', handleRoute);
   var avatarPickerInitialized = false;
   var balanceLedgerInitialized = false;
   var withdrawInitialized = false;
+  var depositInitialized = false;
   var withdrawSubmitting = false;
+  var walletBindSubmitting = false;
   var selectedPresetAvatarPath = '';
 
   var profileTranslations = {
     zh: {
       pf_btn_withdraw: '提币',
+      pf_btn_deposit: '充币',
       pf_stat_progress: '进行中',
       pf_stat_completed: '已完成',
       pf_stat_earnings: '累计收益',
@@ -8942,10 +8971,28 @@ window.addEventListener('hashchange', handleRoute);
       pf_withdraw_err_wallet: '请输入有效的钱包地址',
       pf_withdraw_err_worker: '提币服务暂不可用，请稍后再试',
       pf_withdraw_err_failed: '提币失败：',
-      pf_balance_fetch_fail: '获取余额失败，请稍后重试'
+      pf_balance_fetch_fail: '获取余额失败，请稍后重试',
+      pf_deposit_title: '充值 CRLM',
+      pf_deposit_address_label: '平台充币地址（Polygon）',
+      pf_deposit_copy: '复制地址',
+      pf_deposit_copy_ok: '地址已复制',
+      pf_deposit_hint: '请从你绑定的钱包地址向上述地址转账 CRLM。仅支持 Polygon 网络，到账后自动增加余额。',
+      pf_deposit_records_title: '最近充币记录',
+      pf_deposit_records_empty: '暂无充币记录',
+      pf_deposit_address_missing: '充币地址未配置，请联系管理员',
+      pf_deposit_copy_fail: '复制失败，请手动复制地址',
+      pf_wallet_label: '钱包地址',
+      pf_wallet_unbound: '未绑定',
+      pf_wallet_bind_btn: '去绑定',
+      pf_wallet_bound: '已绑定',
+      pf_wallet_bind_fail: '绑定钱包失败：',
+      pf_wallet_metamask_missing: '请安装 MetaMask 浏览器插件',
+      pf_deposit_bind_required: '请先绑定你的 Polygon 钱包地址，充币需要从你的钱包地址转账。',
+      pf_deposit_go_bind: '去绑定'
     },
     en: {
       pf_btn_withdraw: 'Withdraw',
+      pf_btn_deposit: 'Deposit',
       pf_stat_progress: 'In Progress',
       pf_stat_completed: 'Completed',
       pf_stat_earnings: 'Total Earnings',
@@ -9003,7 +9050,24 @@ window.addEventListener('hashchange', handleRoute);
       pf_withdraw_err_wallet: 'Please enter a valid wallet address',
       pf_withdraw_err_worker: 'Withdrawal service is unavailable. Please try again later.',
       pf_withdraw_err_failed: 'Withdrawal failed: ',
-      pf_balance_fetch_fail: 'Failed to load balance. Please try again later.'
+      pf_balance_fetch_fail: 'Failed to load balance. Please try again later.',
+      pf_deposit_title: 'Deposit CRLM',
+      pf_deposit_address_label: 'Platform deposit address (Polygon)',
+      pf_deposit_copy: 'Copy address',
+      pf_deposit_copy_ok: 'Address copied',
+      pf_deposit_hint: 'Send CRLM from your linked wallet to the address above. Polygon network only. Balance updates automatically.',
+      pf_deposit_records_title: 'Recent deposits',
+      pf_deposit_records_empty: 'No deposit records yet',
+      pf_deposit_address_missing: 'Deposit address is not configured. Please contact support.',
+      pf_deposit_copy_fail: 'Copy failed. Please copy the address manually.',
+      pf_wallet_label: 'Wallet address',
+      pf_wallet_unbound: 'Not linked',
+      pf_wallet_bind_btn: 'Link wallet',
+      pf_wallet_bound: 'Linked',
+      pf_wallet_bind_fail: 'Failed to link wallet: ',
+      pf_wallet_metamask_missing: 'Please install the MetaMask browser extension',
+      pf_deposit_bind_required: 'Please link your Polygon wallet first. Deposits must come from your linked address.',
+      pf_deposit_go_bind: 'Link wallet'
     }
   };
 
@@ -9664,6 +9728,387 @@ window.addEventListener('hashchange', handleRoute);
     });
   }
 
+  function hideDepositModal() {
+    var modal = document.getElementById('deposit-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+
+  function ensureProfileWalletRow() {
+    var assetLeft = document.querySelector('.profile-asset-left');
+    if (!assetLeft || document.getElementById('pf-wallet-row')) return;
+
+    var row = document.createElement('div');
+    row.id = 'pf-wallet-row';
+    row.className = 'profile-wallet-row';
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap;font-size:13px;';
+    row.innerHTML =
+      '<span id="pf-wallet-label" class="profile-wallet-label" style="color:#999;" data-i18n="pf_wallet_label">钱包地址</span>' +
+      '<span id="pf-wallet-value" class="profile-wallet-value"></span>' +
+      '<button type="button" id="pf-wallet-bind-btn" class="profile-deposit-btn profile-wallet-bind-btn hidden" style="padding:4px 12px;font-size:12px;" data-i18n="pf_wallet_bind_btn">去绑定</button>' +
+      '<span id="pf-wallet-bound-tag" class="profile-menu-status profile-menu-status-bound hidden" data-i18n="pf_wallet_bound">已绑定</span>';
+
+    var usdtEl = document.getElementById('pf-usdt-value');
+    if (usdtEl && usdtEl.parentNode === assetLeft) {
+      if (usdtEl.nextSibling) {
+        assetLeft.insertBefore(row, usdtEl.nextSibling);
+      } else {
+        assetLeft.appendChild(row);
+      }
+    } else {
+      assetLeft.appendChild(row);
+    }
+  }
+
+  function renderProfileWalletRow(user) {
+    ensureProfileWalletRow();
+
+    var valueEl = document.getElementById('pf-wallet-value');
+    var bindBtn = document.getElementById('pf-wallet-bind-btn');
+    var boundTag = document.getElementById('pf-wallet-bound-tag');
+    var labelEl = document.getElementById('pf-wallet-label');
+    var address = user ? String(user.wallet_address || '').trim() : '';
+    var isBound = isValidWithdrawWalletAddress(address);
+
+    if (labelEl) labelEl.textContent = pfT('pf_wallet_label');
+
+    if (isBound) {
+      if (valueEl) {
+        valueEl.textContent = truncateTxHash(address);
+        valueEl.style.color = '#e8e8e8';
+      }
+      if (bindBtn) bindBtn.classList.add('hidden');
+      if (boundTag) {
+        boundTag.textContent = pfT('pf_wallet_bound');
+        boundTag.classList.remove('hidden');
+      }
+    } else {
+      if (valueEl) {
+        valueEl.textContent = pfT('pf_wallet_unbound');
+        valueEl.style.color = '#999';
+      }
+      if (bindBtn) {
+        bindBtn.textContent = pfT('pf_wallet_bind_btn');
+        bindBtn.classList.remove('hidden');
+        bindBtn.disabled = false;
+      }
+      if (boundTag) boundTag.classList.add('hidden');
+    }
+  }
+
+  async function bindProfileWalletAddress() {
+    if (walletBindSubmitting) return;
+
+    if (!window.ethereum) {
+      alert(pfT('pf_wallet_metamask_missing'));
+      return;
+    }
+
+    var userId = await getCurrentUserId();
+    if (!userId) {
+      alert(pfT('pf_withdraw_err_login'));
+      return;
+    }
+
+    walletBindSubmitting = true;
+    var bindBtn = document.getElementById('pf-wallet-bind-btn');
+    if (bindBtn) bindBtn.disabled = true;
+
+    try {
+      var accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      var address = accounts && accounts[0] ? String(accounts[0]).trim() : '';
+      if (!isValidWithdrawWalletAddress(address)) {
+        alert(pfT('pf_wallet_bind_fail') + '无效地址');
+        return;
+      }
+
+      address = address.toLowerCase();
+
+      var result = await window.supabase
+        .from('users')
+        .update({ wallet_address: address })
+        .eq('id', userId)
+        .select()
+        .single();
+
+      if (result.error) {
+        alert(pfT('pf_wallet_bind_fail') + (result.error.message || ''));
+        return;
+      }
+
+      coinrealmCurrentUserProfile = result.data || Object.assign({}, coinrealmCurrentUserProfile || {}, {
+        wallet_address: address
+      });
+      renderProfileWalletRow(coinrealmCurrentUserProfile);
+    } catch (bindErr) {
+      console.error('绑定钱包失败:', bindErr);
+      if (!bindErr || bindErr.code !== 4001) {
+        alert(pfT('pf_wallet_bind_fail') + (bindErr && bindErr.message ? bindErr.message : String(bindErr)));
+      }
+    } finally {
+      walletBindSubmitting = false;
+      if (bindBtn) bindBtn.disabled = false;
+    }
+  }
+
+  var depositContentSelectors = [
+    '.deposit-address-label',
+    '.deposit-qr-wrap',
+    '.deposit-address-row',
+    '#deposit-hint',
+    '#deposit-copy-tip',
+    '.deposit-records-section'
+  ];
+
+  function ensureDepositBindGate() {
+    var panel = document.querySelector('#deposit-modal .deposit-modal-panel');
+    if (!panel || document.getElementById('deposit-bind-gate')) return;
+
+    var gate = document.createElement('div');
+    gate.id = 'deposit-bind-gate';
+    gate.className = 'deposit-bind-gate hidden';
+    gate.style.cssText = 'padding:8px 0 4px;';
+    gate.innerHTML =
+      '<p id="deposit-bind-message" class="deposit-bind-message" style="margin:0 0 16px;line-height:1.6;color:#333;"></p>' +
+      '<div class="td-twitter-modal-actions deposit-bind-actions">' +
+        '<button type="button" id="deposit-go-bind-btn" class="td-twitter-modal-btn td-twitter-modal-primary"></button>' +
+        '<button type="button" id="deposit-bind-cancel-btn" class="td-twitter-modal-btn td-twitter-modal-cancel" data-i18n="pf_withdraw_cancel">取消</button>' +
+      '</div>';
+
+    var titleEl = document.getElementById('deposit-modal-title');
+    if (titleEl && titleEl.parentNode === panel) {
+      panel.insertBefore(gate, titleEl.nextSibling);
+    } else {
+      panel.insertBefore(gate, panel.firstChild);
+    }
+  }
+
+  function setDepositModalContentVisible(visible) {
+    depositContentSelectors.forEach(function (selector) {
+      var el = document.querySelector('#deposit-modal ' + selector);
+      if (el) el.classList.toggle('hidden', !visible);
+    });
+
+    var gate = document.getElementById('deposit-bind-gate');
+    if (gate) gate.classList.toggle('hidden', visible);
+
+    var footerActions = document.querySelector('#deposit-modal .deposit-modal-panel > .td-twitter-modal-actions');
+    if (footerActions) footerActions.classList.toggle('hidden', !visible);
+  }
+
+  function navigateToProfileForWalletBind() {
+    hideDepositModal();
+    window.location.hash = 'profile';
+    if (typeof handleProfileRoute === 'function') {
+      handleProfileRoute();
+    } else {
+      renderProfilePage();
+    }
+  }
+
+  function truncateTxHash(hash) {
+    var value = String(hash || '');
+    if (value.length <= 14) return value;
+    return value.slice(0, 8) + '...' + value.slice(-6);
+  }
+
+  function formatDepositDateTime(value) {
+    if (!value) return '--';
+    var d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value).slice(0, 16);
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    var hh = String(d.getHours()).padStart(2, '0');
+    var mm = String(d.getMinutes()).padStart(2, '0');
+    return y + '-' + m + '-' + day + ' ' + hh + ':' + mm;
+  }
+
+  function applyDepositModalI18n() {
+    var modal = document.getElementById('deposit-modal');
+    if (!modal) return;
+    modal.querySelectorAll('[data-i18n]').forEach(function (el) {
+      var key = el.getAttribute('data-i18n');
+      if (profileTranslations[getLang()][key]) {
+        el.textContent = pfT(key);
+      }
+    });
+  }
+
+  async function loadDepositRecords(userId) {
+    var listEl = document.getElementById('deposit-records-list');
+    var loadingEl = document.getElementById('deposit-records-loading');
+    var emptyEl = document.getElementById('deposit-records-empty');
+    if (!listEl) return;
+
+    if (loadingEl) loadingEl.classList.remove('hidden');
+    if (emptyEl) emptyEl.classList.add('hidden');
+    listEl.innerHTML = '';
+
+    if (!window.supabase || !userId) {
+      if (loadingEl) loadingEl.classList.add('hidden');
+      if (emptyEl) emptyEl.classList.remove('hidden');
+      return;
+    }
+
+    try {
+      var result = await window.supabase
+        .from('deposit_records')
+        .select('amount, tx_hash, created_at, status')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (loadingEl) loadingEl.classList.add('hidden');
+
+      if (result.error || !result.data || !result.data.length) {
+        if (emptyEl) emptyEl.classList.remove('hidden');
+        return;
+      }
+
+      listEl.innerHTML = result.data.map(function (row) {
+        var amount = Number(row.amount) || 0;
+        return (
+          '<li class="deposit-records-item">' +
+            '<div class="deposit-records-time">' + escapeHtml(formatDepositDateTime(row.created_at)) + '</div>' +
+            '<div class="deposit-records-amount">+' + escapeHtml(formatNumber(amount)) + ' CRLM</div>' +
+            '<div class="deposit-records-hash">' + escapeHtml(truncateTxHash(row.tx_hash)) + '</div>' +
+          '</li>'
+        );
+      }).join('');
+    } catch (depositErr) {
+      console.warn('加载充币记录失败:', depositErr);
+      if (loadingEl) loadingEl.classList.add('hidden');
+      if (emptyEl) emptyEl.classList.remove('hidden');
+    }
+  }
+
+  async function openDepositModal() {
+    var userId = await getCurrentUserId();
+    if (!userId) {
+      alert(pfT('pf_withdraw_err_login'));
+      return;
+    }
+
+    var user = coinrealmCurrentUserProfile;
+    if (!user || String(user.id) !== String(userId)) {
+      user = await loadUserProfile();
+    }
+    if (user) coinrealmCurrentUserProfile = user;
+
+    var modal = document.getElementById('deposit-modal');
+    if (!modal) return;
+
+    ensureDepositBindGate();
+    applyDepositModalI18n();
+
+    var walletAddress = user ? String(user.wallet_address || '').trim() : '';
+    if (!isValidWithdrawWalletAddress(walletAddress)) {
+      var bindMessage = document.getElementById('deposit-bind-message');
+      var goBindBtn = document.getElementById('deposit-go-bind-btn');
+      var cancelBtn = document.getElementById('deposit-bind-cancel-btn');
+      if (bindMessage) bindMessage.textContent = pfT('pf_deposit_bind_required');
+      if (goBindBtn) goBindBtn.textContent = pfT('pf_deposit_go_bind');
+      if (cancelBtn) cancelBtn.textContent = pfT('pf_withdraw_cancel');
+      setDepositModalContentVisible(false);
+      modal.classList.remove('hidden');
+      modal.setAttribute('aria-hidden', 'false');
+      return;
+    }
+
+    setDepositModalContentVisible(true);
+
+    var depositAddress = await fetchDepositWalletAddress();
+    var addressEl = document.getElementById('deposit-wallet-address');
+    var qrEl = document.getElementById('deposit-qr-image');
+    var copyTip = document.getElementById('deposit-copy-tip');
+
+    if (copyTip) copyTip.classList.add('hidden');
+
+    if (!depositAddress) {
+      if (addressEl) addressEl.textContent = pfT('pf_deposit_address_missing');
+      if (qrEl) qrEl.removeAttribute('src');
+    } else {
+      if (addressEl) addressEl.textContent = depositAddress;
+      if (qrEl) {
+        qrEl.src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(depositAddress);
+      }
+    }
+
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    await loadDepositRecords(userId);
+  }
+
+  async function copyDepositAddress() {
+    var addressEl = document.getElementById('deposit-wallet-address');
+    var copyTip = document.getElementById('deposit-copy-tip');
+    var address = addressEl ? String(addressEl.textContent || '').trim() : '';
+    if (!address || address.indexOf('0x') !== 0) {
+      alert(pfT('pf_deposit_address_missing'));
+      return;
+    }
+
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(address);
+      } else {
+        var textarea = document.createElement('textarea');
+        textarea.value = address;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      if (copyTip) {
+        copyTip.textContent = pfT('pf_deposit_copy_ok');
+        copyTip.classList.remove('hidden');
+      }
+    } catch (copyErr) {
+      console.warn('复制充币地址失败:', copyErr);
+      alert(pfT('pf_deposit_copy_fail'));
+    }
+  }
+
+  function initDepositEvents() {
+    if (depositInitialized) return;
+    depositInitialized = true;
+
+    document.addEventListener('click', function (e) {
+      if (e.target.closest('#pf-deposit-btn')) {
+        e.preventDefault();
+        openDepositModal();
+        return;
+      }
+      if (e.target.closest('#pf-wallet-bind-btn')) {
+        e.preventDefault();
+        bindProfileWalletAddress();
+        return;
+      }
+      if (e.target.closest('#deposit-go-bind-btn')) {
+        e.preventDefault();
+        navigateToProfileForWalletBind();
+        return;
+      }
+      if (e.target.closest('#deposit-bind-cancel-btn')) {
+        hideDepositModal();
+        return;
+      }
+      if (e.target.closest('#deposit-copy-btn')) {
+        e.preventDefault();
+        copyDepositAddress();
+        return;
+      }
+      if (e.target.closest('#deposit-close-btn') || e.target.closest('#deposit-modal .td-twitter-modal-overlay')) {
+        hideDepositModal();
+        renderProfilePage();
+      }
+    });
+  }
+
   function applyProfileI18n() {
     document.querySelectorAll('#profile-page [data-i18n]').forEach(function (el) {
       var key = el.getAttribute('data-i18n');
@@ -9716,6 +10161,8 @@ window.addEventListener('hashchange', handleRoute);
     if (usdtEl) {
       usdtEl.textContent = pfT('pf_usdt_approx', { amount: formatNumber(usdtBalance) });
     }
+
+    renderProfileWalletRow(user);
 
     var progressEl = document.getElementById('pf-stat-progress');
     var completedEl = document.getElementById('pf-stat-completed');
@@ -9895,6 +10342,7 @@ window.addEventListener('hashchange', handleRoute);
     initAvatarPickerEvents();
     initBalanceLedgerEvents();
     initWithdrawEvents();
+    initDepositEvents();
 
     document.querySelectorAll('#profile-page .profile-menu-item[data-route]').forEach(function (item) {
       item.addEventListener('click', function (e) {
@@ -9915,6 +10363,7 @@ window.addEventListener('hashchange', handleRoute);
       avatarPickerInitialized = false;
       balanceLedgerInitialized = false;
       withdrawInitialized = false;
+      depositInitialized = false;
     }
   }
 

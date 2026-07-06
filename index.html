@@ -706,6 +706,7 @@ ALTER TABLE tasks ADD COLUMN task_keyword TEXT;</pre>
           <div class="profile-balance-row">
             <div id="pf-crlm-balance" class="profile-crlm-balance">12,500 CRLM</div>
             <button type="button" id="pf-balance-ledger-btn" class="profile-balance-ledger-btn" data-i18n="pf_balance_ledger">明细</button>
+            <button type="button" id="pf-deposit-btn" class="profile-deposit-btn profile-balance-deposit-btn" data-i18n="pf_btn_deposit">充币</button>
             <button type="button" id="pf-withdraw-btn" class="profile-withdraw-btn profile-balance-withdraw-btn" data-i18n="pf_btn_withdraw">提币</button>
           </div>
           <div id="pf-usdt-value" class="profile-usdt-value">≈ 1,250 USDT</div>
@@ -1454,6 +1455,32 @@ ALTER TABLE tasks ADD COLUMN task_keyword TEXT;</pre>
         <p id="reward-celebration-desc" class="reward-celebration-desc" data-i18n="reward_sent_desc">奖励已发送至余额</p>
         <div class="td-twitter-modal-actions">
           <button type="button" id="reward-celebration-confirm" class="td-twitter-modal-btn td-twitter-modal-primary reward-celebration-confirm-btn" data-i18n="reward_confirm">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="deposit-modal" class="td-twitter-modal hidden" aria-hidden="true">
+      <div class="td-twitter-modal-overlay"></div>
+      <div class="td-twitter-modal-panel deposit-modal-panel">
+        <h3 id="deposit-modal-title" class="td-twitter-modal-title" data-i18n="pf_deposit_title">充值 CRLM</h3>
+        <p class="deposit-address-label" data-i18n="pf_deposit_address_label">平台充币地址（Polygon）</p>
+        <div class="deposit-qr-wrap">
+          <img id="deposit-qr-image" class="deposit-qr-image" alt="Deposit QR Code" width="160" height="160">
+        </div>
+        <div class="deposit-address-row">
+          <code id="deposit-wallet-address" class="deposit-wallet-address">0x...</code>
+          <button type="button" id="deposit-copy-btn" class="deposit-copy-btn" data-i18n="pf_deposit_copy">复制地址</button>
+        </div>
+        <p id="deposit-hint" class="deposit-hint" data-i18n="pf_deposit_hint">请向上述地址转账 CRLM，到账后自动增加余额。仅支持 Polygon 网络。</p>
+        <p id="deposit-copy-tip" class="deposit-copy-tip hidden" data-i18n="pf_deposit_copy_ok">地址已复制</p>
+        <div class="deposit-records-section">
+          <h4 class="deposit-records-title" data-i18n="pf_deposit_records_title">最近充币记录</h4>
+          <div id="deposit-records-loading" class="deposit-records-loading hidden" data-i18n="pf_ledger_loading">加载中...</div>
+          <div id="deposit-records-empty" class="deposit-records-empty hidden" data-i18n="pf_deposit_records_empty">暂无充币记录</div>
+          <ul id="deposit-records-list" class="deposit-records-list"></ul>
+        </div>
+        <div class="td-twitter-modal-actions">
+          <button type="button" id="deposit-close-btn" class="td-twitter-modal-btn td-twitter-modal-primary" data-i18n="reward_confirm">确定</button>
         </div>
       </div>
     </div>
