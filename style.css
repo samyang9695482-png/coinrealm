@@ -5161,10 +5161,274 @@ img {
 
 .invite-title {
     text-align: center;
-    font-size: 24px;
+    font-size: 26px;
     font-weight: 700;
     color: #1a1a2e;
-    margin-bottom: 24px;
+    margin: 0 0 24px;
+}
+
+.invite-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+}
+
+.invite-column { min-width: 0; }
+
+.invite-panel {
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    padding: 20px;
+    margin-bottom: 16px;
+}
+
+.invite-panel-title {
+    margin: 0 0 16px;
+    font-size: 17px;
+    font-weight: 700;
+    color: #1a1a2e;
+}
+
+.invite-reward-desc {
+    margin: 0 0 14px;
+    font-size: 14px;
+    color: #666;
+    line-height: 1.6;
+}
+
+.invite-stats-inline {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.invite-stat-pill {
+    flex: 1;
+    min-width: 120px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #f5f6fa;
+    text-align: center;
+}
+
+.invite-stat-pill-gold {
+    background: linear-gradient(135deg, rgba(240, 185, 11, 0.12), rgba(247, 166, 0, 0.08));
+}
+
+.invite-stat-pill-num {
+    display: block;
+    font-size: 18px;
+    font-weight: 700;
+    color: #1a1a2e;
+}
+
+.invite-stat-pill-gold .invite-stat-pill-num { color: #c99400; }
+
+.invite-stat-pill-label {
+    display: block;
+    margin-top: 2px;
+    font-size: 12px;
+    color: #888;
+}
+
+.invite-leaderboard-list,
+.invite-mining-records-list,
+.invite-records-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.invite-leaderboard-item,
+.invite-mining-record-item,
+.invite-record-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.invite-leaderboard-item:last-child,
+.invite-mining-record-item:last-child,
+.invite-record-item:last-child {
+    border-bottom: none;
+}
+
+.iv-lb-rank {
+    flex-shrink: 0;
+    width: 28px;
+    font-size: 16px;
+    font-weight: 700;
+    text-align: center;
+    color: #888;
+}
+
+.iv-lb-avatar {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: #eee;
+}
+
+.iv-lb-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.iv-lb-info { flex: 1; min-width: 0; }
+
+.iv-lb-name {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: #1a1a2e;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.iv-lb-meta {
+    display: block;
+    font-size: 12px;
+    color: #888;
+    margin-top: 2px;
+}
+
+.iv-lb-reward {
+    flex-shrink: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #c99400;
+}
+
+.invite-expand-btn {
+    display: block;
+    width: 100%;
+    margin-top: 12px;
+    padding: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #1a1a2e;
+    background: #f5f6fa;
+    border: 1px solid #e8e8e8;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.invite-expand-btn:hover { background: #eef0f5; }
+
+.invite-my-rank {
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(26, 26, 46, 0.06), rgba(240, 185, 11, 0.1));
+    border: 1px solid rgba(240, 185, 11, 0.25);
+}
+
+.invite-my-rank-label {
+    display: block;
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 4px;
+}
+
+.invite-records-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.invite-records-tab {
+    flex: 1;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #666;
+    background: #f5f6fa;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.invite-records-tab-active {
+    color: #1a1a2e;
+    background: #fff;
+    border-color: #f0b90b;
+    box-shadow: 0 0 0 1px rgba(240, 185, 11, 0.2);
+}
+
+.iv-record-level {
+    flex-shrink: 0;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 999px;
+    background: #eef0f5;
+    color: #666;
+}
+
+.iv-record-level-1 { background: rgba(240, 185, 11, 0.15); color: #a67c00; }
+.iv-record-level-2 { background: rgba(88, 101, 242, 0.12); color: #5865f2; }
+
+.iv-record-reward {
+    margin-left: auto;
+    font-size: 13px;
+    font-weight: 600;
+    color: #c99400;
+}
+
+.invite-mining-panel .invite-mining-section {
+    margin-bottom: 0;
+    padding: 16px 0 8px;
+    background: transparent;
+    box-shadow: none;
+}
+
+.invite-mining-progress-wrap {
+    height: 8px;
+    margin: 12px 0 8px;
+    border-radius: 999px;
+    background: #eee;
+    overflow: hidden;
+}
+
+.invite-mining-progress-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #f0b90b, #f7a600);
+    transition: width 0.4s ease;
+}
+
+.invite-mining-countdown {
+    margin: 0;
+    text-align: center;
+    font-size: 13px;
+    color: #888;
+}
+
+.invite-empty-hint {
+    padding: 16px 0;
+    text-align: center;
+    font-size: 13px;
+    color: #999;
+}
+
+@media (max-width: 960px) {
+    .invite-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .invite-column-center { order: 1; }
+    .invite-column-left { order: 2; }
+    .invite-column-right { order: 3; }
 }
 
 .invite-overview-card,

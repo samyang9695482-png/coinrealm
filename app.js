@@ -609,6 +609,204 @@ function invalidateWithdrawSettingsCache() {
   cachedWithdrawSettings = null;
 }
 
+var INVITE_SETTINGS_DEFAULTS = {
+  invite_level1_reward: 50,
+  invite_level2_reward: 10
+};
+var cachedInviteSettings = null;
+
+async function fetchInviteSettings() {
+  if (cachedInviteSettings) return cachedInviteSettings;
+
+  var settings = Object.assign({}, INVITE_SETTINGS_DEFAULTS);
+  if (!window.supabase) {
+    cachedInviteSettings = settings;
+    return settings;
+  }
+
+  try {
+    var keys = Object.keys(INVITE_SETTINGS_DEFAULTS);
+    var result = await window.supabase
+      .from('settings')
+      .select('key, value')
+      .in('key', keys);
+
+    if (!result.error && result.data) {
+      result.data.forEach(function (row) {
+        if (row.key && row.value != null && row.value !== '') {
+          settings[row.key] = Number(row.value);
+        }
+      });
+    }
+  } catch (settingsErr) {
+    console.warn('读取邀请奖励设置失败:', settingsErr);
+  }
+
+  cachedInviteSettings = settings;
+  return settings;
+}
+
+function invalidateInviteSettingsCache() {
+  cachedInviteSettings = null;
+}
+
+(function captureInviteRefFromUrl() {
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var ref = params.get('ref');
+    if (ref) {
+      localStorage.setItem('coinrealm_invite_ref', String(ref).trim());
+    }
+  } catch (captureErr) {
+    console.warn('捕获邀请 ref 失败:', captureErr);
+  }
+})();
+
+async function findInviterByRef(ref) {
+  if (!ref || !window.supabase) return null;
+  ref = String(ref).trim();
+  if (!ref) return null;
+
+  try {
+    var exactResult = await window.supabase
+      .from('users')
+      .select('id, crlm_balance, invite_count, username')
+      .eq('id', ref)
+      .maybeSingle();
+
+    if (!exactResult.error && exactResult.data) {
+      return exactResult.data;
+    }
+
+    if (ref.length >= 8) {
+      var prefixResult = await window.supabase
+        .from('users')
+        .select('id, crlm_balance, invite_count, username')
+        .ilike('id', ref + '%')
+        .limit(2);
+
+      if (!prefixResult.error && prefixResult.data && prefixResult.data.length === 1) {
+        return prefixResult.data[0];
+      }
+    }
+  } catch (lookupErr) {
+    console.warn('查找邀请人失败:', lookupErr);
+  }
+
+  return null;
+}
+
+async function grantInviteReward(inviter, inviteeId, level, amount) {
+  if (!inviter || !inviteeId || amount <= 0 || !window.supabase) return false;
+
+  var insertResult = await window.supabase.from('invites').insert({
+    inviter_id: inviter.id,
+    invitee_id: inviteeId,
+    level: level,
+    reward_amount: amount
+  });
+
+  if (insertResult.error) {
+    console.warn('插入邀请记录失败:', insertResult.error);
+    return false;
+  }
+
+  var newBalance = (Number(inviter.crlm_balance) || 0) + amount;
+  var patchPayload = { crlm_balance: newBalance };
+
+  if (level === 1) {
+    patchPayload.invite_count = (Number(inviter.invite_count) || 0) + 1;
+  }
+
+  var updateResult = await window.supabase
+    .from('users')
+    .update(patchPayload)
+    .eq('id', inviter.id);
+
+  if (updateResult.error) {
+    console.warn('更新邀请人奖励失败:', updateResult.error);
+    return false;
+  }
+
+  inviter.crlm_balance = newBalance;
+  if (level === 1) {
+    inviter.invite_count = patchPayload.invite_count;
+  }
+
+  return true;
+}
+
+async function processInviteRewardsForUser(inviteeId, inviter) {
+  if (!inviteeId || !inviter || inviter.id === inviteeId || !window.supabase) return;
+
+  var settings = await fetchInviteSettings();
+  var level1Reward = Number(settings.invite_level1_reward) || INVITE_SETTINGS_DEFAULTS.invite_level1_reward;
+  var level2Reward = Number(settings.invite_level2_reward) || INVITE_SETTINGS_DEFAULTS.invite_level2_reward;
+
+  await grantInviteReward(inviter, inviteeId, 1, level1Reward);
+
+  try {
+    var parentResult = await window.supabase
+      .from('invites')
+      .select('inviter_id')
+      .eq('invitee_id', inviter.id)
+      .eq('level', 1)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (!parentResult.error && parentResult.data && parentResult.data.inviter_id) {
+      var grandResult = await window.supabase
+        .from('users')
+        .select('id, crlm_balance, invite_count')
+        .eq('id', parentResult.data.inviter_id)
+        .maybeSingle();
+
+      if (!grandResult.error && grandResult.data && grandResult.data.id !== inviteeId) {
+        await grantInviteReward(grandResult.data, inviteeId, 2, level2Reward);
+      }
+    }
+  } catch (level2Err) {
+    console.warn('处理二级邀请奖励失败:', level2Err);
+  }
+}
+
+async function processPendingInviteRegistration() {
+  if (!window.supabase) return;
+
+  var ref = localStorage.getItem('coinrealm_invite_ref');
+  if (!ref) return;
+
+  var userId = await getCurrentUserId();
+  if (!userId) return;
+
+  try {
+    var existingResult = await window.supabase
+      .from('invites')
+      .select('id')
+      .eq('invitee_id', userId)
+      .limit(1);
+
+    if (!existingResult.error && existingResult.data && existingResult.data.length) {
+      localStorage.removeItem('coinrealm_invite_ref');
+      return;
+    }
+
+    var inviter = await findInviterByRef(ref);
+    if (!inviter || inviter.id === userId) {
+      localStorage.removeItem('coinrealm_invite_ref');
+      return;
+    }
+
+    await processInviteRewardsForUser(userId, inviter);
+    localStorage.removeItem('coinrealm_invite_ref');
+  } catch (pendingErr) {
+    console.warn('处理待处理邀请失败:', pendingErr);
+  }
+}
+
+window.coinrealmProcessPendingInvite = processPendingInviteRegistration;
+
 async function fetchDepositWalletAddress() {
   var configured = String(DEPOSIT_WALLET_ADDRESS || '').trim();
   if (configured) return configured;
@@ -3409,6 +3607,7 @@ function renderTaskCards(tasks) {
 var checkinInProgress = false;
 var miningCooldownUntil = 0;
 var miningToastTimer = null;
+var miningCountdownTimer = null;
 
 function getLocalDateString(dayOffset) {
     var d = new Date();
@@ -3586,16 +3785,85 @@ function setMiningButtonMined(streak) {
     }
 }
 
+function getSecondsUntilMidnight() {
+    var now = new Date();
+    var midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    return Math.max(0, Math.floor((midnight.getTime() - now.getTime()) / 1000));
+}
+
+function formatMiningCountdown(seconds) {
+    var h = Math.floor(seconds / 3600);
+    var m = Math.floor((seconds % 3600) / 60);
+    var s = seconds % 60;
+    return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+
+function updateMiningProgressUI(alreadyMined) {
+    var fillEl = document.getElementById('iv-mining-progress-fill');
+    var countdownEl = document.getElementById('iv-mining-countdown');
+    var secondsLeft = getSecondsUntilMidnight();
+    var daySeconds = 24 * 3600;
+    var dayProgress = ((daySeconds - secondsLeft) / daySeconds) * 100;
+
+    if (fillEl) {
+        fillEl.style.width = (alreadyMined ? 100 : Math.max(4, dayProgress)) + '%';
+    }
+
+    if (countdownEl) {
+        if (typeof window.getInviteText === 'function') {
+            countdownEl.textContent = alreadyMined
+                ? window.getInviteText('iv_mining_next', { time: formatMiningCountdown(secondsLeft) })
+                : window.getInviteText('iv_mining_available');
+        } else {
+            countdownEl.textContent = alreadyMined
+                ? '下次挖矿：' + formatMiningCountdown(secondsLeft)
+                : '今日挖矿可用';
+        }
+    }
+}
+
+function startMiningCountdownTicker(alreadyMined) {
+    if (miningCountdownTimer) {
+        clearInterval(miningCountdownTimer);
+        miningCountdownTimer = null;
+    }
+
+    updateMiningProgressUI(alreadyMined);
+
+    if (!document.getElementById('invite-page') || document.getElementById('invite-page').classList.contains('hidden')) {
+        return;
+    }
+
+    miningCountdownTimer = setInterval(function () {
+        var btn = document.getElementById('invite-mining-btn');
+        var mined = btn && btn.classList.contains('invite-mining-done');
+        updateMiningProgressUI(mined);
+    }, 1000);
+}
+
+function stopMiningCountdownTicker() {
+    if (miningCountdownTimer) {
+        clearInterval(miningCountdownTimer);
+        miningCountdownTimer = null;
+    }
+}
+
 async function refreshMiningButtonState() {
     var btn = document.getElementById('invite-mining-btn');
     if (!btn) return;
 
     resetMiningButtonAvailable();
 
-    if (!window.supabase) return;
+    if (!window.supabase) {
+        startMiningCountdownTicker(false);
+        return;
+    }
 
     var userId = await getCurrentUserId();
-    if (!userId) return;
+    if (!userId) {
+        startMiningCountdownTicker(false);
+        return;
+    }
 
     try {
         var today = getLocalDateString(0);
@@ -3613,8 +3881,12 @@ async function refreshMiningButtonState() {
 
         if (todayRecords.length) {
             setMiningButtonMined(todayRecords[0].consecutive_days || 1);
+            startMiningCountdownTicker(true);
+        } else {
+            startMiningCountdownTicker(false);
         }
     } catch (e) {
+        startMiningCountdownTicker(false);
         /* ignore */
     }
 }
@@ -3671,6 +3943,9 @@ async function handleMiningButtonClick() {
     var result = await handleDailyCheckin();
     if (result && result.ok) {
         showRewardCelebration(result.reward);
+        if (typeof window.coinrealmRefreshInviteMiningData === 'function') {
+            window.coinrealmRefreshInviteMiningData();
+        }
     }
 }
 
@@ -3788,6 +4063,7 @@ async function handleDailyCheckin() {
 
         showRewardCelebration(finalReward);
         setMiningButtonMined(consecutiveDays);
+        startMiningCountdownTicker(true);
         writeBroadcast({
             user_id: userId,
             event_type: 'checkin',
@@ -14986,86 +15262,88 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   var inviteInitialized = false;
-  var friendsSortBy = 'time';
-  var rulesExpanded = false;
+  var inviteRecordsTab = 'friends';
   var inviteDataLoaded = false;
   var inviteDataLoading = false;
   var inviteData = null;
+  var leaderboardExpanded = false;
+  var miningRecordsExpanded = false;
+  var rankBadges = ['🥇', '🥈', '🥉'];
 
   var inviteTranslations = {
     zh: {
       iv_page_title: '邀请好友',
-      iv_code_label: '我的专属邀请码',
-      iv_btn_copy: '复制',
-      iv_stat_invites: '累计邀请人数',
-      iv_stat_reward: '累计获得邀请奖励',
+      iv_lb_title: '🏆 邀请排行榜',
+      iv_lb_expand: '查看完整排行榜',
+      iv_lb_collapse: '收起排行榜',
+      iv_lb_invites: '{count} 人',
+      iv_lb_reward: '{amount} CRLM',
+      iv_lb_my_rank: '我的排名',
+      iv_lb_empty: '暂无排行数据',
+      iv_share_headline: '邀请好友，赚取 CRLM',
+      iv_reward_desc: '一级奖励：{level1} CRLM/人，二级奖励：{level2} CRLM/人',
+      iv_stat_invites: '累计邀请',
+      iv_stat_reward: '累计奖励',
       iv_invite_count: '{count} 人',
       iv_total_reward: '{amount} CRLM',
-      iv_share_title: '分享你的专属链接',
       iv_btn_copy_link: '复制链接',
-      iv_progress_title: '分红加成进度',
-      iv_current_bonus: '当前：{bonus}x 加成',
-      iv_next_level: '距下一等级 {bonus}x 加成还需邀请 {count} 人',
-      iv_next_level_max: '已达到最高加成等级',
-      iv_node_1: '1x（5人）',
-      iv_node_15: '1.5x（20人）',
-      iv_node_2: '2x（50人）',
       iv_friends_title: '我邀请的好友',
-      iv_friends_count: '共 {count} 人',
-      iv_sort_time: '时间',
-      iv_sort_contribution: '贡献',
-      iv_rules_title: '邀请规则',
-      iv_rule_1: '锁仓式推荐奖励：好友完成任务你获得 20%，分 12 个月解锁',
-      iv_rule_2: '分红加成规则：持币量 + 有效邀请人数的阶梯加成',
-      iv_rule_3: '有效好友定义：被邀请人必须完成至少 1 个任务，才计入有效邀请',
-      iv_btn_poster: '生成专属海报',
+      iv_rewards_title: '邀请奖励记录',
       iv_reward_amount: '+{amount} CRLM',
+      iv_level_tag: 'L{level}',
       iv_alert_copied: '已复制！',
       iv_alert_share: '已复制链接，即将跳转...',
-      iv_alert_poster: '海报生成功能即将上线！',
       iv_login_required: '请先登录查看邀请信息',
       iv_loading: '加载中...',
       iv_no_friends: '暂无邀请好友',
+      iv_no_rewards: '暂无奖励记录',
       iv_mining: '挖矿',
       iv_mined: '已挖矿',
-      iv_mining_hint: '每日可挖矿一次，获得随机 CRLM 奖励'
+      iv_mining_hint: '每日可挖矿一次，获得随机 CRLM 奖励',
+      iv_mining_earnings_title: '⛏️ 挖矿收益',
+      iv_mining_expand: '查看全部记录',
+      iv_mining_collapse: '收起记录',
+      iv_mining_empty: '暂无挖矿记录',
+      iv_mining_record: '+{amount} CRLM · 连续 {days} 天',
+      iv_mining_next: '下次挖矿：{time}',
+      iv_mining_available: '今日挖矿可用'
     },
     en: {
       iv_page_title: 'Invite Friends',
-      iv_code_label: 'My Invite Code',
-      iv_btn_copy: 'Copy',
-      iv_stat_invites: 'Total Invites',
-      iv_stat_reward: 'Total Invite Rewards',
+      iv_lb_title: '🏆 Invite Leaderboard',
+      iv_lb_expand: 'View full leaderboard',
+      iv_lb_collapse: 'Collapse leaderboard',
+      iv_lb_invites: '{count} invites',
+      iv_lb_reward: '{amount} CRLM',
+      iv_lb_my_rank: 'My rank',
+      iv_lb_empty: 'No leaderboard data yet',
+      iv_share_headline: 'Invite friends, earn CRLM',
+      iv_reward_desc: 'Level 1: {level1} CRLM each, Level 2: {level2} CRLM each',
+      iv_stat_invites: 'Total invites',
+      iv_stat_reward: 'Total rewards',
       iv_invite_count: '{count}',
       iv_total_reward: '{amount} CRLM',
-      iv_share_title: 'Share Your Invite Link',
-      iv_btn_copy_link: 'Copy Link',
-      iv_progress_title: 'Dividend Bonus Progress',
-      iv_current_bonus: 'Current: {bonus}x bonus',
-      iv_next_level: '{count} more invites to reach {bonus}x bonus',
-      iv_next_level_max: 'Maximum bonus tier reached',
-      iv_node_1: '1x (5)',
-      iv_node_15: '1.5x (20)',
-      iv_node_2: '2x (50)',
-      iv_friends_title: 'My Invited Friends',
-      iv_friends_count: '{count} total',
-      iv_sort_time: 'Time',
-      iv_sort_contribution: 'Contribution',
-      iv_rules_title: 'Invite Rules',
-      iv_rule_1: 'Locked referral rewards: earn 20% when friends complete tasks, unlocked over 12 months',
-      iv_rule_2: 'Dividend bonus: tiered bonus based on holdings + valid invites',
-      iv_rule_3: 'Valid friend: invitee must complete at least 1 task to count',
-      iv_btn_poster: 'Generate Poster',
+      iv_btn_copy_link: 'Copy link',
+      iv_friends_title: 'My invites',
+      iv_rewards_title: 'Reward history',
       iv_reward_amount: '+{amount} CRLM',
+      iv_level_tag: 'L{level}',
       iv_alert_copied: 'Copied!',
       iv_alert_share: 'Link copied, redirecting...',
-      iv_alert_poster: 'Poster generation coming soon!',
       iv_login_required: 'Please sign in to view invite info',
       iv_loading: 'Loading...',
       iv_no_friends: 'No invited friends yet',
+      iv_no_rewards: 'No reward records yet',
       iv_mining: 'Mine',
       iv_mined: 'Mined',
-      iv_mining_hint: 'Mine once daily for a random CRLM reward'
+      iv_mining_hint: 'Mine once daily for a random CRLM reward',
+      iv_mining_earnings_title: '⛏️ Mining earnings',
+      iv_mining_expand: 'View all records',
+      iv_mining_collapse: 'Collapse records',
+      iv_mining_empty: 'No mining records yet',
+      iv_mining_record: '+{amount} CRLM · {days}-day streak',
+      iv_mining_next: 'Next mine in {time}',
+      iv_mining_available: 'Mining available today'
     }
   };
 
@@ -15086,6 +15364,14 @@ window.addEventListener('hashchange', handleRoute);
   }
 
   window.getInviteText = ivT;
+
+  window.coinrealmRefreshInviteMiningData = function () {
+    inviteDataLoaded = false;
+    loadInvitePageData().then(function () {
+      renderMiningRecords();
+      applyInviteI18n();
+    });
+  };
 
   function formatNumber(num) {
     return String(num).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -15129,74 +15415,114 @@ window.addEventListener('hashchange', handleRoute);
     }
   }
 
-  function calcInviteBonus(count) {
-    if (count >= 50) return 2;
-    if (count >= 20) return 1.5;
-    if (count >= 5) return 1;
-    return 0;
-  }
-
-  function getInviteProgressInfo(count) {
-    var tiers = [
-      { threshold: 5, bonus: 1 },
-      { threshold: 20, bonus: 1.5 },
-      { threshold: 50, bonus: 2 }
-    ];
-    var currentBonus = calcInviteBonus(count);
-    var nextTier = null;
-    var prevThreshold = 0;
-
-    for (var i = 0; i < tiers.length; i++) {
-      if (count < tiers[i].threshold) {
-        nextTier = tiers[i];
-        prevThreshold = i === 0 ? 0 : tiers[i - 1].threshold;
-        break;
-      }
-    }
-
-    if (!nextTier) {
-      return {
-        currentBonus: currentBonus,
-        nextBonus: 2,
-        remaining: 0,
-        pct: 100
-      };
-    }
-
-    var pct = ((count - prevThreshold) / (nextTier.threshold - prevThreshold)) * 100;
-    return {
-      currentBonus: currentBonus,
-      nextBonus: nextTier.bonus,
-      remaining: nextTier.threshold - count,
-      pct: Math.max(0, Math.min(100, pct))
-    };
-  }
-
-  function buildInviteLink(code) {
+  function buildInviteLink(userId) {
     var base = window.location.origin + window.location.pathname;
-    return base + (base.indexOf('?') >= 0 ? '&' : '?') + 'ref=' + encodeURIComponent(code);
+    return base + (base.indexOf('?') >= 0 ? '&' : '?') + 'ref=' + encodeURIComponent(userId);
   }
 
-  function getInviteField(row, names, fallback) {
-    for (var i = 0; i < names.length; i++) {
-      if (row[names[i]] != null && row[names[i]] !== '') {
-        return row[names[i]];
-      }
+  function getRankBadge(rank) {
+    return rank <= 3 ? rankBadges[rank - 1] : String(rank);
+  }
+
+  function renderLeaderboardAvatarHtml(user) {
+    var avatarHtml = '<div class="iv-lb-avatar"></div>';
+    if (!user) return avatarHtml;
+    var temp = document.createElement('div');
+    temp.className = 'iv-lb-avatar';
+    if (typeof applyAvatarToElement === 'function') {
+      applyAvatarToElement(temp, user, 'cr-avatar-img', {});
+      return temp.outerHTML;
     }
-    return fallback;
+    return avatarHtml;
   }
 
-  function mapInviteFriends(rows, userMap) {
-    return (rows || []).map(function (row) {
-      var inviteeId = getInviteField(row, ['invitee_id', 'invited_user_id', 'friend_id'], '');
-      var user = userMap[inviteeId] || {};
-      var createdAt = getInviteField(row, ['created_at', 'registered_at'], user.created_at);
-      return {
-        username: user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'Unknown'),
-        registeredAt: createdAt ? String(createdAt).slice(0, 10) : '—',
-        reward: Number(getInviteField(row, ['reward_amount', 'reward', 'contribution'], 0)) || 0
-      };
+  function aggregateInviteRewards(rows) {
+    var map = {};
+    (rows || []).forEach(function (row) {
+      var inviterId = row.inviter_id;
+      if (!inviterId) return;
+      map[inviterId] = (map[inviterId] || 0) + (Number(row.reward_amount) || 0);
     });
+    return map;
+  }
+
+  function fetchInviteLeaderboard(limit) {
+    return window.supabase
+      .from('users')
+      .select('id, username, email, avatar_url, invite_count')
+      .order('invite_count', { ascending: false })
+      .limit(limit)
+      .then(function (usersResult) {
+        if (usersResult.error) throw usersResult.error;
+        var users = usersResult.data || [];
+        var userIds = users.map(function (u) { return u.id; }).filter(Boolean);
+        if (!userIds.length) {
+          return users.map(function (u, index) {
+            return {
+              rank: index + 1,
+              id: u.id,
+              username: u.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(u.email) : 'User'),
+              avatar_url: u.avatar_url || '',
+              invite_count: Number(u.invite_count) || 0,
+              total_reward: 0
+            };
+          });
+        }
+
+        return window.supabase
+          .from('invites')
+          .select('inviter_id, reward_amount')
+          .in('inviter_id', userIds)
+          .then(function (rewardsResult) {
+            var rewardMap = aggregateInviteRewards(rewardsResult.error ? [] : rewardsResult.data);
+            return users.map(function (u, index) {
+              return {
+                rank: index + 1,
+                id: u.id,
+                username: u.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(u.email) : 'User'),
+                avatar_url: u.avatar_url || '',
+                invite_count: Number(u.invite_count) || 0,
+                total_reward: rewardMap[u.id] || 0
+              };
+            });
+          });
+      });
+  }
+
+  function fetchMyInviteRank(userId) {
+    return window.supabase
+      .from('users')
+      .select('id, username, email, avatar_url, invite_count')
+      .eq('id', userId)
+      .single()
+      .then(function (userResult) {
+        if (userResult.error || !userResult.data) return null;
+        var inviteCount = Number(userResult.data.invite_count) || 0;
+        return window.supabase
+          .from('users')
+          .select('*', { count: 'exact', head: true })
+          .gt('invite_count', inviteCount)
+          .then(function (countResult) {
+            if (countResult.error) return null;
+            return window.supabase
+              .from('invites')
+              .select('reward_amount')
+              .eq('inviter_id', userId)
+              .then(function (rewardResult) {
+                var totalReward = (rewardResult.data || []).reduce(function (sum, row) {
+                  return sum + (Number(row.reward_amount) || 0);
+                }, 0);
+                return {
+                  rank: (countResult.count || 0) + 1,
+                  id: userResult.data.id,
+                  username: userResult.data.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(userResult.data.email) : 'User'),
+                  avatar_url: userResult.data.avatar_url || '',
+                  invite_count: inviteCount,
+                  total_reward: totalReward
+                };
+              });
+          });
+      });
   }
 
   function loadInvitePageData() {
@@ -15206,84 +15532,98 @@ window.addEventListener('hashchange', handleRoute);
 
     inviteDataLoading = true;
 
-    return getCurrentUserId()
-      .then(function (userId) {
+    return Promise.all([
+      fetchInviteSettings(),
+      getCurrentUserId()
+    ])
+      .then(function (results) {
+        var settings = results[0];
+        var userId = results[1];
+
         if (!userId || !window.supabase) {
-          return { loggedIn: false };
+          return { loggedIn: false, settings: settings };
         }
 
-        return window.supabase
-          .from('users')
-          .select('invite_count')
-          .eq('id', userId)
-          .single()
-          .then(function (userResult) {
-            if (userResult.error || !userResult.data) {
-              return { loggedIn: false };
-            }
+        return Promise.all([
+          window.supabase.from('users').select('invite_count').eq('id', userId).single(),
+          window.supabase.from('invites').select('*').eq('inviter_id', userId).order('created_at', { ascending: false }),
+          window.supabase.from('checkins').select('*').eq('user_id', userId).order('checkin_date', { ascending: false }).limit(50),
+          fetchInviteLeaderboard(50),
+          fetchMyInviteRank(userId)
+        ]).then(function (pageResults) {
+          var userResult = pageResults[0];
+          var invitesResult = pageResults[1];
+          var checkinsResult = pageResults[2];
+          var leaderboard = pageResults[3];
+          var myRank = pageResults[4];
 
-            return window.supabase
-              .from('invites')
-              .select('*')
-              .eq('inviter_id', userId)
-              .order('created_at', { ascending: false })
-              .then(function (invitesResult) {
-                if (invitesResult.error) {
-                  console.warn('加载邀请列表失败:', invitesResult.error);
-                }
+          if (userResult.error || !userResult.data) {
+            return { loggedIn: false, settings: settings };
+          }
 
-                var inviteRows = invitesResult.error ? [] : (invitesResult.data || []);
-                var inviteeIds = inviteRows
-                  .map(function (row) {
-                    return getInviteField(row, ['invitee_id', 'invited_user_id', 'friend_id'], null);
-                  })
-                  .filter(function (id) { return !!id; });
+          var inviteRows = invitesResult.error ? [] : (invitesResult.data || []);
+          var level1Rows = inviteRows.filter(function (row) { return Number(row.level) === 1; });
+          var inviteeIds = level1Rows.map(function (row) { return row.invitee_id; }).filter(Boolean);
+          var uniqueIds = inviteeIds.filter(function (id, index) { return inviteeIds.indexOf(id) === index; });
 
-                var uniqueIds = inviteeIds.filter(function (id, index) {
-                  return inviteeIds.indexOf(id) === index;
+          var buildData = function (userMap) {
+            var friends = level1Rows.map(function (row) {
+              var user = userMap[row.invitee_id] || {};
+              return {
+                username: user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'Unknown'),
+                registeredAt: row.created_at ? String(row.created_at).slice(0, 10) : '—',
+                reward: Number(row.reward_amount) || 0
+              };
+            });
+
+            var rewardRecords = inviteRows.map(function (row) {
+              var user = userMap[row.invitee_id] || {};
+              return {
+                level: Number(row.level) || 1,
+                username: user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'User'),
+                reward: Number(row.reward_amount) || 0,
+                createdAt: row.created_at ? String(row.created_at).slice(0, 16).replace('T', ' ') : '—'
+              };
+            });
+
+            return {
+              loggedIn: true,
+              userId: userId,
+              settings: settings,
+              inviteCount: Number(userResult.data.invite_count) || friends.length,
+              totalReward: inviteRows.reduce(function (sum, row) {
+                return sum + (Number(row.reward_amount) || 0);
+              }, 0),
+              friends: friends,
+              rewardRecords: rewardRecords,
+              miningRecords: checkinsResult.error ? [] : (checkinsResult.data || []),
+              leaderboard: leaderboard || [],
+              myRank: myRank
+            };
+          };
+
+          if (!uniqueIds.length) {
+            return buildData({});
+          }
+
+          return window.supabase
+            .from('users')
+            .select('id, username, email')
+            .in('id', uniqueIds)
+            .then(function (usersResult) {
+              var userMap = {};
+              if (!usersResult.error && usersResult.data) {
+                usersResult.data.forEach(function (user) {
+                  userMap[user.id] = user;
                 });
-
-                if (!uniqueIds.length) {
-                  return {
-                    loggedIn: true,
-                    userId: userId,
-                    inviteCount: Number(userResult.data.invite_count) || 0,
-                    totalReward: inviteRows.reduce(function (sum, row) {
-                      return sum + (Number(getInviteField(row, ['reward_amount', 'reward', 'contribution'], 0)) || 0);
-                    }, 0),
-                    friends: mapInviteFriends(inviteRows, {})
-                  };
-                }
-
-                return window.supabase
-                  .from('users')
-                  .select('id, username, email, created_at')
-                  .in('id', uniqueIds)
-                  .then(function (usersResult) {
-                    var userMap = {};
-                    if (!usersResult.error && usersResult.data) {
-                      usersResult.data.forEach(function (user) {
-                        userMap[user.id] = user;
-                      });
-                    }
-
-                    var friends = mapInviteFriends(inviteRows, userMap);
-                    return {
-                      loggedIn: true,
-                      userId: userId,
-                      inviteCount: Number(userResult.data.invite_count) || friends.length,
-                      totalReward: friends.reduce(function (sum, friend) {
-                        return sum + friend.reward;
-                      }, 0),
-                      friends: friends
-                    };
-                  });
-              });
-          });
+              }
+              return buildData(userMap);
+            });
+        });
       })
       .catch(function (err) {
         console.warn('加载邀请页数据失败:', err);
-        return { loggedIn: false };
+        return { loggedIn: false, settings: INVITE_SETTINGS_DEFAULTS };
       })
       .then(function (data) {
         inviteData = data;
@@ -15295,27 +15635,31 @@ window.addEventListener('hashchange', handleRoute);
 
   function renderLoginRequiredState() {
     var loginMsg = ivT('iv_login_required');
-    var codeEl = document.getElementById('iv-invite-code');
     var countEl = document.getElementById('iv-invite-count');
     var rewardEl = document.getElementById('iv-invite-reward');
     var linkEl = document.getElementById('iv-invite-link');
-    var currentEl = document.getElementById('iv-current-bonus');
-    var nextEl = document.getElementById('iv-next-level-text');
-    var fillEl = document.getElementById('iv-progress-fill');
-    var listEl = document.getElementById('iv-friends-list');
-    var friendsCountEl = document.getElementById('iv-friends-count');
+    var lbList = document.getElementById('iv-leaderboard-list');
+    var recordsList = document.getElementById('iv-records-list');
+    var miningList = document.getElementById('iv-mining-records');
+    var myRankFooter = document.getElementById('iv-my-rank-footer');
 
-    if (codeEl) codeEl.textContent = '—';
     if (countEl) countEl.textContent = loginMsg;
     if (rewardEl) rewardEl.textContent = '';
     if (linkEl) linkEl.value = '';
-    if (currentEl) currentEl.textContent = loginMsg;
-    if (nextEl) nextEl.textContent = '';
-    if (fillEl) fillEl.style.width = '0%';
-    if (friendsCountEl) friendsCountEl.textContent = '';
-    if (listEl) {
-      listEl.innerHTML = '<li class="invite-friend-item"><span class="iv-friend-name">' + loginMsg + '</span></li>';
-    }
+    if (lbList) lbList.innerHTML = '<li class="invite-empty-hint">' + loginMsg + '</li>';
+    if (recordsList) recordsList.innerHTML = '<li class="invite-empty-hint">' + loginMsg + '</li>';
+    if (miningList) miningList.innerHTML = '<li class="invite-empty-hint">' + loginMsg + '</li>';
+    if (myRankFooter) myRankFooter.classList.add('hidden');
+  }
+
+  function renderRewardDesc() {
+    var descEl = document.getElementById('iv-reward-desc');
+    if (!descEl) return;
+    var settings = (inviteData && inviteData.settings) || INVITE_SETTINGS_DEFAULTS;
+    descEl.textContent = ivT('iv_reward_desc', {
+      level1: formatNumber(Number(settings.invite_level1_reward) || INVITE_SETTINGS_DEFAULTS.invite_level1_reward),
+      level2: formatNumber(Number(settings.invite_level2_reward) || INVITE_SETTINGS_DEFAULTS.invite_level2_reward)
+    });
   }
 
   function renderOverview() {
@@ -15324,71 +15668,23 @@ window.addEventListener('hashchange', handleRoute);
       return;
     }
 
-    var inviteCode = String(inviteData.userId).slice(0, 8);
-    var inviteLink = buildInviteLink(inviteCode);
-
-    var codeEl = document.getElementById('iv-invite-code');
-    if (codeEl) codeEl.textContent = inviteCode;
-
+    var inviteLink = buildInviteLink(inviteData.userId);
     var countEl = document.getElementById('iv-invite-count');
-    if (countEl) {
-      countEl.textContent = ivT('iv_invite_count', { count: inviteData.inviteCount });
-    }
-
     var rewardEl = document.getElementById('iv-invite-reward');
-    if (rewardEl) {
-      rewardEl.textContent = ivT('iv_total_reward', { amount: formatNumber(inviteData.totalReward) });
-    }
-
     var linkEl = document.getElementById('iv-invite-link');
+
+    if (countEl) countEl.textContent = ivT('iv_invite_count', { count: inviteData.inviteCount });
+    if (rewardEl) rewardEl.textContent = ivT('iv_total_reward', { amount: formatNumber(inviteData.totalReward) });
     if (linkEl) linkEl.value = inviteLink;
 
-    inviteData.inviteCode = inviteCode;
     inviteData.inviteLink = inviteLink;
+    renderRewardDesc();
   }
 
-  function renderProgress() {
-    if (!inviteData || !inviteData.loggedIn) return;
-
-    var progress = getInviteProgressInfo(inviteData.inviteCount);
-
-    var currentEl = document.getElementById('iv-current-bonus');
-    if (currentEl) {
-      currentEl.textContent = ivT('iv_current_bonus', { bonus: progress.currentBonus });
-    }
-
-    var fillEl = document.getElementById('iv-progress-fill');
-    if (fillEl) fillEl.style.width = progress.pct + '%';
-
-    var nextEl = document.getElementById('iv-next-level-text');
-    if (nextEl) {
-      if (progress.remaining <= 0) {
-        nextEl.textContent = ivT('iv_next_level_max');
-      } else {
-        nextEl.textContent = ivT('iv_next_level', {
-          bonus: progress.nextBonus,
-          count: progress.remaining
-        });
-      }
-    }
-  }
-
-  function getSortedFriends() {
-    if (!inviteData || !inviteData.loggedIn) return [];
-    var friends = (inviteData.friends || []).slice();
-    if (friendsSortBy === 'contribution') {
-      friends.sort(function (a, b) { return b.reward - a.reward; });
-    } else {
-      friends.sort(function (a, b) {
-        return new Date(b.registeredAt) - new Date(a.registeredAt);
-      });
-    }
-    return friends;
-  }
-
-  function renderFriendsList() {
-    var listEl = document.getElementById('iv-friends-list');
-    var countEl = document.getElementById('iv-friends-count');
+  function renderLeaderboard() {
+    var listEl = document.getElementById('iv-leaderboard-list');
+    var expandBtn = document.getElementById('iv-leaderboard-expand');
+    var myRankFooter = document.getElementById('iv-my-rank-footer');
     if (!listEl) return;
 
     if (!inviteData || !inviteData.loggedIn) {
@@ -15396,78 +15692,186 @@ window.addEventListener('hashchange', handleRoute);
       return;
     }
 
-    var friends = getSortedFriends();
+    var rows = (inviteData.leaderboard || []).slice();
+    var displayLimit = leaderboardExpanded ? 50 : 6;
+    var visibleRows = rows.slice(0, displayLimit);
 
-    if (countEl) {
-      countEl.textContent = ivT('iv_friends_count', { count: friends.length });
+    if (!visibleRows.length) {
+      listEl.innerHTML = '<li class="invite-empty-hint">' + ivT('iv_lb_empty') + '</li>';
+    } else {
+      listEl.innerHTML = visibleRows.map(function (row) {
+        var safeName = typeof escapeHtml === 'function' ? escapeHtml(row.username) : row.username;
+        return (
+          '<li class="invite-leaderboard-item">' +
+            '<span class="iv-lb-rank">' + getRankBadge(row.rank) + '</span>' +
+            renderLeaderboardAvatarHtml(row) +
+            '<div class="iv-lb-info">' +
+              '<span class="iv-lb-name">' + safeName + '</span>' +
+              '<span class="iv-lb-meta">' + ivT('iv_lb_invites', { count: row.invite_count }) + '</span>' +
+            '</div>' +
+            '<span class="iv-lb-reward">' + ivT('iv_lb_reward', { amount: formatNumber(row.total_reward) }) + '</span>' +
+          '</li>'
+        );
+      }).join('');
     }
 
-    if (!friends.length) {
-      listEl.innerHTML = '<li class="invite-friend-item"><span class="iv-friend-name">' + ivT('iv_no_friends') + '</span></li>';
+    if (expandBtn) {
+      expandBtn.textContent = leaderboardExpanded ? ivT('iv_lb_collapse') : ivT('iv_lb_expand');
+      expandBtn.classList.toggle('hidden', rows.length <= 6);
+    }
+
+    if (myRankFooter) {
+      var myRank = inviteData.myRank;
+      var inVisible = myRank && visibleRows.some(function (row) { return row.id === myRank.id; });
+      if (myRank && !inVisible) {
+        myRankFooter.classList.remove('hidden');
+        myRankFooter.innerHTML =
+          '<span class="invite-my-rank-label">' + ivT('iv_lb_my_rank') + '</span>' +
+          '<div class="invite-leaderboard-item" style="padding:0;border:none;">' +
+            '<span class="iv-lb-rank">' + getRankBadge(myRank.rank) + '</span>' +
+            renderLeaderboardAvatarHtml(myRank) +
+            '<div class="iv-lb-info">' +
+              '<span class="iv-lb-name">' + (typeof escapeHtml === 'function' ? escapeHtml(myRank.username) : myRank.username) + '</span>' +
+              '<span class="iv-lb-meta">' + ivT('iv_lb_invites', { count: myRank.invite_count }) + '</span>' +
+            '</div>' +
+            '<span class="iv-lb-reward">' + ivT('iv_lb_reward', { amount: formatNumber(myRank.total_reward) }) + '</span>' +
+          '</div>';
+      } else {
+        myRankFooter.classList.add('hidden');
+        myRankFooter.innerHTML = '';
+      }
+    }
+  }
+
+  function renderMiningRecords() {
+    var listEl = document.getElementById('iv-mining-records');
+    var expandBtn = document.getElementById('iv-mining-expand');
+    if (!listEl) return;
+
+    if (!inviteData || !inviteData.loggedIn) {
+      renderLoginRequiredState();
       return;
     }
 
-    listEl.innerHTML = friends.map(function (friend) {
-      var safeName = typeof escapeHtml === 'function' ? escapeHtml(friend.username) : friend.username;
+    var records = (inviteData.miningRecords || []).slice();
+    var displayLimit = miningRecordsExpanded ? 50 : 6;
+    var visibleRecords = records.slice(0, displayLimit);
+
+    if (!visibleRecords.length) {
+      listEl.innerHTML = '<li class="invite-empty-hint">' + ivT('iv_mining_empty') + '</li>';
+    } else {
+      listEl.innerHTML = visibleRecords.map(function (row) {
+        var dateText = row.checkin_date ? String(row.checkin_date).slice(0, 10) : '—';
+        return (
+          '<li class="invite-mining-record-item">' +
+            '<div class="iv-lb-info">' +
+              '<span class="iv-lb-name">' + dateText + '</span>' +
+              '<span class="iv-lb-meta">' + ivT('iv_mining_record', {
+                amount: formatNumber(Number(row.reward_amount) || 0),
+                days: Number(row.consecutive_days) || 1
+              }) + '</span>' +
+            '</div>' +
+          '</li>'
+        );
+      }).join('');
+    }
+
+    if (expandBtn) {
+      expandBtn.textContent = miningRecordsExpanded ? ivT('iv_mining_collapse') : ivT('iv_mining_expand');
+      expandBtn.classList.toggle('hidden', records.length <= 6);
+    }
+  }
+
+  function updateInviteRecordsTabsUI() {
+    var friendsTab = document.getElementById('iv-tab-friends');
+    var rewardsTab = document.getElementById('iv-tab-rewards');
+    if (friendsTab) friendsTab.classList.toggle('invite-records-tab-active', inviteRecordsTab === 'friends');
+    if (rewardsTab) rewardsTab.classList.toggle('invite-records-tab-active', inviteRecordsTab === 'rewards');
+  }
+
+  function renderInviteRecordsList() {
+    var listEl = document.getElementById('iv-records-list');
+    if (!listEl) return;
+
+    if (!inviteData || !inviteData.loggedIn) {
+      renderLoginRequiredState();
+      return;
+    }
+
+    if (inviteRecordsTab === 'friends') {
+      var friends = inviteData.friends || [];
+      if (!friends.length) {
+        listEl.innerHTML = '<li class="invite-empty-hint">' + ivT('iv_no_friends') + '</li>';
+        return;
+      }
+      listEl.innerHTML = friends.map(function (friend) {
+        var safeName = typeof escapeHtml === 'function' ? escapeHtml(friend.username) : friend.username;
+        return (
+          '<li class="invite-record-item">' +
+            '<div class="iv-lb-info">' +
+              '<span class="iv-lb-name">' + safeName + '</span>' +
+              '<span class="iv-lb-meta">' + friend.registeredAt + '</span>' +
+            '</div>' +
+            '<span class="iv-record-reward">' + ivT('iv_reward_amount', { amount: formatNumber(friend.reward) }) + '</span>' +
+          '</li>'
+        );
+      }).join('');
+      return;
+    }
+
+    var rewards = inviteData.rewardRecords || [];
+    if (!rewards.length) {
+      listEl.innerHTML = '<li class="invite-empty-hint">' + ivT('iv_no_rewards') + '</li>';
+      return;
+    }
+
+    listEl.innerHTML = rewards.map(function (record) {
+      var safeName = typeof escapeHtml === 'function' ? escapeHtml(record.username) : record.username;
+      var levelClass = record.level === 2 ? 'iv-record-level-2' : 'iv-record-level-1';
       return (
-        '<li class="invite-friend-item">' +
-          '<div class="iv-friend-avatar"></div>' +
-          '<span class="iv-friend-name">' + safeName + '</span>' +
-          '<span class="iv-friend-date">' + friend.registeredAt + '</span>' +
-          '<span class="iv-friend-reward">' + ivT('iv_reward_amount', { amount: formatNumber(friend.reward) }) + '</span>' +
+        '<li class="invite-record-item">' +
+          '<span class="iv-record-level ' + levelClass + '">' + ivT('iv_level_tag', { level: record.level }) + '</span>' +
+          '<div class="iv-lb-info">' +
+            '<span class="iv-lb-name">' + safeName + '</span>' +
+            '<span class="iv-lb-meta">' + record.createdAt + '</span>' +
+          '</div>' +
+          '<span class="iv-record-reward">' + ivT('iv_reward_amount', { amount: formatNumber(record.reward) }) + '</span>' +
         '</li>'
       );
     }).join('');
   }
 
-  function updateSortTabsUI() {
-    var timeTab = document.getElementById('iv-sort-time');
-    var contribTab = document.getElementById('iv-sort-contribution');
-
-    if (timeTab) {
-      if (friendsSortBy === 'time') {
-        timeTab.classList.add('invite-sort-active');
-      } else {
-        timeTab.classList.remove('invite-sort-active');
-      }
+  function openShareWindow(platform) {
+    if (!inviteData || !inviteData.loggedIn || !inviteData.inviteLink) {
+      alert(ivT('iv_login_required'));
+      return;
     }
 
-    if (contribTab) {
-      if (friendsSortBy === 'contribution') {
-        contribTab.classList.add('invite-sort-active');
-      } else {
-        contribTab.classList.remove('invite-sort-active');
-      }
-    }
-  }
+    var link = inviteData.inviteLink;
+    var text = ivT('iv_share_headline');
+    var encodedUrl = encodeURIComponent(link);
+    var encodedText = encodeURIComponent(text + ' ' + link);
+    var shareUrl = '';
 
-  function updateRulesUI() {
-    var card = document.querySelector('.invite-rules-card');
-    if (card) {
-      if (rulesExpanded) {
-        card.classList.add('expanded');
-      } else {
-        card.classList.remove('expanded');
-      }
+    if (platform === 'twitter') {
+      shareUrl = 'https://twitter.com/intent/tweet?text=' + encodedText;
+    } else if (platform === 'telegram') {
+      shareUrl = 'https://t.me/share/url?url=' + encodedUrl + '&text=' + encodeURIComponent(text);
+    } else {
+      copyText(link).then(function () {
+        alert(ivT('iv_alert_copied'));
+      });
+      return;
     }
+
+    copyText(link).then(function () {
+      window.open(shareUrl, '_blank', 'noopener,noreferrer');
+    });
   }
 
   function initInviteEvents() {
     if (inviteInitialized) return;
     inviteInitialized = true;
-
-    var copyCodeBtn = document.getElementById('iv-copy-code-btn');
-    if (copyCodeBtn) {
-      copyCodeBtn.addEventListener('click', function () {
-        if (!inviteData || !inviteData.loggedIn || !inviteData.inviteCode) {
-          alert(ivT('iv_login_required'));
-          return;
-        }
-        copyText(inviteData.inviteCode).then(function () {
-          alert(ivT('iv_alert_copied'));
-        });
-      });
-    }
 
     var copyLinkBtn = document.getElementById('iv-copy-link-btn');
     if (copyLinkBtn) {
@@ -15484,47 +15888,42 @@ window.addEventListener('hashchange', handleRoute);
 
     document.querySelectorAll('.invite-share-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        if (!inviteData || !inviteData.loggedIn || !inviteData.inviteLink) {
-          alert(ivT('iv_login_required'));
-          return;
-        }
-        copyText(inviteData.inviteLink).then(function () {
-          alert(ivT('iv_alert_share'));
-        });
+        openShareWindow(btn.getAttribute('data-share'));
       });
     });
 
-    var sortTime = document.getElementById('iv-sort-time');
-    var sortContrib = document.getElementById('iv-sort-contribution');
-
-    if (sortTime) {
-      sortTime.addEventListener('click', function () {
-        friendsSortBy = 'time';
-        updateSortTabsUI();
-        renderFriendsList();
+    var friendsTab = document.getElementById('iv-tab-friends');
+    var rewardsTab = document.getElementById('iv-tab-rewards');
+    if (friendsTab) {
+      friendsTab.addEventListener('click', function () {
+        inviteRecordsTab = 'friends';
+        updateInviteRecordsTabsUI();
+        renderInviteRecordsList();
+      });
+    }
+    if (rewardsTab) {
+      rewardsTab.addEventListener('click', function () {
+        inviteRecordsTab = 'rewards';
+        updateInviteRecordsTabsUI();
+        renderInviteRecordsList();
       });
     }
 
-    if (sortContrib) {
-      sortContrib.addEventListener('click', function () {
-        friendsSortBy = 'contribution';
-        updateSortTabsUI();
-        renderFriendsList();
+    var lbExpandBtn = document.getElementById('iv-leaderboard-expand');
+    if (lbExpandBtn) {
+      lbExpandBtn.addEventListener('click', function () {
+        leaderboardExpanded = !leaderboardExpanded;
+        renderLeaderboard();
+        applyInviteI18n();
       });
     }
 
-    var rulesToggle = document.getElementById('iv-rules-toggle');
-    if (rulesToggle) {
-      rulesToggle.addEventListener('click', function () {
-        rulesExpanded = !rulesExpanded;
-        updateRulesUI();
-      });
-    }
-
-    var posterBtn = document.getElementById('iv-poster-btn');
-    if (posterBtn) {
-      posterBtn.addEventListener('click', function () {
-        alert(ivT('iv_alert_poster'));
+    var miningExpandBtn = document.getElementById('iv-mining-expand');
+    if (miningExpandBtn) {
+      miningExpandBtn.addEventListener('click', function () {
+        miningRecordsExpanded = !miningRecordsExpanded;
+        renderMiningRecords();
+        applyInviteI18n();
       });
     }
 
@@ -15534,32 +15933,36 @@ window.addEventListener('hashchange', handleRoute);
   function renderInvitePage() {
     initInviteEvents();
     applyInviteI18n();
-    updateSortTabsUI();
-    updateRulesUI();
+    updateInviteRecordsTabsUI();
+
+    if (typeof processPendingInviteRegistration === 'function') {
+      processPendingInviteRegistration();
+    }
+
     refreshMiningButtonState().then(function () {
       applyInviteI18n();
     });
 
     if (inviteDataLoading && !inviteDataLoaded) {
-      var codeEl = document.getElementById('iv-invite-code');
-      if (codeEl) codeEl.textContent = ivT('iv_loading');
+      var countEl = document.getElementById('iv-invite-count');
+      if (countEl) countEl.textContent = ivT('iv_loading');
       return;
     }
+
+    var renderAll = function () {
+      renderOverview();
+      renderLeaderboard();
+      renderMiningRecords();
+      renderInviteRecordsList();
+      applyInviteI18n();
+    };
 
     if (inviteDataLoaded && inviteData) {
-      renderOverview();
-      renderProgress();
-      renderFriendsList();
-      applyInviteI18n();
+      renderAll();
       return;
     }
 
-    loadInvitePageData().then(function () {
-      renderOverview();
-      renderProgress();
-      renderFriendsList();
-      applyInviteI18n();
-    });
+    loadInvitePageData().then(renderAll);
   }
 
   function restoreAppContentIfNeeded() {
@@ -15567,8 +15970,9 @@ window.addEventListener('hashchange', handleRoute);
     if (!document.getElementById('home-page')) {
       appContentEl.innerHTML = APP_CONTENT_HTML;
       inviteInitialized = false;
-      friendsSortBy = 'time';
-      rulesExpanded = false;
+      inviteRecordsTab = 'friends';
+      leaderboardExpanded = false;
+      miningRecordsExpanded = false;
       inviteDataLoaded = false;
       inviteDataLoading = false;
       inviteData = null;
@@ -15588,6 +15992,7 @@ window.addEventListener('hashchange', handleRoute);
         renderInvitePage();
       } else {
         invitePage.classList.add('hidden');
+        stopMiningCountdownTicker();
         inviteDataLoaded = false;
         inviteDataLoading = false;
         inviteData = null;
@@ -15598,7 +16003,12 @@ window.addEventListener('hashchange', handleRoute);
   window.addEventListener('hashchange', handleInviteRoute);
 
   window.addEventListener('DOMContentLoaded', function () {
-    setTimeout(handleInviteRoute, 0);
+    setTimeout(function () {
+      handleInviteRoute();
+      if (typeof processPendingInviteRegistration === 'function') {
+        processPendingInviteRegistration();
+      }
+    }, 0);
   });
 
   var langToggleBtn = document.getElementById('lang-toggle');
@@ -15641,6 +16051,14 @@ window.addEventListener('hashchange', handleRoute);
       ad_tab_users: '用户管理',
       ad_tab_broadcasts: '广播管理',
       ad_tab_withdraw: '提币设置',
+      ad_tab_invite: '邀请设置',
+      ad_invite_title: '邀请设置',
+      ad_invite_level1: '一级奖励金额（CRLM）',
+      ad_invite_level2: '二级奖励金额（CRLM）',
+      ad_btn_save_invite: '保存',
+      ad_invite_save_ok: '邀请设置已保存',
+      ad_invite_save_fail: '保存邀请设置失败：',
+      ad_invite_invalid: '请输入有效的奖励金额',
       ad_dashboard_title: '数据看板',
       ad_tasks_title: '任务管理',
       ad_users_title: '用户管理',
@@ -15730,6 +16148,14 @@ window.addEventListener('hashchange', handleRoute);
       ad_tab_users: 'Users',
       ad_tab_broadcasts: 'Broadcasts',
       ad_tab_withdraw: 'Withdraw Settings',
+      ad_tab_invite: 'Invite Settings',
+      ad_invite_title: 'Invite Settings',
+      ad_invite_level1: 'Level 1 reward (CRLM)',
+      ad_invite_level2: 'Level 2 reward (CRLM)',
+      ad_btn_save_invite: 'Save',
+      ad_invite_save_ok: 'Invite settings saved',
+      ad_invite_save_fail: 'Failed to save invite settings: ',
+      ad_invite_invalid: 'Please enter valid reward amounts',
       ad_dashboard_title: 'Dashboard',
       ad_tasks_title: 'Task Management',
       ad_users_title: 'User Management',
@@ -16345,6 +16771,8 @@ window.addEventListener('hashchange', handleRoute);
       renderBroadcastList();
     } else if (adminTab === 'withdraw') {
       await loadAdminWithdrawSettings();
+    } else if (adminTab === 'invite') {
+      await loadAdminInviteSettings();
     }
   }
 
@@ -16395,6 +16823,44 @@ window.addEventListener('hashchange', handleRoute);
 
     invalidateWithdrawSettingsCache();
     alert(adT('ad_withdraw_save_ok'));
+  }
+
+  async function loadAdminInviteSettings() {
+    var settings = await fetchInviteSettings();
+    var level1El = document.getElementById('ad-invite-level1');
+    var level2El = document.getElementById('ad-invite-level2');
+
+    if (level1El) level1El.value = String(settings.invite_level1_reward);
+    if (level2El) level2El.value = String(settings.invite_level2_reward);
+  }
+
+  async function saveAdminInviteSettings() {
+    if (!window.supabase) return;
+
+    var level1 = Number(document.getElementById('ad-invite-level1') && document.getElementById('ad-invite-level1').value);
+    var level2 = Number(document.getElementById('ad-invite-level2') && document.getElementById('ad-invite-level2').value);
+
+    if (!Number.isFinite(level1) || level1 < 0 || !Number.isFinite(level2) || level2 < 0) {
+      alert(adT('ad_invite_invalid'));
+      return;
+    }
+
+    var rows = [
+      { key: 'invite_level1_reward', value: String(level1) },
+      { key: 'invite_level2_reward', value: String(level2) }
+    ];
+
+    var result = await window.supabase
+      .from('settings')
+      .upsert(rows, { onConflict: 'key' });
+
+    if (result.error) {
+      alert(adT('ad_invite_save_fail') + result.error.message);
+      return;
+    }
+
+    invalidateInviteSettingsCache();
+    alert(adT('ad_invite_save_ok'));
   }
 
   function initAdminEvents() {
@@ -16485,6 +16951,11 @@ window.addEventListener('hashchange', handleRoute);
     var withdrawSaveBtn = document.getElementById('ad-withdraw-save-btn');
     if (withdrawSaveBtn) {
       withdrawSaveBtn.addEventListener('click', saveAdminWithdrawSettings);
+    }
+
+    var inviteSaveBtn = document.getElementById('ad-invite-save-btn');
+    if (inviteSaveBtn) {
+      inviteSaveBtn.addEventListener('click', saveAdminInviteSettings);
     }
 
     document.querySelectorAll('#ad-cancel-modal .admin-modal-overlay, #ad-official-modal .admin-modal-overlay, #ad-grant-modal .admin-modal-overlay').forEach(function (overlay) {
