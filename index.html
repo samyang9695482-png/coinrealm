@@ -1173,8 +1173,7 @@ ALTER TABLE tasks ADD COLUMN task_keyword TEXT;</pre>
       <h1 class="invite-title" data-i18n="iv_page_title">邀请好友</h1>
 
       <div class="invite-layout">
-        <!-- 左栏：邀请链接 + 挖矿 + 邀请记录（桌面第 1 列，移动端优先展示） -->
-        <aside class="invite-column invite-column-center">
+        <aside class="invite-column invite-column-left">
           <div class="invite-panel invite-link-panel">
             <h2 class="invite-panel-title" data-i18n="iv_share_headline">邀请好友，赚取 CRLM</h2>
             <p id="iv-reward-desc" class="invite-reward-desc" data-i18n="iv_reward_desc">一级奖励：50 CRLM/人，二级奖励：10 CRLM/人</p>
@@ -1199,6 +1198,20 @@ ALTER TABLE tasks ADD COLUMN task_keyword TEXT;</pre>
             </div>
           </div>
 
+          <div class="invite-panel invite-leaderboard-panel">
+            <h2 class="invite-panel-title" data-i18n="iv_lb_title">🏆 邀请排行榜</h2>
+            <ul id="iv-leaderboard-list" class="invite-leaderboard-list"></ul>
+            <button type="button" id="iv-leaderboard-expand" class="invite-expand-btn" data-i18n="iv_lb_expand">查看完整排行榜</button>
+            <div id="iv-my-rank-footer" class="invite-my-rank hidden"></div>
+          </div>
+
+          <div class="invite-panel invite-friends-panel">
+            <h2 class="invite-panel-title" data-i18n="iv_friends_title">我邀请的好友</h2>
+            <ul id="iv-friends-list" class="invite-records-list"></ul>
+          </div>
+        </aside>
+
+        <main class="invite-column invite-column-center">
           <div class="invite-panel invite-mining-panel">
             <div class="invite-mining-section">
               <div class="invite-mining-wrap">
@@ -1227,29 +1240,13 @@ ALTER TABLE tasks ADD COLUMN task_keyword TEXT;</pre>
             </div>
             <ul id="iv-records-list" class="invite-records-list"></ul>
           </div>
-        </aside>
+        </main>
 
-        <!-- 中栏：挖矿收益记录（桌面第 2 列） -->
-        <aside class="invite-column invite-column-left">
+        <aside class="invite-column invite-column-right">
           <div class="invite-panel invite-earnings-panel">
             <h2 class="invite-panel-title" data-i18n="iv_mining_earnings_title">⛏️ 挖矿收益</h2>
             <ul id="iv-mining-records" class="invite-mining-records-list"></ul>
             <button type="button" id="iv-mining-expand" class="invite-expand-btn" data-i18n="iv_mining_expand">查看全部记录</button>
-          </div>
-        </aside>
-
-        <!-- 右栏：邀请排行榜 + 我邀请的好友（桌面第 3 列） -->
-        <aside class="invite-column invite-column-right">
-          <div class="invite-panel invite-leaderboard-panel">
-            <h2 class="invite-panel-title" data-i18n="iv_lb_title">🏆 邀请排行榜</h2>
-            <ul id="iv-leaderboard-list" class="invite-leaderboard-list"></ul>
-            <button type="button" id="iv-leaderboard-expand" class="invite-expand-btn" data-i18n="iv_lb_expand">查看完整排行榜</button>
-            <div id="iv-my-rank-footer" class="invite-my-rank hidden"></div>
-          </div>
-
-          <div class="invite-panel invite-friends-panel">
-            <h2 class="invite-panel-title" data-i18n="iv_friends_title">我邀请的好友</h2>
-            <ul id="iv-friends-list" class="invite-records-list"></ul>
           </div>
         </aside>
       </div>
