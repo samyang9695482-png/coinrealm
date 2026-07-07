@@ -93,6 +93,7 @@ img {
   align-items: center;
   gap: 20px;
   min-width: 0;
+  flex-shrink: 0;
 }
 
 .navbar-nav {
@@ -117,6 +118,67 @@ img {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-shrink: 0;
+}
+
+.navbar-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  flex: 1;
+  min-width: 0;
+  padding: 0 16px;
+}
+
+.navbar-main-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  text-decoration: none;
+  white-space: nowrap;
+  padding-bottom: 4px;
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.navbar-main-link:hover {
+  color: #ffffff;
+}
+
+.navbar-main-link-active {
+  color: #f0b90b;
+  border-bottom-color: #f0b90b;
+}
+
+.navbar-main-icon {
+  line-height: 1;
+}
+
+.navbar-main-text {
+  line-height: 1.2;
+}
+
+@media (max-width: 767px) {
+  .navbar-center {
+    gap: 16px;
+    padding: 0 8px;
+  }
+
+  .navbar-main-text {
+    display: none;
+  }
+
+  .navbar-main-icon {
+    font-size: 18px;
+  }
+
+  .navbar-main-link {
+    padding-bottom: 2px;
+  }
 }
 
 /* ===== Buttons ===== */

@@ -354,6 +354,9 @@ const translations = {
         guide_text: "欢迎来到 CoinRealm！选择一个任务，开始赚取 CRLM 吧。",
         search_placeholder: "搜索任务...",
         nav_simple_tasks: "⚡ 简单任务",
+        nav_home: "首页",
+        nav_mining: "挖矿",
+        nav_invite_earn: "邀请赚币",
         simple_view_all: "查看更多 →",
         st_page_title: "⚡ 简单任务",
         st_page_subtitle: "一键完成，快速赚取 CRLM",
@@ -412,6 +415,9 @@ const translations = {
         guide_text: "Welcome to CoinRealm! Select a task and start earning CRLM.",
         search_placeholder: "Search tasks...",
         nav_simple_tasks: "⚡ Simple Tasks",
+        nav_home: "Home",
+        nav_mining: "Mining",
+        nav_invite_earn: "Invite",
         simple_view_all: "View all →",
         st_page_title: "⚡ Simple Tasks",
         st_page_subtitle: "Complete in one tap, earn CRLM fast",
@@ -4340,7 +4346,25 @@ function applyLanguageStrings() {
             element.setAttribute('placeholder', langData[key]);
         }
     });
+
+    updateNavbarMainLinksActive();
 }
+
+function updateNavbarMainLinksActive() {
+    var route = getRouteBaseFromHash();
+    document.querySelectorAll('.navbar-main-link').forEach(function (link) {
+        var navRoute = link.getAttribute('data-nav-route');
+        var isActive = navRoute === route;
+        link.classList.toggle('navbar-main-link-active', isActive);
+        if (isActive) {
+            link.setAttribute('aria-current', 'page');
+        } else {
+            link.removeAttribute('aria-current');
+        }
+    });
+}
+
+window.updateNavbarMainLinksActive = updateNavbarMainLinksActive;
 
 // ==========================================
 // 4. 路由系统挂载衔接机制 (请根据具体路由实现进行补充)
@@ -4376,8 +4400,14 @@ function applyInitialRoute() {
 }
 
 // 页面加载完毕后默认触发一次
-window.addEventListener('DOMContentLoaded', applyInitialRoute);
-window.addEventListener('hashchange', handleRoute);
+window.addEventListener('DOMContentLoaded', function () {
+    updateNavbarMainLinksActive();
+    applyInitialRoute();
+});
+window.addEventListener('hashchange', function () {
+    updateNavbarMainLinksActive();
+    handleRoute();
+});
 
 // ==========================================
 // 5. 任务详情页 (#task-detail) — 任务卡 #003
