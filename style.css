@@ -312,18 +312,193 @@ img {
     box-sizing: border-box;
 }
 
-/* 广告横幅 */
-.ads-banner {
+/* 广告轮播 */
+.ads-carousel {
     background-color: #e8e8e8;
-    height: 90px;
+    min-height: 90px;
+    margin-top: 16px;
+    margin-bottom: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.ads-carousel-viewport {
+    min-height: 90px;
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+.ads-carousel-slide {
+    width: 100%;
+    min-height: 90px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 16px;
+    box-sizing: border-box;
+    opacity: 1;
+    transition: opacity 0.5s ease;
+}
+
+.ads-carousel-slide.is-fading {
+    opacity: 0;
+}
+
+.ads-carousel-content {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-align: center;
+}
+
+.ads-carousel-content.is-clickable {
+    cursor: pointer;
+}
+
+.ads-carousel-image {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 4px;
+}
+
+.ads-carousel-code {
+    width: 100%;
+    overflow: hidden;
+}
+
+.ads-carousel-name {
+    color: #333333;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.ads-carousel-placeholder {
     color: #666666;
     font-size: 14px;
-    margin-top: 16px;
-    margin-bottom: 16px;
-    border-radius: 4px;
+    text-align: center;
+}
+
+.ads-carousel-dots {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 0 12px;
+}
+
+.ads-carousel-dots.hidden {
+    display: none;
+}
+
+.ads-carousel-dot {
+    width: 8px;
+    height: 8px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background-color: #c0c0c0;
+    cursor: pointer;
+    transition: background-color 0.3s ease, transform 0.3s ease;
+}
+
+.ads-carousel-dot:hover:not(:disabled) {
+    transform: scale(1.15);
+}
+
+.ads-carousel-dot.is-active {
+    background-color: #f0b90b;
+}
+
+.ads-carousel-dot:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+/* 管理后台 — 广告管理 */
+.admin-ads-form {
+    max-width: 900px;
+}
+
+.admin-ads-slots {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    margin-top: 12px;
+}
+
+.admin-ads-slot {
+    border: 1px solid #e8e8e8;
+    border-radius: 12px;
+    padding: 16px;
+    background: #fafafa;
+}
+
+.admin-ads-slot-title {
+    margin: 0 0 12px;
+    font-size: 16px;
+    color: #333;
+}
+
+.admin-ads-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.admin-ads-toggle-input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.admin-ads-toggle-slider {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    background: #ccc;
+    border-radius: 12px;
+    transition: background 0.2s ease;
+    flex-shrink: 0;
+}
+
+.admin-ads-toggle-slider::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.2s ease;
+}
+
+.admin-ads-toggle-input:checked + .admin-ads-toggle-slider {
+    background: #f0b90b;
+}
+
+.admin-ads-toggle-input:checked + .admin-ads-toggle-slider::after {
+    transform: translateX(20px);
+}
+
+.admin-ads-toggle-text {
+    font-size: 13px;
+    color: #666;
+}
+
+@media (max-width: 900px) {
+    .admin-ads-slots {
+        grid-template-columns: 1fr;
+    }
 }
 
 /* 广播动态区 */

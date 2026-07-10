@@ -106,9 +106,14 @@
     <!-- 首页（任务大厅）主容器 — 由路由 #home 显示 -->
     <div id="home-page" class="home-container">
 
-      <!-- 1. Web3 广告横幅区 -->
-      <div class="ads-banner">
-        <span data-i18n="ads_banner">广告位（Web3 Ads）</span>
+      <!-- 1. Web3 广告轮播区 -->
+      <div id="ads-carousel" class="ads-carousel">
+        <div class="ads-carousel-viewport">
+          <div id="ads-carousel-slide" class="ads-carousel-slide">
+            <span class="ads-carousel-placeholder" data-i18n="ads_placeholder">广告位招租 | 联系 @CoinRealm_X</span>
+          </div>
+        </div>
+        <div id="ads-carousel-dots" class="ads-carousel-dots hidden" aria-hidden="true"></div>
       </div>
 
       <!-- 2. 广播动态区 -->
@@ -1270,6 +1275,7 @@ ALTER TABLE tasks ADD COLUMN task_keyword TEXT;</pre>
           <button type="button" class="admin-tab" data-admin-tab="broadcasts" data-i18n="ad_tab_broadcasts">广播管理</button>
           <button type="button" class="admin-tab" data-admin-tab="withdraw" data-i18n="ad_tab_withdraw">提币设置</button>
           <button type="button" class="admin-tab" data-admin-tab="invite" data-i18n="ad_tab_invite">邀请设置</button>
+          <button type="button" class="admin-tab" data-admin-tab="ads" data-i18n="ad_tab_ads">广告管理</button>
         </div>
 
         <section id="admin-panel-dashboard" class="admin-panel">
@@ -1335,6 +1341,69 @@ ALTER TABLE tasks ADD COLUMN task_keyword TEXT;</pre>
             <label class="admin-label" for="ad-invite-level2" data-i18n="ad_invite_level2">二级奖励金额（CRLM）</label>
             <input type="number" id="ad-invite-level2" class="admin-input" min="0" step="1" value="10">
             <button type="button" id="ad-invite-save-btn" class="admin-primary-btn" data-i18n="ad_btn_save_invite">保存</button>
+          </form>
+        </section>
+
+        <section id="admin-panel-ads" class="admin-panel hidden">
+          <h2 class="admin-section-title" data-i18n="ad_ads_title">广告管理</h2>
+          <form id="ad-ads-form" class="admin-form admin-ads-form">
+            <label class="admin-label" for="ad-ads-interval" data-i18n="ad_ads_interval">轮播间隔（秒）</label>
+            <input type="number" id="ad-ads-interval" class="admin-input" min="2" step="1" value="5">
+
+            <div class="admin-ads-slots">
+              <div class="admin-ads-slot" data-ad-slot="0">
+                <h3 class="admin-ads-slot-title" data-i18n="ad_ads_slot1">广告位 1</h3>
+                <label class="admin-label" for="ad-ads-name-0" data-i18n="ad_ads_slot_name">广告名称</label>
+                <input type="text" id="ad-ads-name-0" class="admin-input" placeholder="广告位 1">
+                <label class="admin-label" for="ad-ads-image-0" data-i18n="ad_ads_slot_image">广告图片链接</label>
+                <input type="url" id="ad-ads-image-0" class="admin-input" placeholder="https://">
+                <label class="admin-label" for="ad-ads-link-0" data-i18n="ad_ads_slot_link">广告目标链接</label>
+                <input type="url" id="ad-ads-link-0" class="admin-input" placeholder="https://">
+                <label class="admin-label" for="ad-ads-code-0" data-i18n="ad_ads_slot_code">广告代码</label>
+                <textarea id="ad-ads-code-0" class="admin-textarea" rows="3" placeholder="HTML / JS"></textarea>
+                <label class="admin-ads-toggle">
+                  <input type="checkbox" id="ad-ads-enabled-0" class="admin-ads-toggle-input">
+                  <span class="admin-ads-toggle-slider" aria-hidden="true"></span>
+                  <span class="admin-ads-toggle-text" data-i18n="ad_ads_slot_enabled">开启此广告位</span>
+                </label>
+              </div>
+
+              <div class="admin-ads-slot" data-ad-slot="1">
+                <h3 class="admin-ads-slot-title" data-i18n="ad_ads_slot2">广告位 2</h3>
+                <label class="admin-label" for="ad-ads-name-1" data-i18n="ad_ads_slot_name">广告名称</label>
+                <input type="text" id="ad-ads-name-1" class="admin-input" placeholder="广告位 2">
+                <label class="admin-label" for="ad-ads-image-1" data-i18n="ad_ads_slot_image">广告图片链接</label>
+                <input type="url" id="ad-ads-image-1" class="admin-input" placeholder="https://">
+                <label class="admin-label" for="ad-ads-link-1" data-i18n="ad_ads_slot_link">广告目标链接</label>
+                <input type="url" id="ad-ads-link-1" class="admin-input" placeholder="https://">
+                <label class="admin-label" for="ad-ads-code-1" data-i18n="ad_ads_slot_code">广告代码</label>
+                <textarea id="ad-ads-code-1" class="admin-textarea" rows="3" placeholder="HTML / JS"></textarea>
+                <label class="admin-ads-toggle">
+                  <input type="checkbox" id="ad-ads-enabled-1" class="admin-ads-toggle-input">
+                  <span class="admin-ads-toggle-slider" aria-hidden="true"></span>
+                  <span class="admin-ads-toggle-text" data-i18n="ad_ads_slot_enabled">开启此广告位</span>
+                </label>
+              </div>
+
+              <div class="admin-ads-slot" data-ad-slot="2">
+                <h3 class="admin-ads-slot-title" data-i18n="ad_ads_slot3">广告位 3</h3>
+                <label class="admin-label" for="ad-ads-name-2" data-i18n="ad_ads_slot_name">广告名称</label>
+                <input type="text" id="ad-ads-name-2" class="admin-input" placeholder="广告位 3">
+                <label class="admin-label" for="ad-ads-image-2" data-i18n="ad_ads_slot_image">广告图片链接</label>
+                <input type="url" id="ad-ads-image-2" class="admin-input" placeholder="https://">
+                <label class="admin-label" for="ad-ads-link-2" data-i18n="ad_ads_slot_link">广告目标链接</label>
+                <input type="url" id="ad-ads-link-2" class="admin-input" placeholder="https://">
+                <label class="admin-label" for="ad-ads-code-2" data-i18n="ad_ads_slot_code">广告代码</label>
+                <textarea id="ad-ads-code-2" class="admin-textarea" rows="3" placeholder="HTML / JS"></textarea>
+                <label class="admin-ads-toggle">
+                  <input type="checkbox" id="ad-ads-enabled-2" class="admin-ads-toggle-input">
+                  <span class="admin-ads-toggle-slider" aria-hidden="true"></span>
+                  <span class="admin-ads-toggle-text" data-i18n="ad_ads_slot_enabled">开启此广告位</span>
+                </label>
+              </div>
+            </div>
+
+            <button type="button" id="ad-ads-save-btn" class="admin-primary-btn" data-i18n="ad_btn_save_ads">保存</button>
           </form>
         </section>
 

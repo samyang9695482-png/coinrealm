@@ -348,6 +348,7 @@ function switchLanguage(lang) {
 const translations = {
     zh: {
         ads_banner: "广告位（Web3 Ads）",
+        ads_placeholder: "广告位招租 | 联系 @CoinRealm_X",
         broadcast_prefix: "用户",
         broadcast_done: "完成了注册任务，获得",
         broadcast_empty: "暂无动态",
@@ -412,6 +413,7 @@ const translations = {
     },
     en: {
         ads_banner: "Advertising Space (Web3 Ads)",
+        ads_placeholder: "Ad space available | Contact @CoinRealm_X",
         broadcast_prefix: "User",
         broadcast_done: "completed the registration task and received",
         broadcast_empty: "No activity yet",
@@ -661,6 +663,241 @@ async function fetchInviteSettings() {
 function invalidateInviteSettingsCache() {
   cachedInviteSettings = null;
 }
+
+var ADS_CONFIG_DEFAULTS = {
+  interval: 5,
+  ads: [
+    { name: '广告位 1', image: '', link: '', code: '', enabled: false },
+    { name: '广告位 2', image: '', link: '', code: '', enabled: false },
+    { name: '广告位 3', image: '', link: '', code: '', enabled: false }
+  ]
+};
+var cachedAdsConfig = null;
+
+function normalizeAdsConfig(raw) {
+  var config = {
+    interval: Number(raw && raw.interval) || ADS_CONFIG_DEFAULTS.interval,
+    ads: []
+  };
+
+  if (!Number.isFinite(config.interval) || config.interval < 2) {
+    config.interval = ADS_CONFIG_DEFAULTS.interval;
+  }
+
+  var sourceAds = raw && Array.isArray(raw.ads) ? raw.ads : [];
+  for (var i = 0; i < 3; i++) {
+    var item = sourceAds[i] || {};
+    config.ads.push({
+      name: String(item.name != null ? item.name : ADS_CONFIG_DEFAULTS.ads[i].name),
+      image: String(item.image || ''),
+      link: String(item.link || ''),
+      code: String(item.code || ''),
+      enabled: !!item.enabled
+    });
+  }
+
+  return config;
+}
+
+async function fetchAdsConfig() {
+  if (cachedAdsConfig) return cachedAdsConfig;
+
+  var config = normalizeAdsConfig(ADS_CONFIG_DEFAULTS);
+  if (!window.supabase) {
+    cachedAdsConfig = config;
+    return config;
+  }
+
+  try {
+    var result = await window.supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'ads_config')
+      .maybeSingle();
+
+    if (!result.error && result.data && result.data.value) {
+      var parsed = null;
+      try {
+        parsed = JSON.parse(result.data.value);
+      } catch (parseErr) {
+        console.warn('解析广告配置失败:', parseErr);
+      }
+      if (parsed) {
+        config = normalizeAdsConfig(parsed);
+      }
+    }
+  } catch (settingsErr) {
+    console.warn('读取广告配置失败:', settingsErr);
+  }
+
+  cachedAdsConfig = config;
+  return config;
+}
+
+function invalidateAdsConfigCache() {
+  cachedAdsConfig = null;
+}
+
+var adsCarouselTimer = null;
+var adsCarouselFadeTimer = null;
+var adsCarouselState = null;
+
+function stopAdsCarousel() {
+  if (adsCarouselTimer) {
+    clearInterval(adsCarouselTimer);
+    adsCarouselTimer = null;
+  }
+  if (adsCarouselFadeTimer) {
+    clearTimeout(adsCarouselFadeTimer);
+    adsCarouselFadeTimer = null;
+  }
+}
+
+function getAdsPlaceholderText() {
+  var langData = translations[currentLang] || translations.zh;
+  return langData.ads_placeholder || translations.zh.ads_placeholder || '广告位招租 | 联系 @CoinRealm_X';
+}
+
+function buildAdsSlideContent(ad) {
+  var parts = [];
+  if (ad.image) {
+    parts.push('<img class="ads-carousel-image" src="' + escapeHtml(ad.image) + '" alt="' + escapeHtml(ad.name || '') + '">');
+  }
+  if (ad.code) {
+    parts.push('<div class="ads-carousel-code">' + ad.code + '</div>');
+  }
+  if (!parts.length && ad.name) {
+    parts.push('<span class="ads-carousel-name">' + escapeHtml(ad.name) + '</span>');
+  }
+  if (!parts.length) {
+    parts.push('<span class="ads-carousel-placeholder">' + escapeHtml(getAdsPlaceholderText()) + '</span>');
+  }
+  var clickableClass = ad.link ? ' is-clickable' : '';
+  return '<div class="ads-carousel-content' + clickableClass + '" data-ad-link="' + escapeHtml(ad.link || '') + '">' + parts.join('') + '</div>';
+}
+
+function renderAdsSlide(slideEl, ad) {
+  if (!slideEl) return;
+  slideEl.innerHTML = buildAdsSlideContent(ad);
+}
+
+function renderAdsPlaceholder(slideEl) {
+  if (!slideEl) return;
+  slideEl.innerHTML = '<span class="ads-carousel-placeholder">' + escapeHtml(getAdsPlaceholderText()) + '</span>';
+}
+
+function updateAdsCarouselDots(dotsEl, slotIndex, config) {
+  if (!dotsEl) return;
+
+  dotsEl.innerHTML = '';
+  for (var i = 0; i < 3; i++) {
+    var dot = document.createElement('button');
+    dot.type = 'button';
+    dot.className = 'ads-carousel-dot';
+    dot.setAttribute('data-ad-index', String(i));
+    dot.setAttribute('aria-label', 'Ad ' + (i + 1));
+    if (!config.ads[i].enabled) {
+      dot.disabled = true;
+    }
+    if (i === slotIndex) {
+      dot.classList.add('is-active');
+    }
+    dotsEl.appendChild(dot);
+  }
+}
+
+function showAdsCarouselSlot(slotIndex, options) {
+  options = options || {};
+  if (!adsCarouselState) return;
+
+  var state = adsCarouselState;
+  var ad = state.config.ads[slotIndex];
+  if (!ad || !ad.enabled) return;
+
+  var slideEl = state.slideEl;
+  if (!slideEl) return;
+
+  function applySlide() {
+    renderAdsSlide(slideEl, ad);
+    slideEl.classList.remove('is-fading');
+    state.currentSlotIndex = slotIndex;
+    state.rotationIndex = Math.max(0, state.enabledSlotIndices.indexOf(slotIndex));
+    updateAdsCarouselDots(state.dotsEl, slotIndex, state.config);
+  }
+
+  if (options.animate === false) {
+    applySlide();
+    return;
+  }
+
+  slideEl.classList.add('is-fading');
+  if (adsCarouselFadeTimer) {
+    clearTimeout(adsCarouselFadeTimer);
+  }
+  adsCarouselFadeTimer = setTimeout(function () {
+    applySlide();
+    adsCarouselFadeTimer = null;
+  }, 500);
+}
+
+function startAdsCarouselRotation() {
+  stopAdsCarousel();
+  if (!adsCarouselState || adsCarouselState.enabledSlotIndices.length <= 1) return;
+
+  var intervalMs = (Number(adsCarouselState.config.interval) || 5) * 1000;
+  adsCarouselTimer = setInterval(function () {
+    if (!adsCarouselState || !adsCarouselState.enabledSlotIndices.length) return;
+    var nextRotationIndex = (adsCarouselState.rotationIndex + 1) % adsCarouselState.enabledSlotIndices.length;
+    var nextSlotIndex = adsCarouselState.enabledSlotIndices[nextRotationIndex];
+    showAdsCarouselSlot(nextSlotIndex, { animate: true });
+  }, intervalMs);
+}
+
+async function initAdsCarousel() {
+  stopAdsCarousel();
+
+  var carouselEl = document.getElementById('ads-carousel');
+  var slideEl = document.getElementById('ads-carousel-slide');
+  var dotsEl = document.getElementById('ads-carousel-dots');
+  if (!carouselEl || !slideEl) return;
+
+  var config = await fetchAdsConfig();
+  var enabledSlotIndices = [];
+  config.ads.forEach(function (ad, index) {
+    if (ad.enabled) enabledSlotIndices.push(index);
+  });
+
+  adsCarouselState = {
+    config: config,
+    slideEl: slideEl,
+    dotsEl: dotsEl,
+    enabledSlotIndices: enabledSlotIndices,
+    currentSlotIndex: -1,
+    rotationIndex: 0
+  };
+
+  if (!enabledSlotIndices.length) {
+    renderAdsPlaceholder(slideEl);
+    slideEl.classList.remove('is-fading');
+    if (dotsEl) {
+      dotsEl.classList.add('hidden');
+      dotsEl.setAttribute('aria-hidden', 'true');
+      dotsEl.innerHTML = '';
+    }
+    return;
+  }
+
+  if (dotsEl) {
+    dotsEl.classList.remove('hidden');
+    dotsEl.setAttribute('aria-hidden', 'false');
+  }
+
+  showAdsCarouselSlot(enabledSlotIndices[0], { animate: false });
+  startAdsCarouselRotation();
+}
+
+window.initAdsCarousel = initAdsCarousel;
+window.invalidateAdsConfigCache = invalidateAdsConfigCache;
 
 (function captureInviteRefFromUrl() {
   try {
@@ -4375,7 +4612,33 @@ function initHomePageLogic() {
                 filterByOfficialTag();
             });
         }
+
+        var adsCarouselEl = document.getElementById('ads-carousel');
+        if (adsCarouselEl && !adsCarouselEl.dataset.bound) {
+            adsCarouselEl.dataset.bound = 'true';
+            adsCarouselEl.addEventListener('click', function (e) {
+                var contentEl = e.target.closest('.ads-carousel-content');
+                if (!contentEl || !adsCarouselEl.contains(contentEl)) return;
+                var link = contentEl.getAttribute('data-ad-link');
+                if (link) {
+                    window.open(link, '_blank', 'noopener,noreferrer');
+                }
+            });
+            var adsDotsEl = document.getElementById('ads-carousel-dots');
+            if (adsDotsEl) {
+                adsDotsEl.addEventListener('click', function (e) {
+                    var dot = e.target.closest('.ads-carousel-dot');
+                    if (!dot || dot.disabled || !adsCarouselState) return;
+                    var slotIndex = Number(dot.getAttribute('data-ad-index'));
+                    if (!Number.isFinite(slotIndex)) return;
+                    showAdsCarouselSlot(slotIndex, { animate: true });
+                    startAdsCarouselRotation();
+                });
+            }
+        }
     }
+
+    initAdsCarousel();
 }
 
 // ==========================================
@@ -16156,6 +16419,21 @@ window.addEventListener('hashchange', function () {
       ad_tab_broadcasts: '广播管理',
       ad_tab_withdraw: '提币设置',
       ad_tab_invite: '邀请设置',
+      ad_tab_ads: '广告管理',
+      ad_ads_title: '广告管理',
+      ad_ads_interval: '轮播间隔（秒）',
+      ad_ads_slot1: '广告位 1',
+      ad_ads_slot2: '广告位 2',
+      ad_ads_slot3: '广告位 3',
+      ad_ads_slot_name: '广告名称',
+      ad_ads_slot_image: '广告图片链接',
+      ad_ads_slot_link: '广告目标链接',
+      ad_ads_slot_code: '广告代码',
+      ad_ads_slot_enabled: '开启此广告位',
+      ad_btn_save_ads: '保存',
+      ad_ads_save_ok: '广告设置已保存',
+      ad_ads_save_fail: '保存广告设置失败：',
+      ad_ads_invalid_interval: '请输入有效的轮播间隔（至少 2 秒）',
       ad_invite_title: '邀请设置',
       ad_invite_level1: '一级奖励金额（CRLM）',
       ad_invite_level2: '二级奖励金额（CRLM）',
@@ -16253,6 +16531,21 @@ window.addEventListener('hashchange', function () {
       ad_tab_broadcasts: 'Broadcasts',
       ad_tab_withdraw: 'Withdraw Settings',
       ad_tab_invite: 'Invite Settings',
+      ad_tab_ads: 'Ad Management',
+      ad_ads_title: 'Ad Management',
+      ad_ads_interval: 'Carousel interval (seconds)',
+      ad_ads_slot1: 'Ad Slot 1',
+      ad_ads_slot2: 'Ad Slot 2',
+      ad_ads_slot3: 'Ad Slot 3',
+      ad_ads_slot_name: 'Ad name',
+      ad_ads_slot_image: 'Image URL',
+      ad_ads_slot_link: 'Target URL',
+      ad_ads_slot_code: 'Ad code',
+      ad_ads_slot_enabled: 'Enable this ad slot',
+      ad_btn_save_ads: 'Save',
+      ad_ads_save_ok: 'Ad settings saved',
+      ad_ads_save_fail: 'Failed to save ad settings: ',
+      ad_ads_invalid_interval: 'Please enter a valid interval (minimum 2 seconds)',
       ad_invite_title: 'Invite Settings',
       ad_invite_level1: 'Level 1 reward (CRLM)',
       ad_invite_level2: 'Level 2 reward (CRLM)',
@@ -16877,6 +17170,8 @@ window.addEventListener('hashchange', function () {
       await loadAdminWithdrawSettings();
     } else if (adminTab === 'invite') {
       await loadAdminInviteSettings();
+    } else if (adminTab === 'ads') {
+      await loadAdminAdsSettings();
     }
   }
 
@@ -16965,6 +17260,73 @@ window.addEventListener('hashchange', function () {
 
     invalidateInviteSettingsCache();
     alert(adT('ad_invite_save_ok'));
+  }
+
+  async function loadAdminAdsSettings() {
+    var config = await fetchAdsConfig();
+    var intervalEl = document.getElementById('ad-ads-interval');
+    if (intervalEl) intervalEl.value = String(config.interval);
+
+    config.ads.forEach(function (ad, index) {
+      var nameEl = document.getElementById('ad-ads-name-' + index);
+      var imageEl = document.getElementById('ad-ads-image-' + index);
+      var linkEl = document.getElementById('ad-ads-link-' + index);
+      var codeEl = document.getElementById('ad-ads-code-' + index);
+      var enabledEl = document.getElementById('ad-ads-enabled-' + index);
+
+      if (nameEl) nameEl.value = ad.name || '';
+      if (imageEl) imageEl.value = ad.image || '';
+      if (linkEl) linkEl.value = ad.link || '';
+      if (codeEl) codeEl.value = ad.code || '';
+      if (enabledEl) enabledEl.checked = !!ad.enabled;
+    });
+  }
+
+  async function saveAdminAdsSettings() {
+    if (!window.supabase) return;
+
+    var interval = Number(document.getElementById('ad-ads-interval') && document.getElementById('ad-ads-interval').value);
+    if (!Number.isFinite(interval) || interval < 2) {
+      alert(adT('ad_ads_invalid_interval'));
+      return;
+    }
+
+    var ads = [];
+    for (var i = 0; i < 3; i++) {
+      var nameEl = document.getElementById('ad-ads-name-' + i);
+      var imageEl = document.getElementById('ad-ads-image-' + i);
+      var linkEl = document.getElementById('ad-ads-link-' + i);
+      var codeEl = document.getElementById('ad-ads-code-' + i);
+      var enabledEl = document.getElementById('ad-ads-enabled-' + i);
+
+      ads.push({
+        name: nameEl ? String(nameEl.value || '').trim() : '',
+        image: imageEl ? String(imageEl.value || '').trim() : '',
+        link: linkEl ? String(linkEl.value || '').trim() : '',
+        code: codeEl ? String(codeEl.value || '') : '',
+        enabled: !!(enabledEl && enabledEl.checked)
+      });
+    }
+
+    var payload = {
+      interval: interval,
+      ads: ads
+    };
+
+    var result = await window.supabase
+      .from('settings')
+      .upsert([{ key: 'ads_config', value: JSON.stringify(payload) }], { onConflict: 'key' });
+
+    if (result.error) {
+      alert(adT('ad_ads_save_fail') + result.error.message);
+      return;
+    }
+
+    invalidateAdsConfigCache();
+    if (typeof initAdsCarousel === 'function') {
+      initAdsCarousel();
+    }
+    alert(adT('ad_ads_save_ok'));
   }
 
   function initAdminEvents() {
@@ -17060,6 +17422,11 @@ window.addEventListener('hashchange', function () {
     var inviteSaveBtn = document.getElementById('ad-invite-save-btn');
     if (inviteSaveBtn) {
       inviteSaveBtn.addEventListener('click', saveAdminInviteSettings);
+    }
+
+    var adsSaveBtn = document.getElementById('ad-ads-save-btn');
+    if (adsSaveBtn) {
+      adsSaveBtn.addEventListener('click', saveAdminAdsSettings);
     }
 
     document.querySelectorAll('#ad-cancel-modal .admin-modal-overlay, #ad-official-modal .admin-modal-overlay, #ad-grant-modal .admin-modal-overlay').forEach(function (overlay) {
