@@ -15719,7 +15719,7 @@ window.addEventListener('hashchange', function () {
     inviteDataLoaded = false;
     loadInvitePageData().then(function () {
       renderMiningRecords();
-      renderFriendsList();
+      renderInviteRecordsList();
       applyInviteI18n();
     });
   };
@@ -15991,7 +15991,6 @@ window.addEventListener('hashchange', function () {
     var linkEl = document.getElementById('iv-invite-link');
     var lbList = document.getElementById('iv-leaderboard-list');
     var recordsList = document.getElementById('iv-records-list');
-    var friendsList = document.getElementById('iv-friends-list');
     var miningList = document.getElementById('iv-mining-records');
     var myRankFooter = document.getElementById('iv-my-rank-footer');
 
@@ -16000,7 +15999,6 @@ window.addEventListener('hashchange', function () {
     if (linkEl) linkEl.value = '';
     if (lbList) lbList.innerHTML = '<li class="invite-empty-hint">' + loginMsg + '</li>';
     if (recordsList) recordsList.innerHTML = '<li class="invite-empty-hint">' + loginMsg + '</li>';
-    if (friendsList) friendsList.innerHTML = '<li class="invite-empty-hint">' + loginMsg + '</li>';
     if (miningList) miningList.innerHTML = '<li class="invite-empty-hint">' + loginMsg + '</li>';
     if (myRankFooter) myRankFooter.classList.add('hidden');
   }
@@ -16142,34 +16140,6 @@ window.addEventListener('hashchange', function () {
     if (rewardsTab) rewardsTab.classList.toggle('invite-records-tab-active', inviteRecordsTab === 'rewards');
   }
 
-  function renderFriendsList() {
-    var listEl = document.getElementById('iv-friends-list');
-    if (!listEl) return;
-
-    if (!inviteData || !inviteData.loggedIn) {
-      return;
-    }
-
-    var friends = inviteData.friends || [];
-    if (!friends.length) {
-      listEl.innerHTML = '<li class="invite-empty-hint">' + ivT('iv_no_friends') + '</li>';
-      return;
-    }
-
-    listEl.innerHTML = friends.map(function (friend) {
-      var safeName = typeof escapeHtml === 'function' ? escapeHtml(friend.username) : friend.username;
-      return (
-        '<li class="invite-record-item">' +
-          '<div class="iv-lb-info">' +
-            '<span class="iv-lb-name">' + safeName + '</span>' +
-            '<span class="iv-lb-meta">' + friend.registeredAt + '</span>' +
-          '</div>' +
-          '<span class="iv-record-reward">' + ivT('iv_reward_amount', { amount: formatNumber(friend.reward) }) + '</span>' +
-        '</li>'
-      );
-    }).join('');
-  }
-
   function renderInviteRecordsList() {
     var listEl = document.getElementById('iv-records-list');
     if (!listEl) return;
@@ -16180,7 +16150,24 @@ window.addEventListener('hashchange', function () {
     }
 
     if (inviteRecordsTab === 'friends') {
-      listEl.innerHTML = '<li class="invite-empty-hint">' + ivT('iv_friends_right_hint') + '</li>';
+      var friends = inviteData.friends || [];
+      if (!friends.length) {
+        listEl.innerHTML = '<li class="invite-empty-hint">' + ivT('iv_no_friends') + '</li>';
+        return;
+      }
+
+      listEl.innerHTML = friends.map(function (friend) {
+        var safeName = typeof escapeHtml === 'function' ? escapeHtml(friend.username) : friend.username;
+        return (
+          '<li class="invite-record-item">' +
+            '<div class="iv-lb-info">' +
+              '<span class="iv-lb-name">' + safeName + '</span>' +
+              '<span class="iv-lb-meta">' + friend.registeredAt + '</span>' +
+            '</div>' +
+            '<span class="iv-record-reward">' + ivT('iv_reward_amount', { amount: formatNumber(friend.reward) }) + '</span>' +
+          '</li>'
+        );
+      }).join('');
       return;
     }
 
@@ -16264,7 +16251,6 @@ window.addEventListener('hashchange', function () {
         inviteRecordsTab = 'friends';
         updateInviteRecordsTabsUI();
         renderInviteRecordsList();
-        renderFriendsList();
       });
     }
     if (rewardsTab) {
@@ -16319,7 +16305,6 @@ window.addEventListener('hashchange', function () {
       renderOverview();
       renderLeaderboard();
       renderMiningRecords();
-      renderFriendsList();
       renderInviteRecordsList();
       applyInviteI18n();
     };
