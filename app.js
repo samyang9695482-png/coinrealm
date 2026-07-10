@@ -355,7 +355,7 @@ const translations = {
         search_placeholder: "搜索任务...",
         nav_simple_tasks: "⚡ 简单任务",
         nav_home: "首页",
-        nav_mining: "挖矿",
+        nav_airdrop: "空投",
         nav_invite_earn: "邀请赚币",
         simple_view_all: "查看更多 →",
         st_page_title: "⚡ 简单任务",
@@ -401,9 +401,12 @@ const translations = {
         checkin_streak_bonus: "连续7天加成，奖励已翻倍！",
         checkin_close: "太棒了",
         checkin_already: "今日已签到，已连续签到 {days} 天",
-        checkin_login_required: "请先登录后再签到",
-        checkin_fail: "签到失败：",
-        mining_streak: "连续挖矿第 {days} 天",
+        checkin_login_required: "请先登录后再领取空投",
+        checkin_fail: "空投失败：",
+        airdrop_streak: "连续空投第 {days} 天",
+        airdrop_task_required: "🎁 请先完成至少一个任务，即可每日领取空投",
+        airdrop_already: "🎁 今日空投已领取，明天再来！",
+        airdrop_success: "🎁 空投成功！+{amount} CRLM",
         reward_sent_desc: "奖励已发送至余额",
         reward_confirm: "确定"
     },
@@ -416,7 +419,7 @@ const translations = {
         search_placeholder: "Search tasks...",
         nav_simple_tasks: "⚡ Simple Tasks",
         nav_home: "Home",
-        nav_mining: "Mining",
+        nav_airdrop: "Airdrop",
         nav_invite_earn: "Invite",
         simple_view_all: "View all →",
         st_page_title: "⚡ Simple Tasks",
@@ -462,9 +465,12 @@ const translations = {
         checkin_streak_bonus: "7+ day streak — reward doubled!",
         checkin_close: "Awesome",
         checkin_already: "Already checked in today. Streak: {days} days",
-        checkin_login_required: "Please sign in before checking in",
-        checkin_fail: "Check-in failed: ",
-        mining_streak: "Mining streak: day {days}",
+        checkin_login_required: "Please sign in before claiming airdrop",
+        checkin_fail: "Airdrop failed: ",
+        airdrop_streak: "Airdrop streak: day {days}",
+        airdrop_task_required: "🎁 Complete at least one task to claim daily airdrop",
+        airdrop_already: "🎁 Today's airdrop claimed. Come back tomorrow!",
+        airdrop_success: "🎁 Airdrop success! +{amount} CRLM",
         reward_sent_desc: "Reward sent to your balance",
         reward_confirm: "OK"
     }
@@ -2706,6 +2712,26 @@ async function verifyTwitterSubtask(taskId, userId, actionIndex) {
     }
 }
 
+async function upgradeUserLevelOnTaskApproved(userId) {
+    if (!window.supabase || !userId) return;
+
+    var userResult = await window.supabase
+        .from('users')
+        .select('level')
+        .eq('id', userId)
+        .maybeSingle();
+
+    if (userResult.error || !userResult.data) return;
+
+    var level = Number(userResult.data.level) || 0;
+    if (level < 2) {
+        await window.supabase
+            .from('users')
+            .update({ level: 2 })
+            .eq('id', userId);
+    }
+}
+
 async function applyTwitterVerificationSuccess(task, userId, options) {
     options = options || {};
     if (!window.supabase || !task || !task.id || !userId) return;
@@ -2766,6 +2792,8 @@ async function applyTwitterVerificationSuccess(task, userId, options) {
     }
 
     var broadcastTitle = task.title || '';
+    await upgradeUserLevelOnTaskApproved(userId);
+
     writeBroadcast({
         user_id: userId,
         event_type: 'task_approved',
@@ -3735,7 +3763,7 @@ function showMiningRewardToast(rewardAmount, consecutiveDays) {
     if (!toast || !rewardEl || !streakEl) return;
 
     rewardEl.textContent = '+' + rewardAmount.toLocaleString() + ' CRLM';
-    streakEl.textContent = formatCheckinText('mining_streak', { days: consecutiveDays });
+    streakEl.textContent = formatCheckinText('airdrop_streak', { days: consecutiveDays });
 
     toast.classList.remove('hidden');
     toast.setAttribute('aria-hidden', 'false');
@@ -3761,11 +3789,11 @@ function resetMiningButtonAvailable() {
         halo.classList.remove('hidden');
     }
     if (label) {
-        label.setAttribute('data-i18n', 'iv_mining');
+        label.setAttribute('data-i18n', 'iv_airdrop');
         if (typeof window.getInviteText === 'function') {
-            label.textContent = window.getInviteText('iv_mining');
+            label.textContent = window.getInviteText('iv_airdrop');
         } else {
-            label.textContent = '挖矿';
+            label.textContent = '空投';
         }
     }
 }
@@ -3784,9 +3812,9 @@ function setMiningButtonMined(streak) {
     if (label) {
         label.removeAttribute('data-i18n');
         if (typeof window.getInviteText === 'function') {
-            label.textContent = window.getInviteText('iv_mined');
+            label.textContent = window.getInviteText('iv_airdrop_claimed');
         } else {
-            label.textContent = '已挖矿';
+            label.textContent = '已领取';
         }
     }
 }
@@ -3818,12 +3846,12 @@ function updateMiningProgressUI(alreadyMined) {
     if (countdownEl) {
         if (typeof window.getInviteText === 'function') {
             countdownEl.textContent = alreadyMined
-                ? window.getInviteText('iv_mining_next', { time: formatMiningCountdown(secondsLeft) })
-                : window.getInviteText('iv_mining_available');
+                ? window.getInviteText('iv_airdrop_next', { time: formatMiningCountdown(secondsLeft) })
+                : window.getInviteText('iv_airdrop_available');
         } else {
             countdownEl.textContent = alreadyMined
-                ? '下次挖矿：' + formatMiningCountdown(secondsLeft)
-                : '今日挖矿可用';
+                ? '下次空投：' + formatMiningCountdown(secondsLeft)
+                : '今日空投可领取';
         }
     }
 }
@@ -3940,7 +3968,12 @@ function playMiningPressAnimation() {
 
 async function handleMiningButtonClick() {
     var btn = document.getElementById('invite-mining-btn');
-    if (!btn || btn.disabled || btn.classList.contains('invite-mining-done')) return;
+    if (!btn) return;
+    if (btn.classList.contains('invite-mining-done')) {
+        alert(formatCheckinText('airdrop_already'));
+        return;
+    }
+    if (btn.disabled) return;
     if (Date.now() < miningCooldownUntil) return;
 
     miningCooldownUntil = Date.now() + 1500;
@@ -3948,7 +3981,10 @@ async function handleMiningButtonClick() {
 
     var result = await handleDailyCheckin();
     if (result && result.ok) {
-        showRewardCelebration(result.reward);
+        var amountText = String(result.reward).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        showRewardCelebration(result.reward, {
+            description: formatCheckinText('airdrop_success', { amount: amountText })
+        });
         if (typeof window.coinrealmRefreshInviteMiningData === 'function') {
             window.coinrealmRefreshInviteMiningData();
         }
@@ -3991,6 +4027,22 @@ async function handleDailyCheckin() {
     checkinInProgress = true;
 
     try {
+        var approvedResult = await window.supabase
+            .from('submissions')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', userId)
+            .eq('status', 'approved');
+
+        if (approvedResult.error) {
+            alert(formatCheckinText('checkin_fail') + approvedResult.error.message);
+            return { ok: false };
+        }
+
+        if (!approvedResult.count) {
+            alert(formatCheckinText('airdrop_task_required'));
+            return { ok: false, taskRequired: true };
+        }
+
         var today = getLocalDateString(0);
         var todayResult = await window.supabase
             .from('checkins')
@@ -4010,6 +4062,7 @@ async function handleDailyCheckin() {
         if (todayRecords.length) {
             var existingStreak = todayRecords[0].consecutive_days || 1;
             setMiningButtonMined(existingStreak);
+            alert(formatCheckinText('airdrop_already'));
             return { ok: false, already: true };
         }
 
@@ -4073,7 +4126,7 @@ async function handleDailyCheckin() {
         writeBroadcast({
             user_id: userId,
             event_type: 'checkin',
-            description: '完成每日签到，获得',
+            description: '完成每日空投，获得',
             reward_amount: finalReward
         });
         return { ok: true, reward: finalReward, streak: consecutiveDays };
@@ -9249,14 +9302,14 @@ window.addEventListener('hashchange', function () {
       pf_ledger_title: 'CRLM 余额明细',
       pf_ledger_loading: '加载中...',
       pf_ledger_empty: '暂无余额变动记录',
-      pf_ledger_type_checkin: '签到奖励',
+      pf_ledger_type_checkin: '空投奖励',
       pf_ledger_type_task: '任务奖励',
       pf_ledger_desc_task: '任务奖励：{title}',
-      pf_ledger_desc_checkin: '每日挖矿奖励（连续{days}天）',
+      pf_ledger_desc_checkin: '每日空投奖励（连续{days}天）',
       pf_ledger_desc_publish: '发布任务：{title}',
       pf_ledger_desc_refund: '任务退款：{title}',
       pf_ledger_icon_task: '🎯',
-      pf_ledger_icon_checkin: '⛏️',
+      pf_ledger_icon_checkin: '🎁',
       pf_ledger_icon_publish: '📝',
       pf_ledger_icon_refund: '↩️',
       pf_ledger_balance_after: '余额 {amount} CRLM',
@@ -9328,14 +9381,14 @@ window.addEventListener('hashchange', function () {
       pf_ledger_title: 'CRLM Balance History',
       pf_ledger_loading: 'Loading...',
       pf_ledger_empty: 'No balance changes yet',
-      pf_ledger_type_checkin: 'Check-in Reward',
+      pf_ledger_type_checkin: 'Airdrop Reward',
       pf_ledger_type_task: 'Task Reward',
       pf_ledger_desc_task: 'Task reward: {title}',
-      pf_ledger_desc_checkin: 'Daily mining reward (day {days} streak)',
+      pf_ledger_desc_checkin: 'Daily airdrop reward (day {days} streak)',
       pf_ledger_desc_publish: 'Published task: {title}',
       pf_ledger_desc_refund: 'Task refund: {title}',
       pf_ledger_icon_task: '🎯',
-      pf_ledger_icon_checkin: '⛏️',
+      pf_ledger_icon_checkin: '🎁',
       pf_ledger_icon_publish: '📝',
       pf_ledger_icon_refund: '↩️',
       pf_ledger_balance_after: 'Balance {amount} CRLM',
@@ -15052,6 +15105,8 @@ window.addEventListener('hashchange', function () {
       return false;
     }
 
+    await upgradeUserLevelOnTaskApproved(submission.user_id);
+
     writeBroadcast({
       user_id: submission.user_id,
       event_type: 'task_approved',
@@ -15328,16 +15383,16 @@ window.addEventListener('hashchange', function () {
       iv_no_friends: '暂无邀请好友',
       iv_friends_right_hint: '您邀请的好友列表见右栏',
       iv_no_rewards: '暂无奖励记录',
-      iv_mining: '挖矿',
-      iv_mined: '已挖矿',
-      iv_mining_hint: '每日可挖矿一次，获得随机 CRLM 奖励',
-      iv_mining_earnings_title: '⛏️ 挖矿收益',
-      iv_mining_expand: '查看全部记录',
-      iv_mining_collapse: '收起记录',
-      iv_mining_empty: '暂无挖矿记录',
-      iv_mining_record: '+{amount} CRLM · 连续 {days} 天',
-      iv_mining_next: '下次挖矿：{time}',
-      iv_mining_available: '今日挖矿可用'
+      iv_airdrop: '空投',
+      iv_airdrop_claimed: '已领取',
+      iv_airdrop_hint: '每日可领取一次空投，获得随机 CRLM 奖励',
+      iv_airdrop_earnings_title: '🎁 空投收益',
+      iv_airdrop_expand: '查看全部记录',
+      iv_airdrop_collapse: '收起记录',
+      iv_airdrop_empty: '暂无空投记录',
+      iv_airdrop_record: '+{amount} CRLM · 连续 {days} 天',
+      iv_airdrop_next: '下次空投：{time}',
+      iv_airdrop_available: '今日空投可用'
     },
     en: {
       iv_page_title: 'Invite Friends',
@@ -15366,16 +15421,16 @@ window.addEventListener('hashchange', function () {
       iv_no_friends: 'No invited friends yet',
       iv_friends_right_hint: 'See your invited friends in the right column',
       iv_no_rewards: 'No reward records yet',
-      iv_mining: 'Mine',
-      iv_mined: 'Mined',
-      iv_mining_hint: 'Mine once daily for a random CRLM reward',
-      iv_mining_earnings_title: '⛏️ Mining earnings',
-      iv_mining_expand: 'View all records',
-      iv_mining_collapse: 'Collapse records',
-      iv_mining_empty: 'No mining records yet',
-      iv_mining_record: '+{amount} CRLM · {days}-day streak',
-      iv_mining_next: 'Next mine in {time}',
-      iv_mining_available: 'Mining available today'
+      iv_airdrop: 'Airdrop',
+      iv_airdrop_claimed: 'Claimed',
+      iv_airdrop_hint: 'Claim one daily airdrop for a random CRLM reward',
+      iv_airdrop_earnings_title: '🎁 Airdrop earnings',
+      iv_airdrop_expand: 'View all records',
+      iv_airdrop_collapse: 'Collapse records',
+      iv_airdrop_empty: 'No airdrop records yet',
+      iv_airdrop_record: '+{amount} CRLM · {days}-day streak',
+      iv_airdrop_next: 'Next airdrop in {time}',
+      iv_airdrop_available: 'Airdrop available today'
     }
   };
 
@@ -15444,7 +15499,7 @@ window.addEventListener('hashchange', function () {
     var miningBtn = document.getElementById('invite-mining-btn');
     var miningLabel = document.getElementById('invite-mining-label');
     if (miningBtn && miningLabel && miningBtn.classList.contains('invite-mining-done')) {
-      miningLabel.textContent = ivT('iv_mined');
+      miningLabel.textContent = ivT('iv_airdrop_claimed');
     }
   }
 
@@ -15793,7 +15848,7 @@ window.addEventListener('hashchange', function () {
     var visibleRecords = records.slice(0, displayLimit);
 
     if (!visibleRecords.length) {
-      listEl.innerHTML = '<li class="invite-empty-hint">' + ivT('iv_mining_empty') + '</li>';
+      listEl.innerHTML = '<li class="invite-empty-hint">' + ivT('iv_airdrop_empty') + '</li>';
     } else {
       listEl.innerHTML = visibleRecords.map(function (row) {
         var dateText = row.checkin_date ? String(row.checkin_date).slice(0, 10) : '—';
@@ -15801,7 +15856,7 @@ window.addEventListener('hashchange', function () {
           '<li class="invite-mining-record-item">' +
             '<div class="iv-lb-info">' +
               '<span class="iv-lb-name">' + dateText + '</span>' +
-              '<span class="iv-lb-meta">' + ivT('iv_mining_record', {
+              '<span class="iv-lb-meta">' + ivT('iv_airdrop_record', {
                 amount: formatNumber(Number(row.reward_amount) || 0),
                 days: Number(row.consecutive_days) || 1
               }) + '</span>' +
@@ -15812,7 +15867,7 @@ window.addEventListener('hashchange', function () {
     }
 
     if (expandBtn) {
-      expandBtn.textContent = miningRecordsExpanded ? ivT('iv_mining_collapse') : ivT('iv_mining_expand');
+      expandBtn.textContent = miningRecordsExpanded ? ivT('iv_airdrop_collapse') : ivT('iv_airdrop_expand');
       expandBtn.classList.toggle('hidden', records.length <= 6);
     }
   }
@@ -16125,7 +16180,7 @@ window.addEventListener('hashchange', function () {
       ad_stat_tasks: '总任务数',
       ad_stat_active: '进行中任务',
       ad_stat_completed: '已完成任务',
-      ad_stat_checkins: '累计签到次数',
+      ad_stat_checkins: '累计空投次数',
       ad_stat_broadcasts: '累计广播数',
       ad_search_tasks: '搜索任务标题...',
       ad_filter_all: '全部状态',
@@ -16222,7 +16277,7 @@ window.addEventListener('hashchange', function () {
       ad_stat_tasks: 'Total Tasks',
       ad_stat_active: 'Active Tasks',
       ad_stat_completed: 'Completed Tasks',
-      ad_stat_checkins: 'Total Check-ins',
+      ad_stat_checkins: 'Total Airdrops',
       ad_stat_broadcasts: 'Total Broadcasts',
       ad_search_tasks: 'Search task title...',
       ad_filter_all: 'All Status',
