@@ -527,8 +527,11 @@
   }
 
   // 构建下拉菜单 HTML
-  function buildDropdownMenuHtml(includeAdmin) {
-    var routes = menuRoutes.slice();
+  function buildDropdownMenuHtml(includeAdmin, showLeaderboard) {
+    if (showLeaderboard === undefined) showLeaderboard = true;
+    var routes = menuRoutes.filter(function (route) {
+      return !(route.hash === 'leaderboard' && !showLeaderboard);
+    });
     if (includeAdmin) {
       routes.push({ key: 'menuAdmin', hash: 'admin' });
     }
@@ -919,7 +922,7 @@
     if (isLoggedIn()) {
       var display = getDisplayInfo();
 
-      function renderLoggedInMenu(includeAdmin) {
+      function renderLoggedInMenu(includeAdmin, showLeaderboard) {
         area.innerHTML =
           '<div class="auth-user-wrap">' +
             '<div class="auth-user-trigger">' +
@@ -927,20 +930,23 @@
               '<span class="auth-user-name" title="' + display.title + '">' + display.name + '</span>' +
               '<span class="auth-dropdown-arrow" aria-hidden="true">▼</span>' +
             '</div>' +
-            '<div class="auth-dropdown">' + buildDropdownMenuHtml(!!includeAdmin) + '</div>' +
+            '<div class="auth-dropdown">' + buildDropdownMenuHtml(!!includeAdmin, showLeaderboard !== false) + '</div>' +
           '</div>';
         bindDropdownEvents();
       }
 
-      if (typeof window.coinrealmIsAdminUser === 'function') {
-        window.coinrealmIsAdminUser().then(function (isAdmin) {
-          renderLoggedInMenu(isAdmin);
-        }).catch(function () {
-          renderLoggedInMenu(false);
-        });
-      } else {
-        renderLoggedInMenu(false);
-      }
+      var adminPromise = typeof window.coinrealmIsAdminUser === 'function'
+        ? window.coinrealmIsAdminUser()
+        : Promise.resolve(false);
+      var leaderboardPromise = typeof window.coinrealmIsInviteLeaderboardEnabled === 'function'
+        ? window.coinrealmIsInviteLeaderboardEnabled()
+        : Promise.resolve(true);
+
+      Promise.all([adminPromise, leaderboardPromise]).then(function (results) {
+        renderLoggedInMenu(results[0], results[1]);
+      }).catch(function () {
+        renderLoggedInMenu(false, true);
+      });
       return;
     }
 

@@ -664,6 +664,69 @@ function invalidateInviteSettingsCache() {
   cachedInviteSettings = null;
 }
 
+var SHOW_INVITE_LEADERBOARD_DEFAULT = 'true';
+var cachedShowInviteLeaderboard = null;
+
+function isInviteLeaderboardEnabled(value) {
+  return String(value == null ? SHOW_INVITE_LEADERBOARD_DEFAULT : value).toLowerCase() === 'true';
+}
+
+async function fetchShowInviteLeaderboard() {
+  if (cachedShowInviteLeaderboard !== null) {
+    return cachedShowInviteLeaderboard;
+  }
+
+  var value = SHOW_INVITE_LEADERBOARD_DEFAULT;
+  if (!window.supabase) {
+    cachedShowInviteLeaderboard = value;
+    return value;
+  }
+
+  try {
+    var result = await window.supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'show_invite_leaderboard')
+      .maybeSingle();
+
+    if (!result.error && result.data && result.data.value != null && result.data.value !== '') {
+      value = String(result.data.value);
+    }
+  } catch (settingsErr) {
+    console.warn('读取排行榜开关失败:', settingsErr);
+  }
+
+  cachedShowInviteLeaderboard = value;
+  return value;
+}
+
+function invalidateShowInviteLeaderboardCache() {
+  cachedShowInviteLeaderboard = null;
+}
+
+async function applyLeaderboardMenuVisibility() {
+  var enabled = isInviteLeaderboardEnabled(await fetchShowInviteLeaderboard());
+  var profileLbItem = document.querySelector('#profile-page .profile-menu-item[data-route="leaderboard"]');
+
+  if (profileLbItem) {
+    if (enabled) {
+      profileLbItem.classList.remove('hidden', 'profile-menu-item-disabled');
+      profileLbItem.removeAttribute('aria-disabled');
+    } else {
+      profileLbItem.classList.add('hidden');
+      profileLbItem.classList.remove('profile-menu-item-disabled');
+      profileLbItem.removeAttribute('aria-disabled');
+    }
+  }
+}
+
+window.coinrealmFetchShowInviteLeaderboard = fetchShowInviteLeaderboard;
+window.coinrealmIsInviteLeaderboardEnabled = function () {
+  return fetchShowInviteLeaderboard().then(isInviteLeaderboardEnabled);
+};
+window.coinrealmApplyLeaderboardMenuVisibility = applyLeaderboardMenuVisibility;
+window.coinrealmInvalidateShowInviteLeaderboardCache = invalidateShowInviteLeaderboardCache;
+
 var ADS_CONFIG_DEFAULTS = {
   interval: 5,
   ads: [
@@ -10999,6 +11062,9 @@ window.addEventListener('hashchange', function () {
       if (route === 'profile') {
         profilePage.classList.remove('hidden');
         initProfileEvents();
+        if (typeof applyLeaderboardMenuVisibility === 'function') {
+          applyLeaderboardMenuVisibility();
+        }
         renderProfilePage();
       } else {
         profilePage.classList.add('hidden');
@@ -15628,6 +15694,7 @@ window.addEventListener('hashchange', function () {
       iv_lb_reward: '{amount} CRLM',
       iv_lb_my_rank: '我的排名',
       iv_lb_empty: '暂无排行数据',
+      iv_lb_coming_soon: '🏆 邀请排行榜即将开放',
       iv_share_headline: '邀请好友，赚取 CRLM',
       iv_reward_desc: '一级奖励：{level1} CRLM/人，二级奖励：{level2} CRLM/人',
       iv_stat_invites: '累计邀请',
@@ -15666,6 +15733,7 @@ window.addEventListener('hashchange', function () {
       iv_lb_reward: '{amount} CRLM',
       iv_lb_my_rank: 'My rank',
       iv_lb_empty: 'No leaderboard data yet',
+      iv_lb_coming_soon: '🏆 Invite leaderboard coming soon',
       iv_share_headline: 'Invite friends, earn CRLM',
       iv_reward_desc: 'Level 1: {level1} CRLM each, Level 2: {level2} CRLM each',
       iv_stat_invites: 'Total invites',
@@ -15885,14 +15953,17 @@ window.addEventListener('hashchange', function () {
 
     return Promise.all([
       fetchInviteSettings(),
+      fetchShowInviteLeaderboard(),
       getCurrentUserId()
     ])
       .then(function (results) {
         var settings = results[0];
-        var userId = results[1];
+        var showLeaderboardValue = results[1];
+        var userId = results[2];
+        var showInviteLeaderboard = isInviteLeaderboardEnabled(showLeaderboardValue);
 
         if (!userId || !window.supabase) {
-          return { loggedIn: false, settings: settings };
+          return { loggedIn: false, settings: settings, showInviteLeaderboard: showInviteLeaderboard };
         }
 
         return Promise.all([
@@ -15909,7 +15980,7 @@ window.addEventListener('hashchange', function () {
           var myRank = pageResults[4];
 
           if (userResult.error || !userResult.data) {
-            return { loggedIn: false, settings: settings };
+            return { loggedIn: false, settings: settings, showInviteLeaderboard: showInviteLeaderboard };
           }
 
           var inviteRows = invitesResult.error ? [] : (invitesResult.data || []);
@@ -15941,6 +16012,7 @@ window.addEventListener('hashchange', function () {
               loggedIn: true,
               userId: userId,
               settings: settings,
+              showInviteLeaderboard: showInviteLeaderboard,
               inviteCount: Number(userResult.data.invite_count) || friends.length,
               totalReward: inviteRows.reduce(function (sum, row) {
                 return sum + (Number(row.reward_amount) || 0);
@@ -15974,7 +16046,7 @@ window.addEventListener('hashchange', function () {
       })
       .catch(function (err) {
         console.warn('加载邀请页数据失败:', err);
-        return { loggedIn: false, settings: INVITE_SETTINGS_DEFAULTS };
+        return { loggedIn: false, settings: INVITE_SETTINGS_DEFAULTS, showInviteLeaderboard: true };
       })
       .then(function (data) {
         inviteData = data;
@@ -16037,6 +16109,17 @@ window.addEventListener('hashchange', function () {
     var expandBtn = document.getElementById('iv-leaderboard-expand');
     var myRankFooter = document.getElementById('iv-my-rank-footer');
     if (!listEl) return;
+
+    var leaderboardEnabled = !inviteData || inviteData.showInviteLeaderboard !== false;
+    if (!leaderboardEnabled) {
+      listEl.innerHTML = '<li class="invite-empty-hint">' + ivT('iv_lb_coming_soon') + '</li>';
+      if (expandBtn) expandBtn.classList.add('hidden');
+      if (myRankFooter) {
+        myRankFooter.classList.add('hidden');
+        myRankFooter.innerHTML = '';
+      }
+      return;
+    }
 
     if (!inviteData || !inviteData.loggedIn) {
       renderLoginRequiredState();
