@@ -1,0 +1,790 @@
+// ==========================================
+// 15. 邀请专属页 (#invite) — 任务卡 #013
+// ==========================================
+(function () {
+  'use strict';
+
+  var APP_CONTENT_HTML = '';
+  var appContentEl = document.getElementById('app-content');
+  if (appContentEl) {
+    APP_CONTENT_HTML = appContentEl.innerHTML;
+  }
+
+  var inviteInitialized = false;
+  var inviteRecordsTab = 'friends';
+  var inviteDataLoaded = false;
+  var inviteDataLoading = false;
+  var inviteData = null;
+  var leaderboardExpanded = false;
+  var miningRecordsExpanded = false;
+  var rankBadges = ['🥇', '🥈', '🥉'];
+
+  var inviteTranslations = {
+    zh: {
+      iv_page_title: '邀请好友',
+      iv_lb_title: '🏆 邀请排行榜',
+      iv_lb_expand: '查看完整排行榜',
+      iv_lb_collapse: '收起排行榜',
+      iv_lb_invites: '{count} 人',
+      iv_lb_reward: '{amount} CRLM',
+      iv_lb_my_rank: '我的排名',
+      iv_lb_empty: '暂无排行数据',
+      iv_lb_coming_soon: '🏆 邀请排行榜即将开放',
+      iv_share_headline: '邀请好友，赚取 CRLM',
+      iv_reward_desc: '一级奖励：{level1} CRLM/人，二级奖励：{level2} CRLM/人',
+      iv_stat_invites: '累计邀请',
+      iv_stat_reward: '累计奖励',
+      iv_invite_count: '{count} 人',
+      iv_total_reward: '{amount} CRLM',
+      iv_btn_copy_link: '复制链接',
+      iv_friends_title: '我邀请的好友',
+      iv_rewards_title: '邀请奖励记录',
+      iv_reward_amount: '+{amount} CRLM',
+      iv_level_tag: 'L{level}',
+      iv_alert_copied: '已复制！',
+      iv_alert_share: '已复制链接，即将跳转...',
+      iv_login_required: '请先登录查看邀请信息',
+      iv_loading: '加载中...',
+      iv_no_friends: '暂无邀请好友',
+      iv_friends_right_hint: '您邀请的好友列表见右栏',
+      iv_no_rewards: '暂无奖励记录',
+      iv_airdrop: '空投',
+      iv_airdrop_claimed: '已领取',
+      iv_airdrop_hint: '每日可领取一次空投，获得随机 CRLM 奖励',
+      iv_airdrop_earnings_title: '🎁 空投收益',
+      iv_airdrop_expand: '查看全部记录',
+      iv_airdrop_collapse: '收起记录',
+      iv_airdrop_empty: '暂无空投记录',
+      iv_airdrop_record: '+{amount} CRLM · 连续 {days} 天',
+      iv_airdrop_next: '下次空投：{time}',
+      iv_airdrop_available: '今日空投可用'
+    },
+    en: {
+      iv_page_title: 'Invite Friends',
+      iv_lb_title: '🏆 Invite Leaderboard',
+      iv_lb_expand: 'View full leaderboard',
+      iv_lb_collapse: 'Collapse leaderboard',
+      iv_lb_invites: '{count} invites',
+      iv_lb_reward: '{amount} CRLM',
+      iv_lb_my_rank: 'My rank',
+      iv_lb_empty: 'No leaderboard data yet',
+      iv_lb_coming_soon: '🏆 Invite leaderboard coming soon',
+      iv_share_headline: 'Invite friends, earn CRLM',
+      iv_reward_desc: 'Level 1: {level1} CRLM each, Level 2: {level2} CRLM each',
+      iv_stat_invites: 'Total invites',
+      iv_stat_reward: 'Total rewards',
+      iv_invite_count: '{count}',
+      iv_total_reward: '{amount} CRLM',
+      iv_btn_copy_link: 'Copy link',
+      iv_friends_title: 'My invites',
+      iv_rewards_title: 'Reward history',
+      iv_reward_amount: '+{amount} CRLM',
+      iv_level_tag: 'L{level}',
+      iv_alert_copied: 'Copied!',
+      iv_alert_share: 'Link copied, redirecting...',
+      iv_login_required: 'Please sign in to view invite info',
+      iv_loading: 'Loading...',
+      iv_no_friends: 'No invited friends yet',
+      iv_friends_right_hint: 'See your invited friends in the right column',
+      iv_no_rewards: 'No reward records yet',
+      iv_airdrop: 'Airdrop',
+      iv_airdrop_claimed: 'Claimed',
+      iv_airdrop_hint: 'Claim one daily airdrop for a random CRLM reward',
+      iv_airdrop_earnings_title: '🎁 Airdrop earnings',
+      iv_airdrop_expand: 'View all records',
+      iv_airdrop_collapse: 'Collapse records',
+      iv_airdrop_empty: 'No airdrop records yet',
+      iv_airdrop_record: '+{amount} CRLM · {days}-day streak',
+      iv_airdrop_next: 'Next airdrop in {time}',
+      iv_airdrop_available: 'Airdrop available today'
+    }
+  };
+
+  function getLang() {
+    var saved = localStorage.getItem('coinrealm_lang');
+    return saved === 'en' ? 'en' : 'zh';
+  }
+
+  function ivT(key, vars) {
+    var dict = inviteTranslations[getLang()];
+    var text = dict[key] || key;
+    if (vars) {
+      Object.keys(vars).forEach(function (k) {
+        text = text.replace('{' + k + '}', vars[k]);
+      });
+    }
+    return text;
+  }
+
+  window.getInviteText = ivT;
+
+  window.coinrealmRefreshInviteMiningData = function () {
+    inviteDataLoaded = false;
+    loadInvitePageData().then(function () {
+      renderMiningRecords();
+      renderInviteRecordsList();
+      applyInviteI18n();
+    });
+  };
+
+  function formatNumber(num) {
+    return String(num).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).catch(function () {
+        fallbackCopy(text);
+      });
+    }
+    fallbackCopy(text);
+    return Promise.resolve();
+  }
+
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+    } catch (e) { /* ignore */ }
+    document.body.removeChild(ta);
+  }
+
+  function applyInviteI18n() {
+    document.querySelectorAll('#invite-page [data-i18n]').forEach(function (el) {
+      var key = el.getAttribute('data-i18n');
+      if (inviteTranslations[getLang()][key]) {
+        el.textContent = ivT(key);
+      }
+    });
+
+    var miningBtn = document.getElementById('invite-mining-btn');
+    var miningLabel = document.getElementById('invite-mining-label');
+    if (miningBtn && miningLabel && miningBtn.classList.contains('invite-mining-done')) {
+      miningLabel.textContent = ivT('iv_airdrop_claimed');
+    }
+  }
+
+  function buildInviteLink(userId) {
+    var base = window.location.origin + window.location.pathname;
+    return base + (base.indexOf('?') >= 0 ? '&' : '?') + 'ref=' + encodeURIComponent(userId);
+  }
+
+  function getRankBadge(rank) {
+    return rank <= 3 ? rankBadges[rank - 1] : String(rank);
+  }
+
+  function renderLeaderboardAvatarHtml(user) {
+    var avatarHtml = '<div class="iv-lb-avatar"></div>';
+    if (!user) return avatarHtml;
+    var temp = document.createElement('div');
+    temp.className = 'iv-lb-avatar';
+    if (typeof applyAvatarToElement === 'function') {
+      applyAvatarToElement(temp, user, 'cr-avatar-img', {});
+      return temp.outerHTML;
+    }
+    return avatarHtml;
+  }
+
+  function aggregateInviteRewards(rows) {
+    var map = {};
+    (rows || []).forEach(function (row) {
+      var inviterId = row.inviter_id;
+      if (!inviterId) return;
+      map[inviterId] = (map[inviterId] || 0) + (Number(row.reward_amount) || 0);
+    });
+    return map;
+  }
+
+  function fetchInviteLeaderboard(limit) {
+    return window.supabase
+      .from('users')
+      .select('id, username, email, avatar_url, invite_count')
+      .order('invite_count', { ascending: false })
+      .limit(limit)
+      .then(function (usersResult) {
+        if (usersResult.error) throw usersResult.error;
+        var users = usersResult.data || [];
+        var userIds = users.map(function (u) { return u.id; }).filter(Boolean);
+        if (!userIds.length) {
+          return users.map(function (u, index) {
+            return {
+              rank: index + 1,
+              id: u.id,
+              username: u.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(u.email) : 'User'),
+              avatar_url: u.avatar_url || '',
+              invite_count: Number(u.invite_count) || 0,
+              total_reward: 0
+            };
+          });
+        }
+
+        return window.supabase
+          .from('invites')
+          .select('inviter_id, reward_amount')
+          .in('inviter_id', userIds)
+          .then(function (rewardsResult) {
+            var rewardMap = aggregateInviteRewards(rewardsResult.error ? [] : rewardsResult.data);
+            return users.map(function (u, index) {
+              return {
+                rank: index + 1,
+                id: u.id,
+                username: u.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(u.email) : 'User'),
+                avatar_url: u.avatar_url || '',
+                invite_count: Number(u.invite_count) || 0,
+                total_reward: rewardMap[u.id] || 0
+              };
+            });
+          });
+      });
+  }
+
+  function fetchMyInviteRank(userId) {
+    return window.supabase
+      .from('users')
+      .select('id, username, email, avatar_url, invite_count')
+      .eq('id', userId)
+      .single()
+      .then(function (userResult) {
+        if (userResult.error || !userResult.data) return null;
+        var inviteCount = Number(userResult.data.invite_count) || 0;
+        return window.supabase
+          .from('users')
+          .select('*', { count: 'exact', head: true })
+          .gt('invite_count', inviteCount)
+          .then(function (countResult) {
+            if (countResult.error) return null;
+            return window.supabase
+              .from('invites')
+              .select('reward_amount')
+              .eq('inviter_id', userId)
+              .then(function (rewardResult) {
+                var totalReward = (rewardResult.data || []).reduce(function (sum, row) {
+                  return sum + (Number(row.reward_amount) || 0);
+                }, 0);
+                return {
+                  rank: (countResult.count || 0) + 1,
+                  id: userResult.data.id,
+                  username: userResult.data.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(userResult.data.email) : 'User'),
+                  avatar_url: userResult.data.avatar_url || '',
+                  invite_count: inviteCount,
+                  total_reward: totalReward
+                };
+              });
+          });
+      });
+  }
+
+  function loadInvitePageData() {
+    if (inviteDataLoading) {
+      return Promise.resolve(inviteData);
+    }
+
+    inviteDataLoading = true;
+
+    return Promise.all([
+      fetchInviteSettings(),
+      fetchShowInviteLeaderboard(),
+      getCurrentUserId()
+    ])
+      .then(function (results) {
+        var settings = results[0];
+        var showLeaderboardValue = results[1];
+        var userId = results[2];
+        var showInviteLeaderboard = isInviteLeaderboardEnabled(showLeaderboardValue);
+
+        if (!userId || !window.supabase) {
+          return { loggedIn: false, settings: settings, showInviteLeaderboard: showInviteLeaderboard };
+        }
+
+        return Promise.all([
+          window.supabase.from('users').select('invite_count').eq('id', userId).single(),
+          window.supabase.from('invites').select('*').eq('inviter_id', userId).order('created_at', { ascending: false }),
+          window.supabase.from('checkins').select('*').eq('user_id', userId).order('checkin_date', { ascending: false }).limit(50),
+          fetchInviteLeaderboard(50),
+          fetchMyInviteRank(userId)
+        ]).then(function (pageResults) {
+          var userResult = pageResults[0];
+          var invitesResult = pageResults[1];
+          var checkinsResult = pageResults[2];
+          var leaderboard = pageResults[3];
+          var myRank = pageResults[4];
+
+          if (userResult.error || !userResult.data) {
+            return { loggedIn: false, settings: settings, showInviteLeaderboard: showInviteLeaderboard };
+          }
+
+          var inviteRows = invitesResult.error ? [] : (invitesResult.data || []);
+          var level1Rows = inviteRows.filter(function (row) { return Number(row.level) === 1; });
+          var inviteeIds = level1Rows.map(function (row) { return row.invitee_id; }).filter(Boolean);
+          var uniqueIds = inviteeIds.filter(function (id, index) { return inviteeIds.indexOf(id) === index; });
+
+          var buildData = function (userMap) {
+            var friends = level1Rows.map(function (row) {
+              var user = userMap[row.invitee_id] || {};
+              return {
+                username: user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'Unknown'),
+                registeredAt: row.created_at ? String(row.created_at).slice(0, 10) : '—',
+                reward: Number(row.reward_amount) || 0
+              };
+            });
+
+            var rewardRecords = inviteRows.map(function (row) {
+              var user = userMap[row.invitee_id] || {};
+              return {
+                level: Number(row.level) || 1,
+                username: user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'User'),
+                reward: Number(row.reward_amount) || 0,
+                createdAt: row.created_at ? String(row.created_at).slice(0, 16).replace('T', ' ') : '—'
+              };
+            });
+
+            return {
+              loggedIn: true,
+              userId: userId,
+              settings: settings,
+              showInviteLeaderboard: showInviteLeaderboard,
+              inviteCount: Number(userResult.data.invite_count) || friends.length,
+              totalReward: inviteRows.reduce(function (sum, row) {
+                return sum + (Number(row.reward_amount) || 0);
+              }, 0),
+              friends: friends,
+              rewardRecords: rewardRecords,
+              miningRecords: checkinsResult.error ? [] : (checkinsResult.data || []),
+              leaderboard: leaderboard || [],
+              myRank: myRank
+            };
+          };
+
+          if (!uniqueIds.length) {
+            return buildData({});
+          }
+
+          return window.supabase
+            .from('users')
+            .select('id, username, email')
+            .in('id', uniqueIds)
+            .then(function (usersResult) {
+              var userMap = {};
+              if (!usersResult.error && usersResult.data) {
+                usersResult.data.forEach(function (user) {
+                  userMap[user.id] = user;
+                });
+              }
+              return buildData(userMap);
+            });
+        });
+      })
+      .catch(function (err) {
+        console.warn('加载邀请页数据失败:', err);
+        return { loggedIn: false, settings: INVITE_SETTINGS_DEFAULTS, showInviteLeaderboard: false };
+      })
+      .then(function (data) {
+        inviteData = data;
+        inviteDataLoaded = true;
+        inviteDataLoading = false;
+        return data;
+      });
+  }
+
+  function renderLoginRequiredState() {
+    var loginMsg = ivT('iv_login_required');
+    var countEl = document.getElementById('iv-invite-count');
+    var rewardEl = document.getElementById('iv-invite-reward');
+    var linkEl = document.getElementById('iv-invite-link');
+    var lbList = document.getElementById('iv-leaderboard-list');
+    var recordsList = document.getElementById('iv-records-list');
+    var miningList = document.getElementById('iv-mining-records');
+    var myRankFooter = document.getElementById('iv-my-rank-footer');
+
+    if (countEl) countEl.textContent = loginMsg;
+    if (rewardEl) rewardEl.textContent = '';
+    if (linkEl) linkEl.value = '';
+    if (lbList) lbList.innerHTML = '<li class="invite-empty-hint">' + loginMsg + '</li>';
+    if (recordsList) recordsList.innerHTML = '<li class="invite-empty-hint">' + loginMsg + '</li>';
+    if (miningList) miningList.innerHTML = '<li class="invite-empty-hint">' + loginMsg + '</li>';
+    if (myRankFooter) myRankFooter.classList.add('hidden');
+  }
+
+  function renderRewardDesc() {
+    var descEl = document.getElementById('iv-reward-desc');
+    if (!descEl) return;
+    var settings = (inviteData && inviteData.settings) || INVITE_SETTINGS_DEFAULTS;
+    descEl.textContent = ivT('iv_reward_desc', {
+      level1: formatNumber(Number(settings.invite_level1_reward) || INVITE_SETTINGS_DEFAULTS.invite_level1_reward),
+      level2: formatNumber(Number(settings.invite_level2_reward) || INVITE_SETTINGS_DEFAULTS.invite_level2_reward)
+    });
+  }
+
+  function renderOverview() {
+    if (!inviteData || !inviteData.loggedIn) {
+      renderLoginRequiredState();
+      return;
+    }
+
+    var inviteLink = buildInviteLink(inviteData.userId);
+    var countEl = document.getElementById('iv-invite-count');
+    var rewardEl = document.getElementById('iv-invite-reward');
+    var linkEl = document.getElementById('iv-invite-link');
+
+    if (countEl) countEl.textContent = ivT('iv_invite_count', { count: inviteData.inviteCount });
+    if (rewardEl) rewardEl.textContent = ivT('iv_total_reward', { amount: formatNumber(inviteData.totalReward) });
+    if (linkEl) linkEl.value = inviteLink;
+
+    inviteData.inviteLink = inviteLink;
+    renderRewardDesc();
+  }
+
+  function renderLeaderboard() {
+    var listEl = document.getElementById('iv-leaderboard-list');
+    var expandBtn = document.getElementById('iv-leaderboard-expand');
+    var myRankFooter = document.getElementById('iv-my-rank-footer');
+    if (!listEl) return;
+
+    var leaderboardEnabled = !inviteData || inviteData.showInviteLeaderboard !== false;
+    if (!leaderboardEnabled) {
+      listEl.innerHTML = '<li class="invite-empty-hint">' + ivT('iv_lb_coming_soon') + '</li>';
+      if (expandBtn) expandBtn.classList.add('hidden');
+      if (myRankFooter) {
+        myRankFooter.classList.add('hidden');
+        myRankFooter.innerHTML = '';
+      }
+      return;
+    }
+
+    if (!inviteData || !inviteData.loggedIn) {
+      renderLoginRequiredState();
+      return;
+    }
+
+    var rows = (inviteData.leaderboard || []).slice();
+    var displayLimit = leaderboardExpanded ? 50 : 6;
+    var visibleRows = rows.slice(0, displayLimit);
+
+    if (!visibleRows.length) {
+      listEl.innerHTML = '<li class="invite-empty-hint">' + ivT('iv_lb_empty') + '</li>';
+    } else {
+      listEl.innerHTML = visibleRows.map(function (row) {
+        var safeName = typeof escapeHtml === 'function' ? escapeHtml(row.username) : row.username;
+        return (
+          '<li class="invite-leaderboard-item">' +
+            '<span class="iv-lb-rank">' + getRankBadge(row.rank) + '</span>' +
+            renderLeaderboardAvatarHtml(row) +
+            '<div class="iv-lb-info">' +
+              '<span class="iv-lb-name">' + safeName + '</span>' +
+              '<span class="iv-lb-meta">' + ivT('iv_lb_invites', { count: row.invite_count }) + '</span>' +
+            '</div>' +
+            '<span class="iv-lb-reward">' + ivT('iv_lb_reward', { amount: formatNumber(row.total_reward) }) + '</span>' +
+          '</li>'
+        );
+      }).join('');
+    }
+
+    if (expandBtn) {
+      expandBtn.textContent = leaderboardExpanded ? ivT('iv_lb_collapse') : ivT('iv_lb_expand');
+      expandBtn.classList.toggle('hidden', rows.length <= 6);
+    }
+
+    if (myRankFooter) {
+      var myRank = inviteData.myRank;
+      var inVisible = myRank && visibleRows.some(function (row) { return row.id === myRank.id; });
+      if (myRank && !inVisible) {
+        myRankFooter.classList.remove('hidden');
+        myRankFooter.innerHTML =
+          '<span class="invite-my-rank-label">' + ivT('iv_lb_my_rank') + '</span>' +
+          '<div class="invite-leaderboard-item" style="padding:0;border:none;">' +
+            '<span class="iv-lb-rank">' + getRankBadge(myRank.rank) + '</span>' +
+            renderLeaderboardAvatarHtml(myRank) +
+            '<div class="iv-lb-info">' +
+              '<span class="iv-lb-name">' + (typeof escapeHtml === 'function' ? escapeHtml(myRank.username) : myRank.username) + '</span>' +
+              '<span class="iv-lb-meta">' + ivT('iv_lb_invites', { count: myRank.invite_count }) + '</span>' +
+            '</div>' +
+            '<span class="iv-lb-reward">' + ivT('iv_lb_reward', { amount: formatNumber(myRank.total_reward) }) + '</span>' +
+          '</div>';
+      } else {
+        myRankFooter.classList.add('hidden');
+        myRankFooter.innerHTML = '';
+      }
+    }
+  }
+
+  function renderMiningRecords() {
+    var listEl = document.getElementById('iv-mining-records');
+    var expandBtn = document.getElementById('iv-mining-expand');
+    if (!listEl) return;
+
+    if (!inviteData || !inviteData.loggedIn) {
+      renderLoginRequiredState();
+      return;
+    }
+
+    var records = (inviteData.miningRecords || []).slice();
+    var displayLimit = miningRecordsExpanded ? 50 : 6;
+    var visibleRecords = records.slice(0, displayLimit);
+
+    if (!visibleRecords.length) {
+      listEl.innerHTML = '<li class="invite-empty-hint">' + ivT('iv_airdrop_empty') + '</li>';
+    } else {
+      listEl.innerHTML = visibleRecords.map(function (row) {
+        var dateText = row.checkin_date ? String(row.checkin_date).slice(0, 10) : '—';
+        return (
+          '<li class="invite-mining-record-item">' +
+            '<div class="iv-lb-info">' +
+              '<span class="iv-lb-name">' + dateText + '</span>' +
+              '<span class="iv-lb-meta">' + ivT('iv_airdrop_record', {
+                amount: formatNumber(Number(row.reward_amount) || 0),
+                days: Number(row.consecutive_days) || 1
+              }) + '</span>' +
+            '</div>' +
+          '</li>'
+        );
+      }).join('');
+    }
+
+    if (expandBtn) {
+      expandBtn.textContent = miningRecordsExpanded ? ivT('iv_airdrop_collapse') : ivT('iv_airdrop_expand');
+      expandBtn.classList.toggle('hidden', records.length <= 6);
+    }
+  }
+
+  function updateInviteRecordsTabsUI() {
+    var friendsTab = document.getElementById('iv-tab-friends');
+    var rewardsTab = document.getElementById('iv-tab-rewards');
+    if (friendsTab) friendsTab.classList.toggle('invite-records-tab-active', inviteRecordsTab === 'friends');
+    if (rewardsTab) rewardsTab.classList.toggle('invite-records-tab-active', inviteRecordsTab === 'rewards');
+  }
+
+  function renderInviteRecordsList() {
+    var listEl = document.getElementById('iv-records-list');
+    if (!listEl) return;
+
+    if (!inviteData || !inviteData.loggedIn) {
+      renderLoginRequiredState();
+      return;
+    }
+
+    if (inviteRecordsTab === 'friends') {
+      var friends = inviteData.friends || [];
+      if (!friends.length) {
+        listEl.innerHTML = '<li class="invite-empty-hint">' + ivT('iv_no_friends') + '</li>';
+        return;
+      }
+
+      listEl.innerHTML = friends.map(function (friend) {
+        var safeName = typeof escapeHtml === 'function' ? escapeHtml(friend.username) : friend.username;
+        return (
+          '<li class="invite-record-item">' +
+            '<div class="iv-lb-info">' +
+              '<span class="iv-lb-name">' + safeName + '</span>' +
+              '<span class="iv-lb-meta">' + friend.registeredAt + '</span>' +
+            '</div>' +
+            '<span class="iv-record-reward">' + ivT('iv_reward_amount', { amount: formatNumber(friend.reward) }) + '</span>' +
+          '</li>'
+        );
+      }).join('');
+      return;
+    }
+
+    var rewards = inviteData.rewardRecords || [];
+    if (!rewards.length) {
+      listEl.innerHTML = '<li class="invite-empty-hint">' + ivT('iv_no_rewards') + '</li>';
+      return;
+    }
+
+    listEl.innerHTML = rewards.map(function (record) {
+      var safeName = typeof escapeHtml === 'function' ? escapeHtml(record.username) : record.username;
+      var levelClass = record.level === 2 ? 'iv-record-level-2' : 'iv-record-level-1';
+      return (
+        '<li class="invite-record-item">' +
+          '<span class="iv-record-level ' + levelClass + '">' + ivT('iv_level_tag', { level: record.level }) + '</span>' +
+          '<div class="iv-lb-info">' +
+            '<span class="iv-lb-name">' + safeName + '</span>' +
+            '<span class="iv-lb-meta">' + record.createdAt + '</span>' +
+          '</div>' +
+          '<span class="iv-record-reward">' + ivT('iv_reward_amount', { amount: formatNumber(record.reward) }) + '</span>' +
+        '</li>'
+      );
+    }).join('');
+  }
+
+  function openShareWindow(platform) {
+    if (!inviteData || !inviteData.loggedIn || !inviteData.inviteLink) {
+      alert(ivT('iv_login_required'));
+      return;
+    }
+
+    var link = inviteData.inviteLink;
+    var text = ivT('iv_share_headline');
+    var encodedUrl = encodeURIComponent(link);
+    var encodedText = encodeURIComponent(text + ' ' + link);
+    var shareUrl = '';
+
+    if (platform === 'twitter') {
+      shareUrl = 'https://twitter.com/intent/tweet?text=' + encodedText;
+    } else if (platform === 'telegram') {
+      shareUrl = 'https://t.me/share/url?url=' + encodedUrl + '&text=' + encodeURIComponent(text);
+    } else {
+      copyText(link).then(function () {
+        alert(ivT('iv_alert_copied'));
+      });
+      return;
+    }
+
+    copyText(link).then(function () {
+      window.open(shareUrl, '_blank', 'noopener,noreferrer');
+    });
+  }
+
+  function initInviteEvents() {
+    if (inviteInitialized) return;
+    inviteInitialized = true;
+
+    var copyLinkBtn = document.getElementById('iv-copy-link-btn');
+    if (copyLinkBtn) {
+      copyLinkBtn.addEventListener('click', function () {
+        if (!inviteData || !inviteData.loggedIn || !inviteData.inviteLink) {
+          alert(ivT('iv_login_required'));
+          return;
+        }
+        copyText(inviteData.inviteLink).then(function () {
+          alert(ivT('iv_alert_copied'));
+        });
+      });
+    }
+
+    document.querySelectorAll('.invite-share-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        openShareWindow(btn.getAttribute('data-share'));
+      });
+    });
+
+    var friendsTab = document.getElementById('iv-tab-friends');
+    var rewardsTab = document.getElementById('iv-tab-rewards');
+    if (friendsTab) {
+      friendsTab.addEventListener('click', function () {
+        inviteRecordsTab = 'friends';
+        updateInviteRecordsTabsUI();
+        renderInviteRecordsList();
+      });
+    }
+    if (rewardsTab) {
+      rewardsTab.addEventListener('click', function () {
+        inviteRecordsTab = 'rewards';
+        updateInviteRecordsTabsUI();
+        renderInviteRecordsList();
+      });
+    }
+
+    var lbExpandBtn = document.getElementById('iv-leaderboard-expand');
+    if (lbExpandBtn) {
+      lbExpandBtn.addEventListener('click', function () {
+        leaderboardExpanded = !leaderboardExpanded;
+        renderLeaderboard();
+        applyInviteI18n();
+      });
+    }
+
+    var miningExpandBtn = document.getElementById('iv-mining-expand');
+    if (miningExpandBtn) {
+      miningExpandBtn.addEventListener('click', function () {
+        miningRecordsExpanded = !miningRecordsExpanded;
+        renderMiningRecords();
+        applyInviteI18n();
+      });
+    }
+
+    bindMiningEvents();
+  }
+
+  function renderInvitePage() {
+    initInviteEvents();
+    applyInviteI18n();
+    updateInviteRecordsTabsUI();
+
+    if (typeof processPendingInviteRegistration === 'function') {
+      processPendingInviteRegistration();
+    }
+
+    refreshMiningButtonState().then(function () {
+      applyInviteI18n();
+    });
+
+    if (inviteDataLoading && !inviteDataLoaded) {
+      var countEl = document.getElementById('iv-invite-count');
+      if (countEl) countEl.textContent = ivT('iv_loading');
+      return;
+    }
+
+    var renderAll = function () {
+      renderOverview();
+      renderLeaderboard();
+      renderMiningRecords();
+      renderInviteRecordsList();
+      applyInviteI18n();
+    };
+
+    if (inviteDataLoaded && inviteData) {
+      renderAll();
+      return;
+    }
+
+    loadInvitePageData().then(renderAll);
+  }
+
+  function restoreAppContentIfNeeded() {
+    if (!appContentEl || !APP_CONTENT_HTML) return;
+    if (!document.getElementById('home-page')) {
+      appContentEl.innerHTML = APP_CONTENT_HTML;
+      inviteInitialized = false;
+      inviteRecordsTab = 'friends';
+      leaderboardExpanded = false;
+      miningRecordsExpanded = false;
+      inviteDataLoaded = false;
+      inviteDataLoading = false;
+      inviteData = null;
+    }
+  }
+
+  function handleInviteRoute() {
+    restoreAppContentIfNeeded();
+
+    var route = window.location.hash.replace(/^#/, '') || 'home';
+    var routeBase = route.split('?')[0] || 'home';
+    var invitePage = document.getElementById('invite-page');
+
+    if (invitePage) {
+      if (routeBase === 'invite') {
+        invitePage.classList.remove('hidden');
+        renderInvitePage();
+      } else {
+        invitePage.classList.add('hidden');
+        stopMiningCountdownTicker();
+        inviteDataLoaded = false;
+        inviteDataLoading = false;
+        inviteData = null;
+      }
+    }
+  }
+
+  window.addEventListener('hashchange', handleInviteRoute);
+
+  window.addEventListener('DOMContentLoaded', function () {
+    setTimeout(function () {
+      handleInviteRoute();
+      if (typeof processPendingInviteRegistration === 'function') {
+        processPendingInviteRegistration();
+      }
+    }, 0);
+  });
+
+  var langToggleBtn = document.getElementById('lang-toggle');
+  if (langToggleBtn) {
+    langToggleBtn.addEventListener('click', function () {
+      setTimeout(handleInviteRoute, 0);
+    });
+  }
+})();
