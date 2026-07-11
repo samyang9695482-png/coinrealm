@@ -9644,6 +9644,7 @@ window.addEventListener('hashchange', function () {
       pf_withdraw_amount_label: '提现金额',
       pf_withdraw_wallet_label: '接收钱包地址',
       pf_withdraw_hint: '最小提币 {min} CRLM，预计几分钟内到账。',
+      pf_withdraw_compliance_hint: '提币仅用于 CRLM 实用代币转移至您的数字钱包，本平台不提供任何法币和代币兑换服务。',
       pf_withdraw_cancel: '取消',
       pf_withdraw_confirm: '确认提币',
       pf_withdraw_confirming: '处理中...',
@@ -9723,6 +9724,7 @@ window.addEventListener('hashchange', function () {
       pf_withdraw_amount_label: 'Withdraw amount',
       pf_withdraw_wallet_label: 'Receiving wallet address',
       pf_withdraw_hint: 'Minimum withdrawal {min} CRLM. Funds usually arrive within a few minutes.',
+      pf_withdraw_compliance_hint: 'Withdrawal is only for transferring CRLM utility tokens to your digital wallet. This platform does not provide any fiat or token exchange services.',
       pf_withdraw_cancel: 'Cancel',
       pf_withdraw_confirm: 'Confirm Withdrawal',
       pf_withdraw_confirming: 'Processing...',
@@ -10173,9 +10175,16 @@ window.addEventListener('hashchange', function () {
     var minAmount = settings && settings.withdraw_min_amount != null
       ? Number(settings.withdraw_min_amount)
       : WITHDRAW_SETTINGS_DEFAULTS.withdraw_min_amount;
-    if (hintEl) {
-      hintEl.textContent = pfT('pf_withdraw_hint', { min: formatNumber(minAmount) });
-    }
+    if (!hintEl) return;
+
+    var mainText = pfT('pf_withdraw_hint', { min: formatNumber(minAmount) });
+    var complianceText = pfT('pf_withdraw_compliance_hint');
+    var safeMain = typeof escapeHtml === 'function' ? escapeHtml(mainText) : mainText;
+    var safeCompliance = typeof escapeHtml === 'function' ? escapeHtml(complianceText) : complianceText;
+
+    hintEl.innerHTML =
+      '<span>' + safeMain + '</span>' +
+      '<span style="display:block;margin-top:8px;color:#999;font-size:12px;line-height:1.5;">' + safeCompliance + '</span>';
   }
 
   function applyWithdrawModalI18n() {
@@ -10899,6 +10908,10 @@ window.addEventListener('hashchange', function () {
 
     if (typeof window.coinrealmRefreshTwitterBindUi === 'function') {
       await window.coinrealmRefreshTwitterBindUi();
+    }
+
+    if (typeof applyLeaderboardMenuVisibility === 'function') {
+      await applyLeaderboardMenuVisibility();
     }
   }
 
