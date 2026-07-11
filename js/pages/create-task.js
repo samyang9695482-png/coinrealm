@@ -11,7 +11,7 @@
   }
 
   var userLevel = 0;
-  var userBalance = 500;
+  var userBalance = 0;
   var ctUploadedImages = [];
   var ctImageUploadInProgress = false;
   var ctImageUploadSeq = 0;
@@ -1527,15 +1527,21 @@
     }
 
     userLevel = 0;
+    userBalance = 0;
     var userId = await getCurrentUserId();
     if (userId && window.supabase) {
       var levelResult = await window.supabase
         .from('users')
-        .select('level')
+        .select('level, crlm_balance')
         .eq('id', userId)
         .maybeSingle();
-      if (!levelResult.error && levelResult.data && levelResult.data.level != null) {
-        userLevel = levelResult.data.level;
+      if (!levelResult.error && levelResult.data) {
+        if (levelResult.data.level != null) {
+          userLevel = levelResult.data.level;
+        }
+        if (levelResult.data.crlm_balance != null) {
+          userBalance = Number(levelResult.data.crlm_balance) || 0;
+        }
       }
     }
 
