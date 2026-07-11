@@ -664,7 +664,7 @@ function invalidateInviteSettingsCache() {
   cachedInviteSettings = null;
 }
 
-var SHOW_INVITE_LEADERBOARD_DEFAULT = 'true';
+var SHOW_INVITE_LEADERBOARD_DEFAULT = 'false';
 var cachedShowInviteLeaderboard = null;
 
 function isInviteLeaderboardEnabled(value) {
@@ -16059,7 +16059,7 @@ window.addEventListener('hashchange', function () {
       })
       .catch(function (err) {
         console.warn('加载邀请页数据失败:', err);
-        return { loggedIn: false, settings: INVITE_SETTINGS_DEFAULTS, showInviteLeaderboard: true };
+        return { loggedIn: false, settings: INVITE_SETTINGS_DEFAULTS, showInviteLeaderboard: false };
       })
       .then(function (data) {
         inviteData = data;
@@ -16518,6 +16518,7 @@ window.addEventListener('hashchange', function () {
       ad_invite_title: '邀请设置',
       ad_invite_level1: '一级奖励金额（CRLM）',
       ad_invite_level2: '二级奖励金额（CRLM）',
+      ad_invite_show_leaderboard: '显示邀请排行榜',
       ad_btn_save_invite: '保存',
       ad_invite_save_ok: '邀请设置已保存',
       ad_invite_save_fail: '保存邀请设置失败：',
@@ -16630,6 +16631,7 @@ window.addEventListener('hashchange', function () {
       ad_invite_title: 'Invite Settings',
       ad_invite_level1: 'Level 1 reward (CRLM)',
       ad_invite_level2: 'Level 2 reward (CRLM)',
+      ad_invite_show_leaderboard: 'Show invite leaderboard',
       ad_btn_save_invite: 'Save',
       ad_invite_save_ok: 'Invite settings saved',
       ad_invite_save_fail: 'Failed to save invite settings: ',
@@ -17306,12 +17308,37 @@ window.addEventListener('hashchange', function () {
   }
 
   async function loadAdminInviteSettings() {
+    ensureAdminInviteLeaderboardToggle();
+    applyAdminI18n();
+
     var settings = await fetchInviteSettings();
     var level1El = document.getElementById('ad-invite-level1');
     var level2El = document.getElementById('ad-invite-level2');
+    var showLeaderboardEl = document.getElementById('ad-invite-show-leaderboard');
+    var showLeaderboardValue = await fetchShowInviteLeaderboard();
 
     if (level1El) level1El.value = String(settings.invite_level1_reward);
     if (level2El) level2El.value = String(settings.invite_level2_reward);
+    if (showLeaderboardEl) {
+      showLeaderboardEl.checked = isInviteLeaderboardEnabled(showLeaderboardValue);
+    }
+  }
+
+  function ensureAdminInviteLeaderboardToggle() {
+    if (document.getElementById('ad-invite-show-leaderboard')) return;
+
+    var form = document.getElementById('ad-invite-form');
+    var saveBtn = document.getElementById('ad-invite-save-btn');
+    if (!form || !saveBtn) return;
+
+    var toggleWrap = document.createElement('label');
+    toggleWrap.className = 'admin-ads-toggle';
+    toggleWrap.innerHTML =
+      '<input type="checkbox" id="ad-invite-show-leaderboard" class="admin-ads-toggle-input">' +
+      '<span class="admin-ads-toggle-slider" aria-hidden="true"></span>' +
+      '<span class="admin-ads-toggle-text" data-i18n="ad_invite_show_leaderboard">显示邀请排行榜</span>';
+
+    form.insertBefore(toggleWrap, saveBtn);
   }
 
   async function saveAdminInviteSettings() {
@@ -17319,6 +17346,8 @@ window.addEventListener('hashchange', function () {
 
     var level1 = Number(document.getElementById('ad-invite-level1') && document.getElementById('ad-invite-level1').value);
     var level2 = Number(document.getElementById('ad-invite-level2') && document.getElementById('ad-invite-level2').value);
+    var showLeaderboardEl = document.getElementById('ad-invite-show-leaderboard');
+    var showLeaderboard = !!(showLeaderboardEl && showLeaderboardEl.checked);
 
     if (!Number.isFinite(level1) || level1 < 0 || !Number.isFinite(level2) || level2 < 0) {
       alert(adT('ad_invite_invalid'));
@@ -17327,7 +17356,8 @@ window.addEventListener('hashchange', function () {
 
     var rows = [
       { key: 'invite_level1_reward', value: String(level1) },
-      { key: 'invite_level2_reward', value: String(level2) }
+      { key: 'invite_level2_reward', value: String(level2) },
+      { key: 'show_invite_leaderboard', value: showLeaderboard ? 'true' : 'false' }
     ];
 
     var result = await window.supabase
@@ -17340,6 +17370,13 @@ window.addEventListener('hashchange', function () {
     }
 
     invalidateInviteSettingsCache();
+    invalidateShowInviteLeaderboardCache();
+    if (typeof applyLeaderboardMenuVisibility === 'function') {
+      applyLeaderboardMenuVisibility();
+    }
+    if (typeof window.coinrealmRefreshAuthArea === 'function') {
+      window.coinrealmRefreshAuthArea();
+    }
     alert(adT('ad_invite_save_ok'));
   }
 
@@ -17413,6 +17450,8 @@ window.addEventListener('hashchange', function () {
   function initAdminEvents() {
     if (adminInitialized) return;
     adminInitialized = true;
+
+    ensureAdminInviteLeaderboardToggle();
 
     document.querySelectorAll('#admin-page .admin-tab').forEach(function (btn) {
       btn.addEventListener('click', function () {
