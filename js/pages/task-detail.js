@@ -339,16 +339,27 @@
 
   function saveSubmissionContext(task, submission) {
     if (!task || !submission) return;
+    var perReward = getPerParticipantReward(task);
     sessionStorage.setItem('currentTaskId', task.id);
     sessionStorage.setItem('currentTaskTitle', task.title || '');
-    sessionStorage.setItem('currentTaskReward', String(task.reward_amount != null ? task.reward_amount : 0));
+    sessionStorage.setItem('currentTaskReward', String(perReward));
     sessionStorage.setItem(SUBMISSION_STORAGE_KEY, JSON.stringify({
       taskId: task.id,
       submissionId: submission.id,
       title: task.title || '',
-      reward: task.reward_amount != null ? task.reward_amount : 0,
+      reward: perReward,
       rewardUnit: task.reward_type || 'CRLM'
     }));
+  }
+
+  function getPerParticipantReward(task) {
+    if (!task) return 0;
+    var rewardAmount = Number(task.reward_amount) || 0;
+    var maxParticipants = task.max_participants != null ? Number(task.max_participants) : null;
+    if (maxParticipants != null && maxParticipants > 0) {
+      return rewardAmount / maxParticipants;
+    }
+    return rewardAmount;
   }
 
   function isSimpleTaskRecord(task) {
@@ -983,7 +994,7 @@
         renderScreenshotVerifyPanel();
         updateBottomActionBar();
         if (typeof window.coinrealmShowRewardCelebration === 'function') {
-          window.coinrealmShowRewardCelebration(Number(currentTaskRecord.reward_amount) || 0);
+          window.coinrealmShowRewardCelebration(getPerParticipantReward(currentTaskRecord));
         }
         return;
       }
@@ -1314,7 +1325,7 @@
         if (currentSubmissionRecord && currentSubmissionRecord.status === 'approved') {
           detailActionState = 'simple_completed';
           if (typeof window.coinrealmShowRewardCelebration === 'function') {
-            window.coinrealmShowRewardCelebration(Number(currentTaskRecord.reward_amount) || 0);
+            window.coinrealmShowRewardCelebration(getPerParticipantReward(currentTaskRecord));
           }
         }
       } else {
@@ -1389,7 +1400,7 @@
         if (currentSubmissionRecord && currentSubmissionRecord.status === 'approved') {
           detailActionState = 'simple_completed';
           if (typeof window.coinrealmShowRewardCelebration === 'function') {
-            window.coinrealmShowRewardCelebration(Number(currentTaskRecord.reward_amount) || 0);
+            window.coinrealmShowRewardCelebration(getPerParticipantReward(currentTaskRecord));
           }
         }
       } else {
@@ -1634,7 +1645,7 @@
       updateTaskDetailSubtaskModeUi();
       updateBottomActionBar();
       if (typeof window.coinrealmShowRewardCelebration === 'function') {
-        window.coinrealmShowRewardCelebration(Number(currentTaskRecord.reward_amount) || 0);
+        window.coinrealmShowRewardCelebration(getPerParticipantReward(currentTaskRecord));
       }
     } catch (err) {
       alert(tdT('td_alert_claim_fail') + (err && err.message ? err.message : String(err)));
@@ -1720,7 +1731,7 @@
         updateTaskDetailSubtaskModeUi();
         updateBottomActionBar();
         if (options.showAlert !== false && typeof window.coinrealmShowRewardCelebration === 'function') {
-          window.coinrealmShowRewardCelebration(Number(currentTaskRecord.reward_amount) || 0);
+          window.coinrealmShowRewardCelebration(getPerParticipantReward(currentTaskRecord));
         }
         return;
       }

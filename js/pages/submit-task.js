@@ -46,7 +46,8 @@
       st_alert_file_size: '单张图片不能超过 5MB',
       st_alert_upload_fail: '上传失败：',
       st_alert_no_task: '请先在任务详情页领取任务',
-      st_alert_submit_fail: '提交失败：'
+      st_alert_submit_fail: '提交失败：',
+      st_alert_already_rewarded: '该用户已领取过奖励'
     },
     en: {
       st_title_submit: 'Submit Proof',
@@ -68,7 +69,8 @@
       st_alert_file_size: 'Each image must be 5MB or smaller',
       st_alert_upload_fail: 'Upload failed: ',
       st_alert_no_task: 'Please claim the task on the task detail page first',
-      st_alert_submit_fail: 'Submit failed: '
+      st_alert_submit_fail: 'Submit failed: ',
+      st_alert_already_rewarded: 'You have already received the reward for this task'
     }
   };
 
@@ -553,6 +555,19 @@
         submitBtn.disabled = true;
 
         try {
+          var approvedCheck = await window.supabase
+            .from('submissions')
+            .select('id')
+            .eq('task_id', activeSubmitContext.taskId)
+            .eq('user_id', userId)
+            .eq('status', 'approved')
+            .maybeSingle();
+
+          if (!approvedCheck.error && approvedCheck.data) {
+            alert(stT('st_alert_already_rewarded'));
+            return;
+          }
+
           var lookupResult = await window.supabase
             .from('submissions')
             .select('id')
