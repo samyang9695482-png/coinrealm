@@ -98,7 +98,7 @@
   function isReviewable(submission) {
     if (!submission) return false;
     if (submission.status === 'submitted') return true;
-    if (submission.status === 'pending' && submission.submitted_at) return true;
+    if (submission.status === 'pending') return true;
     return false;
   }
 
@@ -146,7 +146,7 @@
     if (submission.status === 'rejected') return rvT('rv_status_rejected');
     if (submission.status === 'submitted') return rvT('rv_status_submitted');
     if (submission.status === 'claimed') return rvT('rv_status_claimed');
-    if (submission.status === 'pending' && submission.submitted_at) return rvT('rv_status_submitted');
+    if (submission.status === 'pending') return rvT('rv_status_submitted');
     return submission.status || '-';
   }
 
@@ -219,9 +219,9 @@
   function showReviewEmptyMessage(messageKey) {
     var listEl = document.getElementById('rv-submission-list');
     var emptyEl = document.getElementById('rv-empty-state');
-    var countEl = document.getElementById('rv-pending-count');
 
-    if (countEl) countEl.textContent = rvT('rv_pending_count', { count: 0 });
+    updatePendingCountBadge();
+
     if (listEl) {
       listEl.innerHTML = '';
       listEl.classList.add('hidden');
@@ -250,10 +250,12 @@
     });
 
     if (publisherTasks.length) {
-      if (!selectedTaskId || !publisherTasks.some(function (task) { return task.id === selectedTaskId; })) {
+      if (!selectedTaskId || !publisherTasks.some(function (task) {
+        return String(task.id) === String(selectedTaskId);
+      })) {
         selectedTaskId = publisherTasks[0].id;
       }
-      taskSelect.value = selectedTaskId;
+      taskSelect.value = String(selectedTaskId);
       setTaskSelectDisabled(false);
     } else {
       selectedTaskId = null;
@@ -303,6 +305,32 @@
     });
   }
 
+  function updatePendingCountBadge() {
+    var countEl = document.getElementById('rv-pending-count');
+    if (!countEl) return;
+
+    var reviewableCount = getReviewableCount();
+    countEl.textContent = rvT('rv_pending_count', { count: reviewableCount });
+
+    if (reviewableCount > 0) {
+      countEl.classList.add('review-pending-count-active');
+      countEl.style.color = '#fff';
+      countEl.style.background = '#ff4d4f';
+      countEl.style.borderRadius = '10px';
+      countEl.style.padding = '2px 10px';
+      countEl.style.fontSize = '12px';
+      countEl.style.fontWeight = '600';
+    } else {
+      countEl.classList.remove('review-pending-count-active');
+      countEl.style.color = '#999';
+      countEl.style.background = 'transparent';
+      countEl.style.borderRadius = '';
+      countEl.style.padding = '';
+      countEl.style.fontSize = '13px';
+      countEl.style.fontWeight = '';
+    }
+  }
+
   async function loadSubmissionsForSelectedTask() {
     if (!selectedTaskId || !window.supabase) {
       currentSubmissions = [];
@@ -314,7 +342,14 @@
       .from('submissions')
       .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment, screenshot_urls')
       .eq('task_id', selectedTaskId)
+      .in('status', ['submitted', 'pending'])
       .order('submitted_at', { ascending: false });
+
+    console.log('审核管理-提交列表：', {
+      taskId: selectedTaskId,
+      submissions: submissionsResult.data,
+      error: submissionsResult.error
+    });
 
     if (submissionsResult.error) {
       alert(rvT('rv_alert_action_fail') + submissionsResult.error.message);
@@ -360,8 +395,12 @@
 
     publisherTasks = tasksResult.data || [];
 
+    console.log('审核管理-任务列表：', publisherTasks);
+
     var hashTaskId = getReviewTaskIdFromHash();
-    if (hashTaskId && publisherTasks.some(function (task) { return task.id === hashTaskId; })) {
+    if (hashTaskId && publisherTasks.some(function (task) {
+      return String(task.id) === String(hashTaskId);
+    })) {
       selectedTaskId = hashTaskId;
     }
 
@@ -370,6 +409,10 @@
     if (!publisherTasks.length) {
       showReviewEmptyMessage('rv_no_tasks');
       return;
+    }
+
+    if (!selectedTaskId) {
+      selectedTaskId = publisherTasks[0].id;
     }
 
     await loadSubmissionsForSelectedTask();
@@ -532,12 +575,9 @@
   function renderSubmissionList() {
     var listEl = document.getElementById('rv-submission-list');
     var emptyEl = document.getElementById('rv-empty-state');
-    var countEl = document.getElementById('rv-pending-count');
     var submissions = getCurrentSubmissions();
 
-    if (countEl) {
-      countEl.textContent = rvT('rv_pending_count', { count: submissions.length });
-    }
+    updatePendingCountBadge();
 
     if (!listEl || !emptyEl) return;
 
