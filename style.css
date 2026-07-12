@@ -3178,6 +3178,17 @@ img {
     margin-bottom: 4px;
 }
 
+.profile-stat-num.profile-stat-clickable {
+    cursor: pointer;
+    transition: color 0.2s ease;
+}
+
+.profile-stat-num.profile-stat-clickable:hover,
+.profile-stat-num.profile-stat-clickable:focus {
+    color: #f0b90b;
+    outline: none;
+}
+
 .profile-stat-label {
     font-size: 13px;
     color: #999;
