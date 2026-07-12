@@ -656,18 +656,66 @@
             return !!url && isScreenshotPublicUrl(url);
           });
 
+          var taskRecord = null;
+          var taskType = '';
+          var isSimpleAuto = false;
+
+          if (window.supabase) {
+            var taskResult = await window.supabase
+              .from('tasks')
+              .select('id, title, type, task_type, category, platform, verification_type, reward_amount, reward_type, max_participants, current_participants')
+              .eq('id', activeSubmitContext.taskId)
+              .maybeSingle();
+
+            console.log('提交页：加载任务类型', taskResult);
+
+            if (!taskResult.error && taskResult.data) {
+              taskRecord = taskResult.data;
+              if (typeof window.coinrealmResolveSimpleTaskTypeKey === 'function') {
+                taskType = window.coinrealmResolveSimpleTaskTypeKey(taskRecord);
+              } else {
+                taskType = String(taskRecord.type || taskRecord.task_type || taskRecord.category || '').trim().toLowerCase();
+              }
+              if (typeof window.coinrealmIsSimpleAutoApprovalTask === 'function') {
+                isSimpleAuto = window.coinrealmIsSimpleAutoApprovalTask(taskRecord);
+              } else {
+                isSimpleAuto = taskType === 'simple' || taskType === 'twitter' || taskType === 'telegram' || taskType === 'discord';
+              }
+            }
+          }
+
+          var priorStatus = lookupResult.data[0].status;
+          var alreadyRewardedBeforeSubmit = typeof checkUserAlreadyRewardedForTask === 'function'
+            ? await checkUserAlreadyRewardedForTask(activeSubmitContext.taskId, userId)
+            : false;
+
+          var submissionStatus = isSimpleAuto ? 'approved' : 'submitted';
+          var submittedAt = new Date().toISOString();
+          var updatePayload = {
+            description: desc,
+            screenshot_urls: screenshotUrls,
+            status: submissionStatus,
+            submitted_at: submittedAt
+          };
+
+          if (isSimpleAuto) {
+            updatePayload.reviewed_at = submittedAt;
+          }
+
+          console.log('简单任务自动审核：', {
+            taskId: activeSubmitContext.taskId,
+            userId: userId,
+            taskType: taskType,
+            status: submissionStatus
+          });
+
           var updateResult = await window.supabase
             .from('submissions')
-            .update({
-              description: desc,
-              screenshot_urls: screenshotUrls,
-              status: 'submitted',
-              submitted_at: new Date().toISOString()
-            })
+            .update(updatePayload)
             .eq('id', lookupResult.data[0].id)
             .eq('user_id', userId)
             .neq('status', 'approved')
-            .select('id');
+            .select();
 
           if (updateResult.error) {
             alert(stT('st_alert_submit_fail') + updateResult.error.message);
@@ -684,23 +732,43 @@
 
           currentSubmissionRecord = Object.assign({}, currentSubmissionRecord || {}, {
             id: lookupResult.data[0].id,
-            status: 'submitted',
-            submitted_at: new Date().toISOString(),
+            status: submissionStatus,
+            submitted_at: submittedAt,
+            reviewed_at: isSimpleAuto ? submittedAt : null,
             description: desc,
             screenshot_urls: screenshotUrls
           });
 
-          submitState = 'waiting';
+          if (isSimpleAuto && taskRecord) {
+            if (!alreadyRewardedBeforeSubmit && typeof window.coinrealmGrantSimpleTaskRewards === 'function') {
+              await window.coinrealmGrantSimpleTaskRewards(taskRecord, userId, {
+                priorStatus: priorStatus,
+                creditRewardClient: true
+              });
+            } else if (!alreadyRewardedBeforeSubmit && typeof applyTwitterVerificationSuccess === 'function') {
+              await applyTwitterVerificationSuccess(taskRecord, userId, {
+                priorStatus: priorStatus,
+                creditRewardClient: true,
+                skipStatusUpdate: true,
+                skipRewardCheck: true
+              });
+            }
+
+            submitState = 'completed';
+          } else {
+            submitState = 'waiting';
+            writeBroadcast({
+              user_id: userId,
+              event_type: 'task_submit',
+              description: '提交了任务「' + buildTaskBroadcastTitle(activeSubmitContext.title) + '」凭证',
+              reward_amount: Number(activeSubmitContext.reward) || 0
+            });
+          }
+
           uploadedFiles = [];
           renderFileList();
           updatePageStateUI();
           applySubmitTaskI18n();
-          writeBroadcast({
-            user_id: userId,
-            event_type: 'task_submit',
-            description: '提交了任务「' + buildTaskBroadcastTitle(activeSubmitContext.title) + '」凭证',
-            reward_amount: Number(activeSubmitContext.reward) || 0
-          });
         } finally {
           if (submitBtn) {
             submitBtn.disabled = submitState === 'waiting';

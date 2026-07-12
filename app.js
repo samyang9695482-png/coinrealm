@@ -2556,6 +2556,106 @@ function isSimpleTaskType(task) {
     return getTaskField(task, ['type', 'task_type', 'category'], '') === 'simple';
 }
 
+function resolveSimpleTaskTypeKey(task) {
+    if (!task) return '';
+    var type = String(getTaskField(task, ['type', 'task_type', 'category'], '') || '').trim().toLowerCase();
+    var platform = String(getTaskField(task, ['platform', 'verification_type'], '') || '').trim().toLowerCase();
+    if (platform === 'twitter' || platform === 'telegram' || platform === 'discord') return platform;
+    if (type === 'twitter' || type === 'telegram' || type === 'discord') return type;
+    return type;
+}
+
+function isSimpleAutoApprovalTask(task) {
+    if (!task) return false;
+    var typeKey = resolveSimpleTaskTypeKey(task);
+    if (typeKey === 'simple') return true;
+    return typeKey === 'twitter' || typeKey === 'telegram' || typeKey === 'discord'
+        || isSimplePlatformVerifiableTask(task);
+}
+
+window.coinrealmIsSimpleAutoApprovalTask = isSimpleAutoApprovalTask;
+window.coinrealmResolveSimpleTaskTypeKey = resolveSimpleTaskTypeKey;
+
+async function grantSimpleTaskRewards(task, userId, options) {
+    options = options || {};
+    if (!window.supabase || !task || !task.id || !userId) return false;
+
+    var taskId = task.id;
+    var priorStatus = options.priorStatus || '';
+    var shouldIncrementParticipants = options.incrementParticipants !== false
+        && priorStatus !== 'submitted';
+
+    if (shouldIncrementParticipants) {
+        var taskResult = await window.supabase
+            .from('tasks')
+            .select('current_participants, title, reward_amount, reward_type, max_participants')
+            .eq('id', taskId)
+            .maybeSingle();
+
+        if (!taskResult.error && taskResult.data) {
+            var current = Number(taskResult.data.current_participants) || 0;
+            await window.supabase
+                .from('tasks')
+                .update({ current_participants: current + 1 })
+                .eq('id', taskId);
+            task.current_participants = current + 1;
+            if (!task.title) task.title = taskResult.data.title;
+            if (task.reward_amount == null) task.reward_amount = taskResult.data.reward_amount;
+            if (task.reward_type == null) task.reward_type = taskResult.data.reward_type;
+            if (task.max_participants == null) task.max_participants = taskResult.data.max_participants;
+        }
+    }
+
+    if (task.max_participants == null || task.reward_amount == null) {
+        var rewardTaskResult = await window.supabase
+            .from('tasks')
+            .select('title, reward_amount, reward_type, max_participants')
+            .eq('id', taskId)
+            .maybeSingle();
+
+        if (!rewardTaskResult.error && rewardTaskResult.data) {
+            if (!task.title) task.title = rewardTaskResult.data.title;
+            if (task.reward_amount == null) task.reward_amount = rewardTaskResult.data.reward_amount;
+            if (task.reward_type == null) task.reward_type = rewardTaskResult.data.reward_type;
+            if (task.max_participants == null) task.max_participants = rewardTaskResult.data.max_participants;
+        }
+    }
+
+    var rewardAmount = calculatePerParticipantReward(task);
+
+    if (options.creditRewardClient !== false) {
+        var userResult = await window.supabase
+            .from('users')
+            .select('crlm_balance, usdt_balance')
+            .eq('id', userId)
+            .maybeSingle();
+
+        if (!userResult.error && userResult.data && rewardAmount > 0) {
+            var rewardType = String(task.reward_type || 'CRLM').toUpperCase();
+            var balanceField = rewardType === 'USDT' ? 'usdt_balance' : 'crlm_balance';
+            var currentBalance = Number(userResult.data[balanceField]) || 0;
+            var patch = {};
+            patch[balanceField] = currentBalance + rewardAmount;
+            await window.supabase.from('users').update(patch).eq('id', userId);
+            console.log('简单任务自动审核发奖：', { taskId: taskId, userId: userId, rewardAmount: rewardAmount });
+        }
+    }
+
+    await upgradeUserLevelOnTaskApproved(userId);
+
+    writeBroadcast({
+        user_id: userId,
+        event_type: 'task_approved',
+        description: '完成了任务「' + buildTaskBroadcastTitle(task.title || '') + '」',
+        reward_amount: rewardAmount
+    });
+
+    console.log('简单任务自动审核：', { taskId: taskId, userId: userId, status: 'approved' });
+    return true;
+}
+
+window.coinrealmGrantSimpleTaskRewards = grantSimpleTaskRewards;
+
 function isTwitterVerificationTask(task) {
     if (!isSimpleTaskType(task)) return false;
     var platform = String(getTaskField(task, ['platform', 'verification_type'], '') || '').trim().toLowerCase();
@@ -2648,6 +2748,32 @@ async function verifyTwitterTask(taskId, userId) {
             .eq('task_id', taskId)
             .eq('user_id', userId)
             .maybeSingle();
+
+        if (verified) {
+            var taskResult = await window.supabase
+                .from('tasks')
+                .select('*')
+                .eq('id', taskId)
+                .maybeSingle();
+
+            if (taskResult.data && isSimpleAutoApprovalTask(taskResult.data)) {
+                await applyTwitterVerificationSuccess(taskResult.data, userId, {
+                    priorStatus: subResult.data && subResult.data.status ? subResult.data.status : 'pending',
+                    creditRewardClient: true
+                });
+
+                var refreshedSub = await window.supabase
+                    .from('submissions')
+                    .select('id, task_id, user_id, status, submitted_at, reviewed_at, review_comment')
+                    .eq('task_id', taskId)
+                    .eq('user_id', userId)
+                    .maybeSingle();
+
+                if (!refreshedSub.error && refreshedSub.data) {
+                    subResult.data = refreshedSub.data;
+                }
+            }
+        }
 
         var submissionStatus = subResult.data && subResult.data.status
             ? subResult.data.status
@@ -2924,7 +3050,7 @@ window.coinrealmCalculatePerParticipantReward = calculatePerParticipantReward;
 
 async function applyTwitterVerificationSuccess(task, userId, options) {
     options = options || {};
-    if (!window.supabase || !task || !task.id || !userId) return;
+    if (!window.supabase || !task || !task.id || !userId) return false;
 
     var taskId = task.id;
     var now = new Date().toISOString();
@@ -2932,104 +3058,59 @@ async function applyTwitterVerificationSuccess(task, userId, options) {
 
     if (priorStatus === 'approved') {
         console.log('防重复领取：提交状态已是 approved，跳过发奖', { taskId: taskId, userId: userId });
-        return;
+        return false;
     }
 
-    if (await checkUserAlreadyRewardedForTask(taskId, userId)) {
+    if (!options.skipRewardCheck && await checkUserAlreadyRewardedForTask(taskId, userId)) {
         console.log('防重复领取：用户已领取过奖励，跳过发奖', { taskId: taskId, userId: userId });
-        alert('该用户已领取过奖励');
-        return;
+        if (!options.silentDuplicate) {
+            alert('该用户已领取过奖励');
+        }
+        return false;
     }
 
-    var updateResult = await window.supabase
-        .from('submissions')
-        .update({
-            status: 'approved',
-            reviewed_at: now
-        })
-        .eq('task_id', taskId)
-        .eq('user_id', userId)
-        .in('status', priorStatus === 'rejected'
-            ? ['verifying', 'rejected', 'pending', 'submitted']
-            : ['verifying', 'pending', 'submitted'])
-        .select('id');
+    if (!options.skipStatusUpdate) {
+        var updateQuery = window.supabase
+            .from('submissions')
+            .update({
+                status: 'approved',
+                reviewed_at: now
+            })
+            .eq('task_id', taskId)
+            .eq('user_id', userId)
+            .in('status', priorStatus === 'rejected'
+                ? ['verifying', 'rejected', 'pending', 'submitted', 'claimed']
+                : ['verifying', 'pending', 'submitted', 'claimed']);
 
-    if (updateResult.error) {
-        console.warn('自动验证更新提交状态失败：', updateResult.error);
-        return;
-    }
+        if (options.submissionId) {
+            updateQuery = window.supabase
+                .from('submissions')
+                .update({
+                    status: 'approved',
+                    reviewed_at: now
+                })
+                .eq('id', options.submissionId);
+        }
 
-    if (!updateResult.data || !updateResult.data.length) {
-        console.log('防重复领取：无待审核提交可更新，跳过发奖', { taskId: taskId, userId: userId });
-        return;
-    }
+        var updateResult = await updateQuery.select();
 
-    if (priorStatus === 'verifying' || priorStatus === 'rejected' || priorStatus === 'pending') {
-        var taskResult = await window.supabase
-            .from('tasks')
-            .select('current_participants, title, reward_amount, reward_type, max_participants')
-            .eq('id', taskId)
-            .maybeSingle();
+        console.log('简单任务自动审核：', { taskId: taskId, userId: userId, status: 'approved', updateResult: updateResult });
 
-        if (!taskResult.error && taskResult.data) {
-            var current = Number(taskResult.data.current_participants) || 0;
-            await window.supabase
-                .from('tasks')
-                .update({ current_participants: current + 1 })
-                .eq('id', taskId);
-            task.current_participants = current + 1;
-            if (!task.title) task.title = taskResult.data.title;
-            if (task.reward_amount == null) task.reward_amount = taskResult.data.reward_amount;
-            if (task.reward_type == null) task.reward_type = taskResult.data.reward_type;
-            if (task.max_participants == null) task.max_participants = taskResult.data.max_participants;
+        if (updateResult.error) {
+            console.warn('自动验证更新提交状态失败：', updateResult.error);
+            return false;
+        }
+
+        if (!options.submissionId && (!updateResult.data || !updateResult.data.length)) {
+            console.log('防重复领取：无待审核提交可更新，跳过发奖', { taskId: taskId, userId: userId });
+            return false;
         }
     }
 
-    if (task.max_participants == null || task.reward_amount == null) {
-        var rewardTaskResult = await window.supabase
-            .from('tasks')
-            .select('title, reward_amount, reward_type, max_participants')
-            .eq('id', taskId)
-            .maybeSingle();
-
-        if (!rewardTaskResult.error && rewardTaskResult.data) {
-            if (!task.title) task.title = rewardTaskResult.data.title;
-            if (task.reward_amount == null) task.reward_amount = rewardTaskResult.data.reward_amount;
-            if (task.reward_type == null) task.reward_type = rewardTaskResult.data.reward_type;
-            if (task.max_participants == null) task.max_participants = rewardTaskResult.data.max_participants;
-        }
-    }
-
-    var rewardAmount = calculatePerParticipantReward(task);
-
-    if (options.creditRewardClient) {
-        var userResult = await window.supabase
-            .from('users')
-            .select('crlm_balance, usdt_balance')
-            .eq('id', userId)
-            .maybeSingle();
-
-        if (!userResult.error && userResult.data) {
-            if (rewardAmount > 0) {
-                var rewardType = String(task.reward_type || 'CRLM').toUpperCase();
-                var balanceField = rewardType === 'USDT' ? 'usdt_balance' : 'crlm_balance';
-                var currentBalance = Number(userResult.data[balanceField]) || 0;
-                var patch = {};
-        patch[balanceField] = currentBalance + rewardAmount;
-                await window.supabase.from('users').update(patch).eq('id', userId);
-                console.log('自动验证发奖成功：', { taskId: taskId, userId: userId, rewardAmount: rewardAmount });
-            }
-        }
-    }
-
-    var broadcastTitle = task.title || '';
-    await upgradeUserLevelOnTaskApproved(userId);
-
-    writeBroadcast({
-        user_id: userId,
-        event_type: 'task_approved',
-        description: '完成了任务「' + buildTaskBroadcastTitle(broadcastTitle) + '」',
-        reward_amount: rewardAmount
+    return grantSimpleTaskRewards(task, userId, {
+        priorStatus: priorStatus,
+        creditRewardClient: options.creditRewardClient !== false,
+        incrementParticipants: options.incrementParticipants
     });
 }
 
