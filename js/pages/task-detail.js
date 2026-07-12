@@ -2176,31 +2176,38 @@
     var userId = await getCurrentUserId();
     if (userId) {
       currentUserId = userId;
-      if (typeof loadUserSubmissionForTask === 'function') {
-        currentSubmissionRecord = await loadUserSubmissionForTask(taskId, currentUserId);
-      } else {
-        var subResult = await window.supabase
-          .from('submissions')
-          .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment, screenshot_urls')
-          .eq('task_id', taskId)
-          .eq('user_id', currentUserId)
-          .order('reviewed_at', { ascending: false })
-          .limit(1);
-        if (!subResult.error && subResult.data && subResult.data.length) {
-          currentSubmissionRecord = subResult.data[0];
-        }
-      }
 
-      if (typeof checkUserAlreadyRewardedForTask === 'function' &&
-          await checkUserAlreadyRewardedForTask(taskId, currentUserId)) {
-        console.log('任务详情：用户已完成该任务', { taskId: taskId, userId: currentUserId });
-        if (!currentSubmissionRecord || currentSubmissionRecord.status !== 'approved') {
-          if (typeof loadUserSubmissionForTask === 'function') {
-            currentSubmissionRecord = await loadUserSubmissionForTask(taskId, currentUserId);
-          }
-        }
+      var submissionsResult = await window.supabase
+        .from('submissions')
+        .select('id, status')
+        .eq('task_id', taskId)
+        .eq('user_id', userId);
+
+      var submissions = submissionsResult.error ? [] : (submissionsResult.data || []);
+      var hasApproved = submissions.some(function (s) { return s.status === 'approved'; });
+
+      console.log('任务详情页加载：', { taskId: taskId, userId: userId, submissions: submissions, hasApproved: hasApproved });
+
+      if (hasApproved) {
+        currentSubmissionRecord = submissions.find(function (s) { return s.status === 'approved'; }) || submissions[0];
         detailActionState = isSimpleTaskRecord(currentTaskRecord) ? 'simple_completed' : 'approved';
+      } else if (submissions.length) {
+        var statusPriority = {
+          submitted: 6,
+          verifying: 5,
+          pending: 4,
+          claimed: 3,
+          rejected: 2
+        };
+        submissions.sort(function (a, b) {
+          var pa = statusPriority[a.status] || 0;
+          var pb = statusPriority[b.status] || 0;
+          return pb - pa;
+        });
+        currentSubmissionRecord = submissions[0];
+        detailActionState = resolveDetailActionState(currentTaskRecord, currentSubmissionRecord, currentUserId);
       } else {
+        currentSubmissionRecord = null;
         detailActionState = resolveDetailActionState(currentTaskRecord, currentSubmissionRecord, currentUserId);
       }
     } else {
