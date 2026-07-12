@@ -345,11 +345,15 @@
       .in('status', ['submitted', 'pending'])
       .order('submitted_at', { ascending: false });
 
+    var submissions = submissionsResult.data || [];
+
     console.log('审核管理-提交列表：', {
       taskId: selectedTaskId,
-      submissions: submissionsResult.data,
+      count: submissions.length,
+      submissions: submissions,
       error: submissionsResult.error
     });
+    console.log('审核管理-提交列表数量：', submissions.length);
 
     if (submissionsResult.error) {
       alert(rvT('rv_alert_action_fail') + submissionsResult.error.message);
@@ -358,7 +362,7 @@
       return;
     }
 
-    currentSubmissions = await enrichSubmissionsWithUsers(submissionsResult.data || []);
+    currentSubmissions = await enrichSubmissionsWithUsers(submissions);
     renderSubmissionList();
   }
 
