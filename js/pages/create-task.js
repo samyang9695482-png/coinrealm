@@ -194,14 +194,14 @@
       ct_add_req: '+ 添加要求',
       ct_proof_text: '文字凭证',
       ct_proof_screenshot: '截图凭证',
-      ct_stake_note: '仅 Lv.3 及以上用户可发布任务。',
+      ct_stake_note: '仅 Lv.2 及以上用户可发布任务。',
       ct_stake_hint: '发布此任务需质押 {amount} CRLM（扣除佣金后奖励的 20% 押金），任务完成后押金退还。',
       ct_stake_hint_usdt: '发布此任务需质押 {amount} USDT（扣除佣金后奖励的 20% 押金），任务完成后押金退还。',
       ct_unit_price: '任务单价：约 {amount} {unit}',
       ct_deadline_hint: '⏰ 超时审核将自动通过。若多次超时未审核，发布权限可能被暂停。',
       ct_btn_submit: '确认发布',
       ct_btn_balance: '余额不足，请先兑换 CRLM',
-      ct_btn_level: '等级不足（需 Lv.3 以上）',
+      ct_btn_level: '等级不足（需 Lv.2 以上）',
       ct_agreement: '点击发布即表示同意 CoinRealm 发布规则',
       ct_alert_required: '请填写所有必填字段',
       ct_alert_success: '任务发布成功！',
@@ -326,14 +326,14 @@
       ct_add_req: '+ Add Requirement',
       ct_proof_text: 'Text Proof',
       ct_proof_screenshot: 'Screenshot Proof',
-      ct_stake_note: 'Only Lv.3+ users can publish tasks.',
+      ct_stake_note: 'Only Lv.2+ users can publish tasks.',
       ct_stake_hint: 'Publishing requires staking {amount} CRLM (20% deposit after commission). Deposit refunded after completion.',
       ct_stake_hint_usdt: 'Publishing requires staking {amount} USDT (20% deposit after commission). Deposit refunded after completion.',
       ct_unit_price: 'Unit reward: approx. {amount} {unit}',
       ct_deadline_hint: '⏰ Tasks will be auto-approved if review times out. Repeated timeouts may result in suspension of publishing rights.',
       ct_btn_submit: 'Confirm & Publish',
       ct_btn_balance: 'Insufficient balance, please exchange CRLM first',
-      ct_btn_level: 'Level too low (Lv.3+ required)',
+      ct_btn_level: 'Level too low (Lv.2+ required)',
       ct_agreement: 'By publishing, you agree to CoinRealm publishing rules',
       ct_alert_required: 'Please fill in all required fields',
       ct_alert_success: 'Task published successfully!',
@@ -576,7 +576,7 @@
     btn.classList.remove('ct-btn-normal', 'ct-btn-disabled');
     btn.disabled = false;
 
-    if (userLevel < 3) {
+    if (userLevel < 2) {
       btn.classList.add('ct-btn-disabled');
       btn.disabled = true;
       btn.textContent = ctT('ct_btn_level');
