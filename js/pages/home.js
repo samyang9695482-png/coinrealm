@@ -155,24 +155,52 @@ function displayNameFromEmail(email) {
 }
 
 function resolvePublisherDisplayName(user) {
+    if (!user || typeof user !== 'object') {
+        console.log('首页 resolvePublisherDisplayName: 无用户数据', user);
+        return '未知发布者';
+    }
+
     if (typeof window.coinrealmResolveUserDisplayName === 'function') {
         return window.coinrealmResolveUserDisplayName(user);
     }
-    if (!user) return '未知发布者';
-    return user.username || displayNameFromEmail(user.email) || '未知发布者';
+
+    var rawUsername = user.username;
+    if (rawUsername != null && String(rawUsername).trim()) {
+        return String(rawUsername).trim();
+    }
+
+    var email = user.email != null ? String(user.email).trim() : '';
+    if (email && email.indexOf('@wallet.coinrealm.local') === -1) {
+        return displayNameFromEmail(email) || email;
+    }
+
+    var wallet = user.wallet_address != null ? String(user.wallet_address).trim() : '';
+    if (wallet) {
+        if (typeof window.coinrealmFormatWalletDisplayName === 'function') {
+            return window.coinrealmFormatWalletDisplayName(wallet);
+        }
+        return 'Wallet_' + wallet.slice(0, 10) + '...';
+    }
+
+    return '未知发布者';
 }
 
 function resolvePublisherFields(task) {
     var publisher = task.publisher;
-    var username = getTaskField(task, ['publisher_username', 'publisher_name'], '');
+    var username = '';
     var level = getTaskField(task, ['publisher_level'], null);
 
     if (publisher && typeof publisher === 'object') {
-        if (!username) username = resolvePublisherDisplayName(publisher);
+        username = resolvePublisherDisplayName(publisher);
         if (level == null || level === '') level = publisher.level;
     }
 
-    if (!username) username = getTaskField(task, ['username'], '未知发布者');
+    if (!username) {
+        username = getTaskField(task, ['publisher_username', 'publisher_name'], '');
+    }
+    if (!username) {
+        username = getTaskField(task, ['username'], '未知发布者');
+    }
     if (level == null || level === '') level = 1;
 
     return { username: username, level: level };
@@ -211,10 +239,26 @@ function enrichTasksWithPublishers(tasks) {
 
             return tasks.map(function (task) {
                 var publisher = userMap[task.publisher_id];
-                if (!publisher) return task;
+                if (!publisher) {
+                    console.log('首页发布者未找到：', {
+                        taskId: task.id,
+                        publisherId: task.publisher_id
+                    });
+                    return task;
+                }
+
+                var displayName = resolvePublisherDisplayName(publisher);
+                console.log('首页发布者显示名：', {
+                    publisherId: publisher.id,
+                    username: publisher.username,
+                    email: publisher.email,
+                    wallet_address: publisher.wallet_address,
+                    displayName: displayName
+                });
+
                 return Object.assign({}, task, {
                     publisher: publisher,
-                    publisher_username: resolvePublisherDisplayName(publisher),
+                    publisher_username: displayName,
                     publisher_level: publisher.level
                 });
             });

@@ -2752,34 +2752,63 @@ function usernameFromWalletAddress(walletAddress) {
     return 'Wallet_' + normalized.slice(0, 6);
 }
 
+function formatWalletDisplayName(walletAddress) {
+    var normalized = String(walletAddress || '').trim();
+    if (!normalized) return '';
+    return 'Wallet_' + normalized.slice(0, 10) + '...';
+}
+
 function resolveUserDisplayName(user) {
     if (!user || typeof user !== 'object') {
         console.log('resolveUserDisplayName: 无用户数据', user);
         return '未知发布者';
     }
 
-    if (user.username && String(user.username).trim()) {
-        return String(user.username).trim();
+    var rawUsername = user.username;
+    if (rawUsername != null && String(rawUsername).trim()) {
+        var fromUsername = String(rawUsername).trim();
+        console.log('resolveUserDisplayName: 使用 username', {
+            username: rawUsername,
+            displayName: fromUsername
+        });
+        return fromUsername;
     }
 
-    if (user.wallet_address && String(user.wallet_address).trim()) {
-        return usernameFromWalletAddress(user.wallet_address);
+    var email = user.email != null ? String(user.email).trim() : '';
+    if (email && email.indexOf('@wallet.coinrealm.local') === -1) {
+        var fromEmail = email.split('@')[0] || email;
+        console.log('resolveUserDisplayName: 使用 email', {
+            email: email,
+            displayName: fromEmail
+        });
+        return fromEmail;
     }
 
-    if (user.email) {
-        var email = String(user.email).trim();
-        if (email.indexOf('@wallet.coinrealm.local') !== -1) {
-            return usernameFromWalletAddress('0x' + email.split('@')[0]);
-        }
-        var parts = email.split('@');
-        if (parts[0]) return parts[0];
+    var wallet = user.wallet_address != null ? String(user.wallet_address).trim() : '';
+    if (wallet) {
+        var fromWallet = formatWalletDisplayName(wallet);
+        console.log('resolveUserDisplayName: 使用 wallet_address', {
+            wallet_address: wallet,
+            displayName: fromWallet
+        });
+        return fromWallet;
     }
 
-    console.log('resolveUserDisplayName: 使用默认名称', user);
+    if (email) {
+        var fromWalletEmail = formatWalletDisplayName('0x' + email.split('@')[0]);
+        console.log('resolveUserDisplayName: 使用钱包邮箱兜底', {
+            email: email,
+            displayName: fromWalletEmail
+        });
+        return fromWalletEmail;
+    }
+
+    console.log('resolveUserDisplayName: 未知发布者', user);
     return '未知发布者';
 }
 
 window.coinrealmUsernameFromWalletAddress = usernameFromWalletAddress;
+window.coinrealmFormatWalletDisplayName = formatWalletDisplayName;
 window.coinrealmResolveUserDisplayName = resolveUserDisplayName;
 
 async function fetchPublisherUserById(publisherId) {
