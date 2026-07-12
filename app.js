@@ -2786,6 +2786,54 @@ async function checkUserAlreadyRewardedForTask(taskId, userId) {
     return !!(result.data && result.data.length > 0);
 }
 
+async function loadUserSubmissionForTask(taskId, userId) {
+    if (!window.supabase || !taskId || !userId) return null;
+
+    var result = await window.supabase
+        .from('submissions')
+        .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment, screenshot_urls')
+        .eq('task_id', taskId)
+        .eq('user_id', userId)
+        .order('reviewed_at', { ascending: false, nullsFirst: false })
+        .order('submitted_at', { ascending: false, nullsFirst: false });
+
+    console.log('加载用户提交记录：', { taskId: taskId, userId: userId, result: result });
+
+    if (result.error) {
+        console.warn('加载用户提交记录失败：', result.error);
+        return null;
+    }
+
+    var rows = result.data || [];
+    if (!rows.length) return null;
+
+    var approvedRow = rows.find(function (row) { return row.status === 'approved'; });
+    if (approvedRow) return approvedRow;
+
+    var statusPriority = {
+        submitted: 6,
+        verifying: 5,
+        pending: 4,
+        claimed: 3,
+        rejected: 2
+    };
+
+    rows.sort(function (a, b) {
+        var pa = statusPriority[a.status] || 0;
+        var pb = statusPriority[b.status] || 0;
+        if (pb !== pa) return pb - pa;
+        var ta = new Date(a.submitted_at || a.reviewed_at || 0).getTime();
+        var tb = new Date(b.submitted_at || b.reviewed_at || 0).getTime();
+        return tb - ta;
+    });
+
+    return rows[0];
+}
+
+window.coinrealmCheckUserAlreadyRewardedForTask = checkUserAlreadyRewardedForTask;
+window.coinrealmLoadUserSubmissionForTask = loadUserSubmissionForTask;
+window.coinrealmCalculatePerParticipantReward = calculatePerParticipantReward;
+
 async function applyTwitterVerificationSuccess(task, userId, options) {
     options = options || {};
     if (!window.supabase || !task || !task.id || !userId) return;
@@ -2879,8 +2927,9 @@ async function applyTwitterVerificationSuccess(task, userId, options) {
                 var balanceField = rewardType === 'USDT' ? 'usdt_balance' : 'crlm_balance';
                 var currentBalance = Number(userResult.data[balanceField]) || 0;
                 var patch = {};
-                patch[balanceField] = currentBalance + rewardAmount;
+        patch[balanceField] = currentBalance + rewardAmount;
                 await window.supabase.from('users').update(patch).eq('id', userId);
+                console.log('自动验证发奖成功：', { taskId: taskId, userId: userId, rewardAmount: rewardAmount });
             }
         }
     }
@@ -4302,6 +4351,8 @@ window.addEventListener('hashchange', function () {
           }
         }
 
+        var addedTaskRewardEntries = 0;
+
         approvedRows.forEach(function (row) {
           var joinedTask = Array.isArray(row.tasks) ? row.tasks[0] : row.tasks;
           var fallbackTask = taskMap[row.task_id] || {};
@@ -4315,6 +4366,7 @@ window.addEventListener('hashchange', function () {
 
           if (amount <= 0) return;
 
+          addedTaskRewardEntries += 1;
           entries.push({
             time: row.reviewed_at || row.submitted_at || new Date().toISOString(),
             icon: pfT('pf_ledger_icon_task'),
@@ -4323,6 +4375,33 @@ window.addEventListener('hashchange', function () {
             income: true
           });
         });
+
+        if (approvedRows.length && !addedTaskRewardEntries) {
+          var broadcastsResult = await window.supabase
+            .from('broadcasts')
+            .select('created_at, description, reward_amount, event_type')
+            .eq('user_id', userId)
+            .eq('event_type', 'task_approved')
+            .order('created_at', { ascending: false })
+            .limit(queryLimit);
+
+          console.log('任务奖励广播兜底查询结果：', broadcastsResult);
+
+          if (!broadcastsResult.error) {
+            (broadcastsResult.data || []).forEach(function (row) {
+              var amount = Number(row.reward_amount) || 0;
+              if (amount <= 0) return;
+              var desc = String(row.description || '').trim();
+              entries.push({
+                time: row.created_at || new Date().toISOString(),
+                icon: pfT('pf_ledger_icon_task'),
+                description: desc ? ('任务奖励：' + desc.replace(/^.*?「/, '').replace(/」.*$/, '') || desc) : pfT('pf_ledger_type_task'),
+                delta: amount,
+                income: true
+              });
+            });
+          }
+        }
       }
     } catch (submissionErr) {
       console.warn('余额明细：任务奖励查询失败', submissionErr);
@@ -5479,7 +5558,7 @@ window.addEventListener('hashchange', function () {
       mt_status_submitted: '已提交',
       mt_status_reviewing: '审核中',
       mt_status_verifying: '验证中',
-      mt_status_approved: '已通过',
+      mt_status_approved: '已完成',
       mt_status_rejected: '未通过',
       mt_label_deadline: '截止时间',
       mt_label_completed: '完成时间',
@@ -5505,7 +5584,7 @@ window.addEventListener('hashchange', function () {
       mt_status_submitted: 'Submitted',
       mt_status_reviewing: 'Under review',
       mt_status_verifying: 'Verifying',
-      mt_status_approved: 'Approved',
+      mt_status_approved: 'Completed',
       mt_status_rejected: 'Rejected',
       mt_label_deadline: 'Deadline',
       mt_label_completed: 'Completed',
@@ -5626,6 +5705,7 @@ window.addEventListener('hashchange', function () {
     if (submission.status === 'verifying') return mtT('mt_status_verifying');
     if (submission.status === 'submitted') return mtT('mt_status_reviewing');
     if (submission.status === 'pending' && submission.submitted_at) return mtT('mt_status_submitted');
+    if (submission.status === 'claimed') return mtT('mt_status_pending');
     if (submission.status === 'pending') return mtT('mt_status_pending');
     return submission.status || '';
   }
@@ -5771,7 +5851,7 @@ window.addEventListener('hashchange', function () {
         return;
       }
 
-      if (sub.status === 'verifying' || sub.status === 'pending' || sub.status === 'submitted') {
+      if (sub.status === 'verifying' || sub.status === 'pending' || sub.status === 'submitted' || sub.status === 'claimed') {
         active.push(item);
       }
     });
@@ -8967,6 +9047,8 @@ window.addEventListener('hashchange', function () {
 
     var submission = submissionResult.data;
 
+    console.log('人工审核通过：', { submissionId: submissionId, submission: submission });
+
     if (await checkUserAlreadyRewardedForTask(submission.task_id, submission.user_id)) {
       alert(rvT('rv_alert_already_rewarded'));
       return false;
@@ -9016,6 +9098,11 @@ window.addEventListener('hashchange', function () {
         var patch = {};
         patch[balanceField] = currentBalance + rewardAmount;
         await window.supabase.from('users').update(patch).eq('id', submission.user_id);
+        console.log('人工审核发奖成功：', {
+          submissionId: submissionId,
+          userId: submission.user_id,
+          rewardAmount: rewardAmount
+        });
       }
     }
 
