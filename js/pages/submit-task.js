@@ -555,15 +555,22 @@
         submitBtn.disabled = true;
 
         try {
+          if (currentSubmissionRecord && currentSubmissionRecord.status === 'approved') {
+            console.log('提交前防重复检查：当前提交已是 approved', currentSubmissionRecord);
+            alert(stT('st_alert_already_rewarded'));
+            return;
+          }
+
           var approvedCheck = await window.supabase
             .from('submissions')
             .select('id')
             .eq('task_id', activeSubmitContext.taskId)
             .eq('user_id', userId)
-            .eq('status', 'approved')
-            .maybeSingle();
+            .eq('status', 'approved');
 
-          if (!approvedCheck.error && approvedCheck.data) {
+          console.log('提交前防重复检查：', approvedCheck);
+
+          if (!approvedCheck.error && approvedCheck.data && approvedCheck.data.length > 0) {
             alert(stT('st_alert_already_rewarded'));
             return;
           }
