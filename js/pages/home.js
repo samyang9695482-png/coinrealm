@@ -2,6 +2,7 @@ let allTasks = [];
 let homeOfficialTasks = [];
 let homeEventsBound = false;
 let fetchTasksSeq = 0;
+let homeUserApprovedTaskIds = {};
 
 function isHomepageBroadcast(record) {
     var amount = Number(record.reward_amount) || 0;
@@ -274,6 +275,36 @@ function sortTasks(tasks, sortValue) {
     return list;
 }
 
+function isHomeTaskCompleted(taskId) {
+    return !!homeUserApprovedTaskIds[String(taskId)];
+}
+
+async function loadHomeUserApprovedTaskIds() {
+    homeUserApprovedTaskIds = {};
+
+    var userId = await getCurrentUserId();
+    if (!userId || !window.supabase) {
+        console.log('首页已完成任务查询：未登录');
+        return;
+    }
+
+    var result = await window.supabase
+        .from('submissions')
+        .select('task_id')
+        .eq('user_id', userId)
+        .eq('status', 'approved');
+
+    console.log('首页已完成任务查询：', result);
+
+    if (!result.error && result.data) {
+        result.data.forEach(function (row) {
+            if (row.task_id != null) {
+                homeUserApprovedTaskIds[String(row.task_id)] = true;
+            }
+        });
+    }
+}
+
 function buildTaskCardHtml(task) {
     const category = getTaskCategory(task);
     const typeLabelKey = getTypeLabelKey(task);
@@ -313,8 +344,15 @@ function buildTaskCardHtml(task) {
         : '';
     const cardClass = imageUrl ? ' task-card-with-image' : '';
 
+    const taskId = getTaskField(task, ['id'], '');
+    const isCompleted = isHomeTaskCompleted(taskId);
+    const completedLabel = window.currentLang === 'en' ? 'Completed' : '已完成';
+    const claimBtnHtml = isCompleted
+        ? '<button type="button" class="claim-btn claim-btn-done" disabled style="background:#e8e8e8;color:#999;cursor:not-allowed;">' + escapeHtml(completedLabel) + '</button>'
+        : '<button type="button" class="claim-btn" data-task-id="' + escapeHtml(taskId) + '" data-i18n="btn_claim">领取</button>';
+
     return (
-        '<div class="task-card' + cardClass + '" data-category="' + escapeHtml(category) + '" data-task-id="' + escapeHtml(getTaskField(task, ['id'], '')) + '">' +
+        '<div class="task-card' + cardClass + '" data-category="' + escapeHtml(category) + '" data-task-id="' + escapeHtml(taskId) + '">' +
             imageHtml +
             '<div class="task-card-body">' +
             '<div class="card-top">' +
@@ -335,7 +373,7 @@ function buildTaskCardHtml(task) {
                     '<span class="info-text"><span data-i18n="text_slots">剩余名额</span> ' + slotsLeft + '/' + slotsTotal + '</span>' +
                     '<span class="info-text">' + daysLeft + ' <span data-i18n="text_days">天后</span></span>' +
                 '</div>' +
-                '<button type="button" class="claim-btn" data-task-id="' + escapeHtml(getTaskField(task, ['id'], '')) + '" data-i18n="btn_claim">领取</button>' +
+                claimBtnHtml +
             '</div>' +
             '</div>' +
         '</div>'
@@ -428,6 +466,7 @@ function filterByOfficialTag() {
 }
 
 function handleClaimTask(btn) {
+    if (btn.disabled || btn.classList.contains('claim-btn-done')) return;
     navigateToTaskDetail(btn.getAttribute('data-task-id'));
 }
 
@@ -553,7 +592,9 @@ function fetchTasks() {
             if (!tasks) return;
 
             allTasks = tasks;
-            applyFiltersAndSort();
+            return loadHomeUserApprovedTaskIds().then(function () {
+                applyFiltersAndSort();
+            });
         })
         .catch(function (err) {
             if (seq !== fetchTasksSeq) return;

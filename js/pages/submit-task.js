@@ -47,7 +47,10 @@
       st_alert_upload_fail: '上传失败：',
       st_alert_no_task: '请先在任务详情页领取任务',
       st_alert_submit_fail: '提交失败：',
-      st_alert_already_rewarded: '该用户已领取过奖励'
+      st_alert_already_rewarded: '该用户已领取过奖励',
+      st_title_completed: '任务已完成',
+      st_completed_text: '你已完成该任务并领取了奖励',
+      st_btn_completed: '已完成'
     },
     en: {
       st_title_submit: 'Submit Proof',
@@ -70,7 +73,10 @@
       st_alert_upload_fail: 'Upload failed: ',
       st_alert_no_task: 'Please claim the task on the task detail page first',
       st_alert_submit_fail: 'Submit failed: ',
-      st_alert_already_rewarded: 'You have already received the reward for this task'
+      st_alert_already_rewarded: 'You have already received the reward for this task',
+      st_title_completed: 'Task Completed',
+      st_completed_text: 'You have completed this task and received the reward',
+      st_btn_completed: 'Completed'
     }
   };
 
@@ -359,6 +365,19 @@
     if (summaryCard) summaryCard.classList.remove('hidden');
     if (actionBar) actionBar.classList.remove('hidden');
 
+    if (submitState === 'completed') {
+      if (pageTitle) pageTitle.textContent = stT('st_title_completed');
+      if (formSection) formSection.classList.add('hidden');
+      if (waitingSection) {
+        waitingSection.classList.remove('hidden');
+        waitingSection.innerHTML =
+          '<p class="st-waiting-text">' + stT('st_completed_text') + '</p>' +
+          '<button type="button" id="st-back-home-btn" class="st-action-btn st-btn-disabled" disabled>' + stT('st_btn_completed') + '</button>';
+      }
+      if (submitBtn) submitBtn.classList.add('hidden');
+      return;
+    }
+
     if (submitState === 'waiting') {
       if (pageTitle) pageTitle.textContent = stT('st_title_waiting');
       if (formSection) formSection.classList.add('hidden');
@@ -454,31 +473,57 @@
       return true;
     }
 
-    var submissionResult = await window.supabase
-      .from('submissions')
-      .select('id, task_id, user_id, status, description, submitted_at, review_comment, screenshot_urls')
-      .eq('task_id', activeSubmitContext.taskId)
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (submissionResult.error) {
-      alert(stT('st_alert_submit_fail') + submissionResult.error.message);
-      return false;
+    if (typeof window.coinrealmCheckUserAlreadyRewardedForTask === 'function' &&
+        await window.coinrealmCheckUserAlreadyRewardedForTask(activeSubmitContext.taskId, userId)) {
+      console.log('提交页：用户已完成该任务', { taskId: activeSubmitContext.taskId, userId: userId });
+      currentSubmissionRecord = typeof window.coinrealmLoadUserSubmissionForTask === 'function'
+        ? await window.coinrealmLoadUserSubmissionForTask(activeSubmitContext.taskId, userId)
+        : null;
+      submitState = 'completed';
+      renderSummaryCard();
+      updatePageStateUI();
+      applySubmitTaskI18n();
+      return true;
     }
 
-    if (!submissionResult.data) {
+    var submissionRecord = null;
+    if (typeof window.coinrealmLoadUserSubmissionForTask === 'function') {
+      submissionRecord = await window.coinrealmLoadUserSubmissionForTask(activeSubmitContext.taskId, userId);
+    } else {
+      var submissionResult = await window.supabase
+        .from('submissions')
+        .select('id, task_id, user_id, status, description, submitted_at, review_comment, screenshot_urls')
+        .eq('task_id', activeSubmitContext.taskId)
+        .eq('user_id', userId)
+        .order('reviewed_at', { ascending: false })
+        .limit(10);
+
+      console.log('提交页加载提交记录：', submissionResult);
+
+      if (submissionResult.error) {
+        alert(stT('st_alert_submit_fail') + submissionResult.error.message);
+        return false;
+      }
+
+      submissionRecord = submissionResult.data && submissionResult.data.length ? submissionResult.data[0] : null;
+    }
+
+    if (!submissionRecord) {
       showNoTaskEmptyState();
       return true;
     }
 
-    currentSubmissionRecord = submissionResult.data;
-    activeSubmitContext.submissionId = submissionResult.data.id;
+    currentSubmissionRecord = submissionRecord;
+    activeSubmitContext.submissionId = submissionRecord.id;
 
-    if (isSubmissionWaitingReview(submissionResult.data)) {
+    if (submissionRecord.status === 'approved') {
+      console.log('提交页：提交记录已是 approved', submissionRecord);
+      submitState = 'completed';
+    } else if (isSubmissionWaitingReview(submissionRecord)) {
       submitState = 'waiting';
-    } else if (isSubmissionReadyToSubmit(submissionResult.data)) {
+    } else if (isSubmissionReadyToSubmit(submissionRecord)) {
       submitState = 'form';
-    } else if (submissionResult.data.status === 'rejected') {
+    } else if (submissionRecord.status === 'rejected') {
       submitState = 'rejected';
     } else {
       submitState = 'form';
@@ -527,7 +572,7 @@
     var submitBtn = document.getElementById('st-submit-btn');
     if (submitBtn) {
       submitBtn.addEventListener('click', async function () {
-        if (submitState === 'waiting' || submitState === 'no_task') return;
+        if (submitState === 'waiting' || submitState === 'no_task' || submitState === 'completed') return;
 
         var descEl = document.getElementById('st-description');
         var desc = descEl ? descEl.value.trim() : '';
@@ -572,18 +617,36 @@
 
           if (!approvedCheck.error && approvedCheck.data && approvedCheck.data.length > 0) {
             alert(stT('st_alert_already_rewarded'));
+            submitState = 'completed';
+            updatePageStateUI();
             return;
           }
 
           var lookupResult = await window.supabase
             .from('submissions')
-            .select('id')
+            .select('id, status')
             .eq('task_id', activeSubmitContext.taskId)
             .eq('user_id', userId)
-            .maybeSingle();
+            .neq('status', 'approved')
+            .order('submitted_at', { ascending: false })
+            .limit(1);
 
-          if (lookupResult.error || !lookupResult.data) {
+          if (lookupResult.error || !lookupResult.data || !lookupResult.data.length) {
+            if (typeof window.coinrealmCheckUserAlreadyRewardedForTask === 'function' &&
+                await window.coinrealmCheckUserAlreadyRewardedForTask(activeSubmitContext.taskId, userId)) {
+              alert(stT('st_alert_already_rewarded'));
+              submitState = 'completed';
+              updatePageStateUI();
+              return;
+            }
             alert(stT('st_alert_no_task'));
+            return;
+          }
+
+          if (lookupResult.data[0].status === 'approved') {
+            alert(stT('st_alert_already_rewarded'));
+            submitState = 'completed';
+            updatePageStateUI();
             return;
           }
 
@@ -601,16 +664,26 @@
               status: 'submitted',
               submitted_at: new Date().toISOString()
             })
-            .eq('id', lookupResult.data.id)
-            .eq('user_id', userId);
+            .eq('id', lookupResult.data[0].id)
+            .eq('user_id', userId)
+            .neq('status', 'approved')
+            .select('id');
 
           if (updateResult.error) {
             alert(stT('st_alert_submit_fail') + updateResult.error.message);
             return;
           }
 
+          if (!updateResult.data || !updateResult.data.length) {
+            console.log('提交页：更新失败，可能任务已完成', lookupResult.data[0]);
+            alert(stT('st_alert_already_rewarded'));
+            submitState = 'completed';
+            updatePageStateUI();
+            return;
+          }
+
           currentSubmissionRecord = Object.assign({}, currentSubmissionRecord || {}, {
-            id: lookupResult.data.id,
+            id: lookupResult.data[0].id,
             status: 'submitted',
             submitted_at: new Date().toISOString(),
             description: desc,

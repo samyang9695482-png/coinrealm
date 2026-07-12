@@ -1435,6 +1435,10 @@
     var isFull = max != null && current >= max;
     var isExpired = deadline && !Number.isNaN(deadline.getTime()) && deadline.getTime() < Date.now();
 
+    if (submission && submission.status === 'approved') {
+      return 'approved';
+    }
+
     if (isSimpleTaskRecord(task)) {
       if (isFull || isExpired) return 'ended';
       if (!userId) return 'not_logged_in';
@@ -1469,6 +1473,12 @@
   }
 
   function navigateToSubmitPage() {
+    if (currentSubmissionRecord && currentSubmissionRecord.status === 'approved') {
+      console.log('任务详情：已完成任务，禁止跳转提交页');
+      detailActionState = 'approved';
+      updateBottomActionBar();
+      return;
+    }
     saveSubmissionContext(currentTaskRecord, currentSubmissionRecord);
     window.location.hash = 'submit-task';
   }
@@ -1481,6 +1491,18 @@
 
     if (!userId) {
       alert(tdT('td_alert_login'));
+      return;
+    }
+
+    if (typeof checkUserAlreadyRewardedForTask === 'function' &&
+        await checkUserAlreadyRewardedForTask(taskId, userId)) {
+      console.log('任务详情：用户已完成该任务，禁止重复领取', { taskId: taskId, userId: userId });
+      currentSubmissionRecord = typeof loadUserSubmissionForTask === 'function'
+        ? await loadUserSubmissionForTask(taskId, userId)
+        : currentSubmissionRecord;
+      currentUserId = userId;
+      detailActionState = 'approved';
+      updateBottomActionBar();
       return;
     }
 
@@ -1501,6 +1523,22 @@
     if (currentSubmissionRecord) {
       alert(tdT('td_alert_already_claimed'));
       return;
+    }
+
+    if (typeof loadUserSubmissionForTask === 'function') {
+      var existingSubmission = await loadUserSubmissionForTask(taskId, userId);
+      if (existingSubmission) {
+        currentSubmissionRecord = existingSubmission;
+        currentUserId = userId;
+        detailActionState = resolveDetailActionState(currentTaskRecord, currentSubmissionRecord, currentUserId);
+        updateBottomActionBar();
+        if (detailActionState === 'approved') {
+          console.log('任务详情：检测到已完成提交记录', existingSubmission);
+          return;
+        }
+        alert(tdT('td_alert_already_claimed'));
+        return;
+      }
     }
 
     var max = currentTaskRecord.max_participants != null ? Number(currentTaskRecord.max_participants) : null;
@@ -1871,6 +1909,20 @@
       return;
     }
 
+    var taskId = currentTaskRecord.id;
+
+    if (typeof checkUserAlreadyRewardedForTask === 'function' &&
+        await checkUserAlreadyRewardedForTask(taskId, userId)) {
+      console.log('任务详情：简单任务已完成，禁止重复领取', { taskId: taskId, userId: userId });
+      currentSubmissionRecord = typeof loadUserSubmissionForTask === 'function'
+        ? await loadUserSubmissionForTask(taskId, userId)
+        : currentSubmissionRecord;
+      currentUserId = userId;
+      detailActionState = 'approved';
+      updateBottomActionBar();
+      return;
+    }
+
     if (currentSubmissionRecord) {
       alert(tdT('td_alert_already_claimed'));
       return;
@@ -1982,14 +2034,29 @@
     var userId = await getCurrentUserId();
     if (userId) {
       currentUserId = userId;
-      var subResult = await window.supabase
-        .from('submissions')
-        .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment, screenshot_urls')
-        .eq('task_id', taskId)
-        .eq('user_id', currentUserId)
-        .maybeSingle();
-      if (!subResult.error && subResult.data) {
-        currentSubmissionRecord = subResult.data;
+      if (typeof loadUserSubmissionForTask === 'function') {
+        currentSubmissionRecord = await loadUserSubmissionForTask(taskId, currentUserId);
+      } else {
+        var subResult = await window.supabase
+          .from('submissions')
+          .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment, screenshot_urls')
+          .eq('task_id', taskId)
+          .eq('user_id', currentUserId)
+          .order('reviewed_at', { ascending: false })
+          .limit(1);
+        if (!subResult.error && subResult.data && subResult.data.length) {
+          currentSubmissionRecord = subResult.data[0];
+        }
+      }
+
+      if (typeof checkUserAlreadyRewardedForTask === 'function' &&
+          await checkUserAlreadyRewardedForTask(taskId, currentUserId)) {
+        console.log('任务详情：用户已完成该任务', { taskId: taskId, userId: currentUserId });
+        if (!currentSubmissionRecord || currentSubmissionRecord.status !== 'approved') {
+          if (typeof loadUserSubmissionForTask === 'function') {
+            currentSubmissionRecord = await loadUserSubmissionForTask(taskId, currentUserId);
+          }
+        }
       }
     }
 
@@ -2376,7 +2443,7 @@
       case 'approved':
         configureActionButton(buttons.ended, {
           styleClass: 'td-btn-disabled',
-          text: tdT('td_btn_approved'),
+          text: tdT('td_btn_simple_done'),
           disabled: true
         });
         break;
