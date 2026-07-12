@@ -438,6 +438,15 @@
 
     if (alreadyRewarded) {
       console.log('审核通过：状态已更新，该用户此前已领取奖励，跳过发奖', submissionId);
+      if (typeof window.coinrealmNotifySubmissionStatusChanged === 'function') {
+        window.coinrealmNotifySubmissionStatusChanged({
+          taskId: submission.task_id,
+          userId: submission.user_id,
+          status: 'approved',
+          path: 'review-approveSubmission-already-rewarded',
+          submissionId: submissionId
+        });
+      }
       return true;
     }
 
@@ -480,6 +489,16 @@
       description: '任务「' + buildTaskBroadcastTitle(taskTitle) + '」审核通过，获得',
       reward_amount: rewardAmount
     });
+
+    if (typeof window.coinrealmNotifySubmissionStatusChanged === 'function') {
+      window.coinrealmNotifySubmissionStatusChanged({
+        taskId: submission.task_id,
+        userId: submission.user_id,
+        status: 'approved',
+        path: 'review-approveSubmission',
+        submissionId: submissionId
+      });
+    }
 
     return true;
   }

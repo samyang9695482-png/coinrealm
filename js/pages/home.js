@@ -334,6 +334,16 @@ async function loadHomeUserApprovedTaskIds() {
     }
 }
 
+async function refreshHomeApprovedTasks() {
+    await loadHomeUserApprovedTaskIds();
+    if (typeof applyFiltersAndSort === 'function') {
+        applyFiltersAndSort();
+    }
+    console.log('首页已完成任务标记已刷新：', homeUserApprovedTaskIds);
+}
+
+window.coinrealmRefreshHomeApprovedTasks = refreshHomeApprovedTasks;
+
 function buildTaskCardHtml(task) {
     const category = getTaskCategory(task);
     const typeLabelKey = getTypeLabelKey(task);

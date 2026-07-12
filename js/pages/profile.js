@@ -48,6 +48,16 @@
     return stats;
   }
 
+  async function refreshProfileSubmissionStats() {
+    var stats = await loadProfileSubmissionStats();
+    var progressEl = document.getElementById('pf-stat-progress');
+    var completedEl = document.getElementById('pf-stat-completed');
+    if (progressEl) progressEl.textContent = String(stats.progress);
+    if (completedEl) completedEl.textContent = String(stats.completed);
+    console.log('个人中心统计已刷新：', stats);
+    return stats;
+  }
+
   function initProfileStatNavigation() {
     var progressEl = document.getElementById('pf-stat-progress');
     var completedEl = document.getElementById('pf-stat-completed');
@@ -88,6 +98,7 @@
   }
 
   window.coinrealmLoadProfileSubmissionStats = loadProfileSubmissionStats;
+  window.coinrealmRefreshProfileSubmissionStats = refreshProfileSubmissionStats;
   window.coinrealmInitProfileStatNavigation = initProfileStatNavigation;
   window.coinrealmNavigateToMyTasksTab = navigateToMyTasksTab;
 })();

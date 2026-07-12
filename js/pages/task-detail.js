@@ -1444,7 +1444,9 @@
       }
 
       if (submission.status === 'approved' || submission.status === 'submitted') return 'simple_completed';
-      return 'simple_completed';
+      if (submission.status === 'rejected') return 'simple_retry';
+      if (submission.status === 'pending') return 'simple_subtasks';
+      return 'simple_can_claim';
     }
 
     if (isFull || isExpired) return 'ended';
@@ -1465,12 +1467,39 @@
   }
 
   function navigateToSubmitPage() {
-    if (currentSubmissionRecord && currentSubmissionRecord.status === 'approved') {
-      console.log('任务详情：已完成任务，禁止跳转提交页');
+    if (!currentTaskRecord || !currentSubmissionRecord) {
+      console.log('任务详情：无提交记录，禁止跳转提交页', {
+        taskId: currentTaskRecord && currentTaskRecord.id,
+        submission: currentSubmissionRecord
+      });
+      return;
+    }
+
+    var status = currentSubmissionRecord.status;
+
+    if (status === 'approved') {
+      console.log('任务详情：已完成任务，禁止跳转提交页', {
+        taskId: currentTaskRecord.id,
+        userId: currentUserId,
+        status: status
+      });
       detailActionState = 'approved';
       updateBottomActionBar();
       return;
     }
+
+    if (status === 'submitted' || (status === 'pending' && currentSubmissionRecord.submitted_at)) {
+      console.log('任务详情：已提交等待审核，禁止跳转提交页', {
+        taskId: currentTaskRecord.id,
+        userId: currentUserId,
+        status: status,
+        submitted_at: currentSubmissionRecord.submitted_at
+      });
+      detailActionState = 'waiting_review';
+      updateBottomActionBar();
+      return;
+    }
+
     saveSubmissionContext(currentTaskRecord, currentSubmissionRecord);
     window.location.hash = 'submit-task';
   }
@@ -1602,6 +1631,13 @@
 
     if (!finalizeFn) return false;
 
+    console.log('简单任务平台任务收口审核：', {
+      taskId: currentTaskRecord.id,
+      userId: currentUserId,
+      submissionId: currentSubmissionRecord.id,
+      priorStatus: priorStatus
+    });
+
     var ok = await finalizeFn(currentTaskRecord, currentUserId, {
       priorStatus: priorStatus,
       creditRewardClient: true,
@@ -1624,6 +1660,14 @@
     if (currentSubmissionRecord && currentSubmissionRecord.status === 'approved') {
       detailActionState = 'simple_completed';
       updateBottomActionBar();
+      if (typeof window.coinrealmNotifySubmissionStatusChanged === 'function') {
+        window.coinrealmNotifySubmissionStatusChanged({
+          taskId: currentTaskRecord.id,
+          userId: currentUserId,
+          status: 'approved',
+          path: 'finalizeSimplePlatformTaskSubmission'
+        });
+      }
       return true;
     }
 
@@ -1749,16 +1793,27 @@
   async function reloadCurrentSubmission() {
     if (!window.supabase || !currentTaskRecord || !currentUserId) return null;
 
-    var subResult = await window.supabase
-      .from('submissions')
-      .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment, screenshot_urls')
-      .eq('task_id', currentTaskRecord.id)
-      .eq('user_id', currentUserId)
-      .maybeSingle();
+    if (typeof loadUserSubmissionForTask === 'function') {
+      currentSubmissionRecord = await loadUserSubmissionForTask(currentTaskRecord.id, currentUserId);
+    } else {
+      var subResult = await window.supabase
+        .from('submissions')
+        .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment, screenshot_urls')
+        .eq('task_id', currentTaskRecord.id)
+        .eq('user_id', currentUserId)
+        .order('reviewed_at', { ascending: false })
+        .limit(1);
 
-    if (!subResult.error && subResult.data) {
-      currentSubmissionRecord = subResult.data;
+      if (!subResult.error && subResult.data && subResult.data.length) {
+        currentSubmissionRecord = subResult.data[0];
+      }
     }
+
+    console.log('任务详情：重新加载提交记录', {
+      taskId: currentTaskRecord.id,
+      userId: currentUserId,
+      submission: currentSubmissionRecord
+    });
 
     return currentSubmissionRecord;
   }
@@ -1784,7 +1839,16 @@
       }
 
       if (result.verified) {
-        await finalizeSimplePlatformTaskSubmission();
+        if (result.submission && result.submission.status === 'approved') {
+          console.log('Twitter 验证：verifyTwitterTask 已完成审核，跳过重复 finalize', {
+            taskId: currentTaskRecord.id,
+            userId: currentUserId,
+            submissionId: result.submission.id
+          });
+          currentSubmissionRecord = result.submission;
+        } else {
+          await finalizeSimplePlatformTaskSubmission();
+        }
         if (currentTaskRecord && currentTaskRecord.id) {
           var taskRefresh = await window.supabase
             .from('tasks')
@@ -1938,6 +2002,14 @@
 
     detailActionState = 'simple_completed';
     updateBottomActionBar();
+    if (typeof window.coinrealmNotifySubmissionStatusChanged === 'function') {
+      window.coinrealmNotifySubmissionStatusChanged({
+        taskId: taskId,
+        userId: userId,
+        status: 'approved',
+        path: 'completeSimpleTaskClaim'
+      });
+    }
     alert(tdT('td_alert_simple_claim_ok'));
   }
 
@@ -2118,6 +2190,14 @@
     }
 
     detailActionState = resolveDetailActionState(currentTaskRecord, currentSubmissionRecord, currentUserId);
+
+    console.log('任务详情：底部按钮状态', {
+      taskId: taskId,
+      userId: currentUserId,
+      detailActionState: detailActionState,
+      submissionStatus: currentSubmissionRecord ? currentSubmissionRecord.status : null,
+      submissionId: currentSubmissionRecord ? currentSubmissionRecord.id : null
+    });
 
     var publisher = currentPublisherRecord || {};
     var publisherName = typeof window.coinrealmResolveUserDisplayName === 'function'

@@ -606,6 +606,18 @@
             return;
           }
 
+          if (currentSubmissionRecord && currentSubmissionRecord.status === 'submitted') {
+            console.log('提交前防重复检查：当前提交已是 submitted，禁止重复提交', {
+              taskId: activeSubmitContext.taskId,
+              userId: userId,
+              submissionId: currentSubmissionRecord.id,
+              status: 'submitted'
+            });
+            submitState = 'waiting';
+            updatePageStateUI();
+            return;
+          }
+
           var approvedCheck = await window.supabase
             .from('submissions')
             .select('id')
@@ -622,16 +634,23 @@
             return;
           }
 
-          var lookupResult = await window.supabase
-            .from('submissions')
-            .select('id, status')
-            .eq('task_id', activeSubmitContext.taskId)
-            .eq('user_id', userId)
-            .neq('status', 'approved')
-            .order('submitted_at', { ascending: false })
-            .limit(1);
+          var targetSubmission = currentSubmissionRecord;
+          if (!targetSubmission || String(targetSubmission.task_id) !== String(activeSubmitContext.taskId)) {
+            if (typeof window.coinrealmLoadUserSubmissionForTask === 'function') {
+              targetSubmission = await window.coinrealmLoadUserSubmissionForTask(activeSubmitContext.taskId, userId);
+            } else {
+              var fallbackResult = await window.supabase
+                .from('submissions')
+                .select('id, task_id, user_id, status, description, submitted_at, review_comment, screenshot_urls')
+                .eq('task_id', activeSubmitContext.taskId)
+                .eq('user_id', userId)
+                .order('submitted_at', { ascending: false })
+                .limit(1);
+              targetSubmission = fallbackResult.data && fallbackResult.data.length ? fallbackResult.data[0] : null;
+            }
+          }
 
-          if (lookupResult.error || !lookupResult.data || !lookupResult.data.length) {
+          if (!targetSubmission) {
             if (typeof window.coinrealmCheckUserAlreadyRewardedForTask === 'function' &&
                 await window.coinrealmCheckUserAlreadyRewardedForTask(activeSubmitContext.taskId, userId)) {
               alert(stT('st_alert_already_rewarded'));
@@ -643,12 +662,41 @@
             return;
           }
 
-          if (lookupResult.data[0].status === 'approved') {
+          if (targetSubmission.status === 'approved') {
             alert(stT('st_alert_already_rewarded'));
             submitState = 'completed';
             updatePageStateUI();
             return;
           }
+
+          if (targetSubmission.status === 'submitted') {
+            console.log('提交页：已提交等待审核，禁止重复提交', {
+              taskId: activeSubmitContext.taskId,
+              userId: userId,
+              submissionId: targetSubmission.id,
+              status: 'submitted'
+            });
+            currentSubmissionRecord = targetSubmission;
+            submitState = 'waiting';
+            updatePageStateUI();
+            return;
+          }
+
+          if (!isSubmissionReadyToSubmit(targetSubmission)) {
+            console.log('提交页：当前状态不可提交', {
+              taskId: activeSubmitContext.taskId,
+              userId: userId,
+              submission: targetSubmission
+            });
+            if (isSubmissionWaitingReview(targetSubmission)) {
+              submitState = 'waiting';
+              currentSubmissionRecord = targetSubmission;
+              updatePageStateUI();
+            }
+            return;
+          }
+
+          var lookupResult = { data: [targetSubmission] };
 
           var screenshotUrls = uploadedFiles.map(function (item) {
             return normalizeScreenshotPublicUrl(item.url || item.path);
@@ -702,10 +750,13 @@
             updatePayload.reviewed_at = submittedAt;
           }
 
-          console.log('简单任务提交，status：', submissionStatus, {
+          console.log((isSimpleAuto ? '简单任务提交，status：' : '普通任务提交，status：'), submissionStatus, {
             taskId: activeSubmitContext.taskId,
             userId: userId,
-            taskType: taskType
+            taskType: taskType,
+            submissionId: lookupResult.data[0].id,
+            priorStatus: priorStatus,
+            path: 'submit-task-page'
           });
 
           var updateResult = await window.supabase
@@ -714,7 +765,16 @@
             .eq('id', lookupResult.data[0].id)
             .eq('user_id', userId)
             .neq('status', 'approved')
+            .neq('status', 'submitted')
             .select();
+
+          console.log('提交页：更新 submissions 结果', {
+            taskId: activeSubmitContext.taskId,
+            userId: userId,
+            submissionId: lookupResult.data[0].id,
+            targetStatus: submissionStatus,
+            updateResult: updateResult
+          });
 
           if (updateResult.error) {
             alert(stT('st_alert_submit_fail') + updateResult.error.message);
@@ -776,6 +836,15 @@
           renderFileList();
           updatePageStateUI();
           applySubmitTaskI18n();
+
+          if (typeof window.coinrealmNotifySubmissionStatusChanged === 'function') {
+            window.coinrealmNotifySubmissionStatusChanged({
+              taskId: activeSubmitContext.taskId,
+              userId: userId,
+              status: submissionStatus,
+              path: 'submit-task-page'
+            });
+          }
         } finally {
           if (submitBtn) {
             submitBtn.disabled = submitState === 'waiting';

@@ -2576,12 +2576,48 @@ function isSimpleAutoApprovalTask(task) {
 window.coinrealmIsSimpleAutoApprovalTask = isSimpleAutoApprovalTask;
 window.coinrealmResolveSimpleTaskTypeKey = resolveSimpleTaskTypeKey;
 
+function notifySubmissionStatusChanged(payload) {
+    payload = payload || {};
+    console.log('任务提交状态变更通知：', payload);
+
+    if (typeof window.coinrealmRefreshProfileSubmissionStats === 'function') {
+        window.coinrealmRefreshProfileSubmissionStats().catch(function (err) {
+            console.warn('刷新个人中心统计失败', err);
+        });
+    }
+    if (typeof window.coinrealmRefreshHomeApprovedTasks === 'function') {
+        window.coinrealmRefreshHomeApprovedTasks().catch(function (err) {
+            console.warn('刷新首页已完成标记失败', err);
+        });
+    }
+
+    try {
+        window.dispatchEvent(new CustomEvent('coinrealm:submission-status-changed', { detail: payload }));
+    } catch (notifyErr) {
+        console.warn('派发提交状态变更事件失败', notifyErr);
+    }
+}
+
+window.coinrealmNotifySubmissionStatusChanged = notifySubmissionStatusChanged;
+
 async function grantSimpleTaskRewards(task, userId, options) {
     options = options || {};
     if (!window.supabase || !task || !task.id || !userId) return false;
 
     var taskId = task.id;
     var priorStatus = options.priorStatus || '';
+
+    if (!options.skipRewardCheck && await checkUserAlreadyRewardedForTask(taskId, userId)) {
+        console.log('grantSimpleTaskRewards: 已领取奖励，跳过重复发奖', { taskId: taskId, userId: userId, path: options.path || 'grantSimpleTaskRewards' });
+        notifySubmissionStatusChanged({
+            taskId: taskId,
+            userId: userId,
+            status: 'approved',
+            path: options.path || 'grantSimpleTaskRewards-duplicate'
+        });
+        return true;
+    }
+
     var shouldIncrementParticipants = options.incrementParticipants !== false
         && priorStatus !== 'submitted';
 
@@ -2650,7 +2686,13 @@ async function grantSimpleTaskRewards(task, userId, options) {
         reward_amount: rewardAmount
     });
 
-    console.log('简单任务自动审核：', { taskId: taskId, userId: userId, status: 'approved' });
+    console.log('简单任务自动审核：', { taskId: taskId, userId: userId, status: 'approved', path: options.path || 'grantSimpleTaskRewards' });
+    notifySubmissionStatusChanged({
+        taskId: taskId,
+        userId: userId,
+        status: 'approved',
+        path: options.path || 'grantSimpleTaskRewards'
+    });
     return true;
 }
 
@@ -2742,12 +2784,7 @@ async function verifyTwitterTask(taskId, userId) {
             });
         }
 
-        var subResult = await window.supabase
-            .from('submissions')
-            .select('id, task_id, user_id, status, submitted_at, reviewed_at, review_comment')
-            .eq('task_id', taskId)
-            .eq('user_id', userId)
-            .maybeSingle();
+        var submissionRow = await loadUserSubmissionForTask(taskId, userId);
 
         if (verified) {
             var taskResult = await window.supabase
@@ -2758,26 +2795,18 @@ async function verifyTwitterTask(taskId, userId) {
 
             if (taskResult.data && isSimpleAutoApprovalTask(taskResult.data)) {
                 await applyTwitterVerificationSuccess(taskResult.data, userId, {
-                    priorStatus: subResult.data && subResult.data.status ? subResult.data.status : 'pending',
+                    priorStatus: submissionRow && submissionRow.status ? submissionRow.status : 'pending',
                     creditRewardClient: true,
-                    submissionId: subResult.data && subResult.data.id
+                    submissionId: submissionRow && submissionRow.id,
+                    path: 'verifyTwitterTask'
                 });
 
-                var refreshedSub = await window.supabase
-                    .from('submissions')
-                    .select('id, task_id, user_id, status, submitted_at, reviewed_at, review_comment')
-                    .eq('task_id', taskId)
-                    .eq('user_id', userId)
-                    .maybeSingle();
-
-                if (!refreshedSub.error && refreshedSub.data) {
-                    subResult.data = refreshedSub.data;
-                }
+                submissionRow = await loadUserSubmissionForTask(taskId, userId);
             }
         }
 
-        var submissionStatus = subResult.data && subResult.data.status
-            ? subResult.data.status
+        var submissionStatus = submissionRow && submissionRow.status
+            ? submissionRow.status
             : (verified ? 'approved' : (workerResult.status || 'rejected'));
 
         return {
@@ -2786,7 +2815,7 @@ async function verifyTwitterTask(taskId, userId) {
             status: submissionStatus,
             reason: workerResult.reason || workerResult.review_comment || workerResult.error,
             review_comment: workerResult.review_comment || workerResult.reason,
-            submission: subResult.data || null
+            submission: submissionRow || null
         };
     } catch (err) {
         console.warn('verifyTwitterTask failed', err);
@@ -3112,12 +3141,15 @@ async function applyTwitterVerificationSuccess(task, userId, options) {
     }
 
     if (!options.skipStatusUpdate) {
+        var approvePayload = {
+            status: 'approved',
+            reviewed_at: now,
+            submitted_at: options.submittedAt || now
+        };
+
         var updateQuery = window.supabase
             .from('submissions')
-            .update({
-                status: 'approved',
-                reviewed_at: now
-            })
+            .update(approvePayload)
             .eq('task_id', taskId)
             .eq('user_id', userId)
             .in('status', priorStatus === 'rejected'
@@ -3127,16 +3159,21 @@ async function applyTwitterVerificationSuccess(task, userId, options) {
         if (options.submissionId) {
             updateQuery = window.supabase
                 .from('submissions')
-                .update({
-                    status: 'approved',
-                    reviewed_at: now
-                })
-                .eq('id', options.submissionId);
+                .update(approvePayload)
+                .eq('id', options.submissionId)
+                .neq('status', 'approved');
         }
 
         var updateResult = await updateQuery.select();
 
-        console.log('简单任务自动审核：', { taskId: taskId, userId: userId, status: 'approved', updateResult: updateResult });
+        console.log('简单任务自动审核：', {
+            taskId: taskId,
+            userId: userId,
+            status: 'approved',
+            submissionId: options.submissionId || null,
+            path: options.path || 'applyTwitterVerificationSuccess',
+            updateResult: updateResult
+        });
 
         if (updateResult.error) {
             console.warn('自动验证更新提交状态失败：', updateResult.error);
@@ -3152,7 +3189,9 @@ async function applyTwitterVerificationSuccess(task, userId, options) {
     return grantSimpleTaskRewards(task, userId, {
         priorStatus: priorStatus,
         creditRewardClient: options.creditRewardClient !== false,
-        incrementParticipants: options.incrementParticipants
+        incrementParticipants: options.incrementParticipants,
+        skipRewardCheck: options.skipRewardCheck,
+        path: options.path || 'applyTwitterVerificationSuccess'
     });
 }
 
@@ -3176,7 +3215,8 @@ async function finalizeSimpleTaskSubmission(task, userId, options) {
         submissionId: options.submissionId,
         skipRewardCheck: options.skipRewardCheck,
         skipStatusUpdate: options.skipStatusUpdate,
-        incrementParticipants: options.incrementParticipants
+        incrementParticipants: options.incrementParticipants,
+        path: options.path || 'finalizeSimpleTaskSubmission'
     });
 }
 
