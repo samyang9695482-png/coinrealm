@@ -2766,6 +2766,26 @@ async function upgradeUserLevelOnTaskApproved(userId) {
     }
 }
 
+async function checkUserAlreadyRewardedForTask(taskId, userId) {
+    if (!window.supabase || !taskId || !userId) return false;
+
+    var result = await window.supabase
+        .from('submissions')
+        .select('id')
+        .eq('task_id', taskId)
+        .eq('user_id', userId)
+        .eq('status', 'approved');
+
+    console.log('防重复领取检查：', { taskId: taskId, userId: userId, result: result });
+
+    if (result.error) {
+        console.warn('防重复领取检查失败：', result.error);
+        return false;
+    }
+
+    return !!(result.data && result.data.length > 0);
+}
+
 async function applyTwitterVerificationSuccess(task, userId, options) {
     options = options || {};
     if (!window.supabase || !task || !task.id || !userId) return;
@@ -2774,19 +2794,18 @@ async function applyTwitterVerificationSuccess(task, userId, options) {
     var now = new Date().toISOString();
     var priorStatus = options.priorStatus || '';
 
-    if (priorStatus === 'approved') return;
+    if (priorStatus === 'approved') {
+        console.log('防重复领取：提交状态已是 approved，跳过发奖', { taskId: taskId, userId: userId });
+        return;
+    }
 
-    var existingApprovedResult = await window.supabase
-        .from('submissions')
-        .select('id')
-        .eq('task_id', taskId)
-        .eq('user_id', userId)
-        .eq('status', 'approved')
-        .maybeSingle();
+    if (await checkUserAlreadyRewardedForTask(taskId, userId)) {
+        console.log('防重复领取：用户已领取过奖励，跳过发奖', { taskId: taskId, userId: userId });
+        alert('该用户已领取过奖励');
+        return;
+    }
 
-    if (!existingApprovedResult.error && existingApprovedResult.data) return;
-
-    await window.supabase
+    var updateResult = await window.supabase
         .from('submissions')
         .update({
             status: 'approved',
@@ -2796,7 +2815,18 @@ async function applyTwitterVerificationSuccess(task, userId, options) {
         .eq('user_id', userId)
         .in('status', priorStatus === 'rejected'
             ? ['verifying', 'rejected', 'pending', 'submitted']
-            : ['verifying', 'pending', 'submitted']);
+            : ['verifying', 'pending', 'submitted'])
+        .select('id');
+
+    if (updateResult.error) {
+        console.warn('自动验证更新提交状态失败：', updateResult.error);
+        return;
+    }
+
+    if (!updateResult.data || !updateResult.data.length) {
+        console.log('防重复领取：无待审核提交可更新，跳过发奖', { taskId: taskId, userId: userId });
+        return;
+    }
 
     if (priorStatus === 'verifying' || priorStatus === 'rejected' || priorStatus === 'pending') {
         var taskResult = await window.supabase
@@ -4239,11 +4269,17 @@ window.addEventListener('hashchange', function () {
     try {
       var submissionsResult = await window.supabase
         .from('submissions')
-        .select('id, reviewed_at, submitted_at, task_id')
+        .select('id, reviewed_at, submitted_at, task_id, tasks(title, reward_amount, reward_type, max_participants)')
         .eq('user_id', userId)
         .eq('status', 'approved')
         .order('reviewed_at', { ascending: false })
         .limit(queryLimit);
+
+      console.log('任务奖励查询结果：', submissionsResult);
+
+      if (submissionsResult.error) {
+        console.warn('任务奖励查询错误：', submissionsResult.error);
+      }
 
       if (!submissionsResult.error) {
         var approvedRows = submissionsResult.data || [];
@@ -4257,6 +4293,8 @@ window.addEventListener('hashchange', function () {
             .select('id, title, reward_amount, reward_type, max_participants')
             .in('id', uniqueTaskIds);
 
+          console.log('任务奖励关联 tasks 查询结果：', tasksResult);
+
           if (!tasksResult.error) {
             (tasksResult.data || []).forEach(function (task) {
               taskMap[task.id] = task;
@@ -4265,14 +4303,22 @@ window.addEventListener('hashchange', function () {
         }
 
         approvedRows.forEach(function (row) {
-          var task = taskMap[row.task_id] || {};
-          if (!isCrlmLedgerTask(task)) return;
+          var joinedTask = Array.isArray(row.tasks) ? row.tasks[0] : row.tasks;
+          var fallbackTask = taskMap[row.task_id] || {};
+          var task = Object.assign({}, fallbackTask, joinedTask || {});
+          var rewardType = String((task && task.reward_type) || 'CRLM').toUpperCase();
+          if (rewardType !== 'CRLM') return;
+
           var amount = calculatePerParticipantReward(task);
+          var title = getLedgerTaskTitle(task, '任务 #' + row.task_id);
+          console.log('任务奖励明细条目：', { row: row, task: task, amount: amount, title: title });
+
           if (amount <= 0) return;
+
           entries.push({
             time: row.reviewed_at || row.submitted_at || new Date().toISOString(),
             icon: pfT('pf_ledger_icon_task'),
-            description: pfT('pf_ledger_desc_task', { title: getLedgerTaskTitle(task, '任务 #' + row.task_id) }),
+            description: '任务奖励：' + title,
             delta: amount,
             income: true
           });
@@ -4334,6 +4380,8 @@ window.addEventListener('hashchange', function () {
     } catch (refundErr) {
       console.warn('余额明细：任务退款查询失败', refundErr);
     }
+
+    console.log('余额明细最终条目（含任务奖励）：', entries);
 
     entries.sort(function (a, b) {
       return new Date(b.time).getTime() - new Date(a.time).getTime();
@@ -8919,15 +8967,7 @@ window.addEventListener('hashchange', function () {
 
     var submission = submissionResult.data;
 
-    var priorApprovedResult = await window.supabase
-      .from('submissions')
-      .select('id')
-      .eq('task_id', submission.task_id)
-      .eq('user_id', submission.user_id)
-      .eq('status', 'approved')
-      .maybeSingle();
-
-    if (!priorApprovedResult.error && priorApprovedResult.data) {
+    if (await checkUserAlreadyRewardedForTask(submission.task_id, submission.user_id)) {
       alert(rvT('rv_alert_already_rewarded'));
       return false;
     }
@@ -8947,10 +8987,18 @@ window.addEventListener('hashchange', function () {
         status: 'approved',
         reviewed_at: new Date().toISOString()
       })
-      .eq('id', submissionId);
+      .eq('id', submissionId)
+      .neq('status', 'approved')
+      .select('id');
 
     if (updateResult.error) {
       alert(rvT('rv_alert_action_fail') + updateResult.error.message);
+      return false;
+    }
+
+    if (!updateResult.data || !updateResult.data.length) {
+      console.log('防重复领取：提交已审核通过，跳过发奖', { submissionId: submissionId });
+      alert(rvT('rv_alert_already_rewarded'));
       return false;
     }
 
