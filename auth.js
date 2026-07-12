@@ -193,6 +193,13 @@
     return parts[0] || 'user';
   }
 
+  // 从钱包地址生成默认用户名：Wallet_0x29a1（取地址前 6 位）
+  function usernameFromWalletAddress(walletAddress) {
+    var normalized = String(walletAddress || '').trim();
+    if (!normalized) return 'Wallet_user';
+    return 'Wallet_' + normalized.slice(0, 6);
+  }
+
   // 谷歌登录：按 Auth UID 查找/创建 users 记录（id 必须与 auth.uid() 一致）
   function upsertGoogleUser(authUser) {
     var now = new Date().toISOString();
@@ -235,6 +242,64 @@
       });
   }
 
+  // 钱包登录：确保 users 记录含 wallet_address 与默认 username
+  function upsertWalletUser(authUser, walletAddr) {
+    var now = new Date().toISOString();
+    var userId = authUser.id;
+    var address = walletAddr || getWalletAddressFromUser(authUser);
+    var defaultUsername = usernameFromWalletAddress(address);
+
+    console.log('开始同步钱包用户：', { userId: userId, wallet_address: address, defaultUsername: defaultUsername });
+
+    return window.supabase
+      .from('users')
+      .select('id, username, wallet_address')
+      .eq('id', userId)
+      .maybeSingle()
+      .then(function (result) {
+        if (result.error) throw result.error;
+
+        if (result.data) {
+          var patch = {
+            updated_at: now,
+            wallet_address: address || result.data.wallet_address || null
+          };
+          if (!result.data.username || !String(result.data.username).trim()) {
+            patch.username = defaultUsername;
+          }
+          console.log('更新钱包用户：', patch);
+          return window.supabase
+            .from('users')
+            .update(patch)
+            .eq('id', userId)
+            .select('id, username, wallet_address')
+            .single();
+        }
+
+        var insertPayload = {
+          id: userId,
+          email: null,
+          wallet_address: address,
+          username: defaultUsername,
+          level: 0,
+          reputation_score: 100,
+          crlm_balance: 0,
+          usdt_balance: 0
+        };
+        console.log('创建钱包用户：', insertPayload);
+        return window.supabase
+          .from('users')
+          .insert(insertPayload)
+          .select('id, username, wallet_address')
+          .single();
+      })
+      .then(function (result) {
+        if (result.error) throw result.error;
+        console.log('钱包用户同步成功：', result.data);
+        return result.data.id;
+      });
+  }
+
   // 登录成功后异步同步用户到 public.users 表（不阻塞 UI）
   function syncUserToSupabase() {
     if (!window.supabase || !isLoggedIn() || !currentUser) return;
@@ -245,7 +310,10 @@
         var session = sessionResult.data && sessionResult.data.session;
         var user = session && session.user;
         if (!user || !user.id) return null;
-        console.log('开始同步用户，user.id:', user.id);
+        console.log('开始同步用户，user.id:', user.id, 'isWallet:', isWalletAuthUser(user));
+        if (isWalletAuthUser(user)) {
+          return upsertWalletUser(user, getWalletAddressFromUser(user));
+        }
         return upsertGoogleUser(user);
       })
       .then(function (userId) {
@@ -383,7 +451,14 @@
             sessionStorage.setItem('coinrealm_user_id', userId);
           }
 
-          updateUI(result.data && result.data.user ? result.data.user : null);
+          var authUser = result.data && result.data.user ? result.data.user : null;
+          if (authUser && authUser.id) {
+            upsertWalletUser(authUser, address).catch(function (syncErr) {
+              console.warn('钱包登录后用户同步失败', syncErr);
+            });
+          }
+
+          updateUI(authUser);
           return result.data;
         });
       });
@@ -406,6 +481,11 @@
           applyWalletStateFromUser(session.user);
           localStorage.setItem('coinrealm_user_id', session.user.id);
           sessionStorage.setItem('coinrealm_user_id', session.user.id);
+          if (isWalletAuthUser(session.user)) {
+            upsertWalletUser(session.user, getWalletAddressFromUser(session.user)).catch(function (syncErr) {
+              console.warn('恢复钱包会话时用户同步失败', syncErr);
+            });
+          }
           callback();
           return;
         }

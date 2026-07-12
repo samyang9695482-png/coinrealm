@@ -2746,6 +2746,65 @@ function calculatePerParticipantReward(task) {
     return rewardAmount / maxParticipants;
 }
 
+function usernameFromWalletAddress(walletAddress) {
+    var normalized = String(walletAddress || '').trim();
+    if (!normalized) return 'Wallet_user';
+    return 'Wallet_' + normalized.slice(0, 6);
+}
+
+function resolveUserDisplayName(user) {
+    if (!user || typeof user !== 'object') {
+        console.log('resolveUserDisplayName: 无用户数据', user);
+        return '未知发布者';
+    }
+
+    if (user.username && String(user.username).trim()) {
+        return String(user.username).trim();
+    }
+
+    if (user.wallet_address && String(user.wallet_address).trim()) {
+        return usernameFromWalletAddress(user.wallet_address);
+    }
+
+    if (user.email) {
+        var email = String(user.email).trim();
+        if (email.indexOf('@wallet.coinrealm.local') !== -1) {
+            return usernameFromWalletAddress('0x' + email.split('@')[0]);
+        }
+        var parts = email.split('@');
+        if (parts[0]) return parts[0];
+    }
+
+    console.log('resolveUserDisplayName: 使用默认名称', user);
+    return '未知发布者';
+}
+
+window.coinrealmUsernameFromWalletAddress = usernameFromWalletAddress;
+window.coinrealmResolveUserDisplayName = resolveUserDisplayName;
+
+async function fetchPublisherUserById(publisherId) {
+    if (!window.supabase || !publisherId) return null;
+
+    var result = await window.supabase
+        .from('users')
+        .select('id, username, level, reputation_score, email, wallet_address, avatar_url, created_at, completion_rate, is_official, is_high_risk')
+        .eq('id', publisherId)
+        .maybeSingle();
+
+    console.log('查询发布者信息：', { publisherId: publisherId, result: result });
+
+    if (result.error || !result.data) {
+        console.warn('查询发布者信息失败：', result.error);
+        return null;
+    }
+
+    return Object.assign({}, result.data, {
+        displayName: resolveUserDisplayName(result.data)
+    });
+}
+
+window.coinrealmFetchPublisherUserById = fetchPublisherUserById;
+
 async function upgradeUserLevelOnTaskApproved(userId) {
     if (!window.supabase || !userId) return;
 
@@ -3203,15 +3262,21 @@ function getPublisherAvatarUser(task) {
     if (publisher && typeof publisher === 'object') {
         return {
             id: publisher.id || task.publisher_id,
-            username: publisher.username || task.publisher_username,
+            username: resolveUserDisplayName(publisher),
             email: publisher.email,
+            wallet_address: publisher.wallet_address,
             avatar_url: publisher.avatar_url
         };
     }
     return {
         id: task.publisher_id,
-        username: task.publisher_username,
+        username: resolveUserDisplayName({
+            username: task.publisher_username,
+            email: task.publisher_email,
+            wallet_address: task.publisher_wallet_address
+        }),
         email: task.publisher_email,
+        wallet_address: task.publisher_wallet_address,
         avatar_url: task.publisher_avatar_url
     };
 }
@@ -3241,7 +3306,7 @@ async function loadCurrentUserProfileCache() {
     }
     var result = await window.supabase
         .from('users')
-        .select('id, username, email, avatar_url, twitter_username, telegram_username, discord_user_id, discord_username')
+        .select('id, username, email, wallet_address, avatar_url, twitter_username, telegram_username, discord_user_id, discord_username')
         .eq('id', userId)
         .single();
     if (!result.error && result.data) {
@@ -5246,7 +5311,8 @@ window.addEventListener('hashchange', function () {
       window.coinrealmRefreshDiscordBindUi();
     }
 
-    var displayUsername = user.username || displayNameFromEmail(user.email);
+    var displayUsername = resolveUserDisplayName(user);
+    console.log('个人中心显示用户名：', { user: user, displayUsername: displayUsername });
     var usdtBalance = Number(user.usdt_balance) || 0;
     var reputationScore = user.reputation_score != null ? user.reputation_score : 0;
     var levelNum = user.level != null ? user.level : 0;
@@ -8387,6 +8453,7 @@ window.addEventListener('hashchange', function () {
       .single()
       .then(function (userResult) {
         if (userResult.error || !userResult.data) {
+          console.warn('发布者主页：未找到用户', { publisherId: publisherId, error: userResult.error });
           return null;
         }
 
@@ -8407,17 +8474,20 @@ window.addEventListener('hashchange', function () {
           var tasksResult = results[1];
           var countResult = results[2];
 
-          publisherActiveTasks = (tasksResult.error ? [] : (tasksResult.data || [])).map(function (task) {
-            return Object.assign({}, task, {
-              publisher_username: username,
-              publisher_level: level
-            });
-          });
-
-          var username = user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'Unknown');
+          var username = resolveUserDisplayName(user);
           var level = user.level != null ? Number(user.level) : 0;
           var reputationScore = user.reputation_score != null ? Number(user.reputation_score) : 0;
           var completionRate = user.completion_rate != null ? Number(user.completion_rate) : reputationScore;
+
+          console.log('发布者主页数据：', { publisherId: publisherId, user: user, username: username });
+
+          publisherActiveTasks = (tasksResult.error ? [] : (tasksResult.data || [])).map(function (task) {
+            return Object.assign({}, task, {
+              publisher_username: username,
+              publisher_level: level,
+              publisher_wallet_address: user.wallet_address || null
+            });
+          });
 
           return {
             id: user.id,
