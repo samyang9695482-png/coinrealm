@@ -2759,7 +2759,8 @@ async function verifyTwitterTask(taskId, userId) {
             if (taskResult.data && isSimpleAutoApprovalTask(taskResult.data)) {
                 await applyTwitterVerificationSuccess(taskResult.data, userId, {
                     priorStatus: subResult.data && subResult.data.status ? subResult.data.status : 'pending',
-                    creditRewardClient: true
+                    creditRewardClient: true,
+                    submissionId: subResult.data && subResult.data.id
                 });
 
                 var refreshedSub = await window.supabase
@@ -2796,6 +2797,47 @@ async function verifyTwitterTask(taskId, userId) {
         };
     }
 }
+
+async function maybeFinalizeSimpleTaskAfterWorkerVerify(taskId, userId, submissionId) {
+    if (!window.supabase || !taskId || !userId) return false;
+
+    var taskResult = await window.supabase
+        .from('tasks')
+        .select('*')
+        .eq('id', taskId)
+        .maybeSingle();
+
+    if (!taskResult.data || !isSimpleAutoApprovalTask(taskResult.data)) return false;
+
+    var submissionRow = null;
+    if (submissionId) {
+        var byIdResult = await window.supabase
+            .from('submissions')
+            .select('id, status')
+            .eq('id', submissionId)
+            .maybeSingle();
+        submissionRow = byIdResult.data;
+    } else {
+        var subResult = await window.supabase
+            .from('submissions')
+            .select('id, status')
+            .eq('task_id', taskId)
+            .eq('user_id', userId)
+            .maybeSingle();
+        submissionRow = subResult.data;
+    }
+
+    if (!submissionRow || !submissionRow.id) return false;
+    if (submissionRow.status === 'approved') return true;
+
+    return finalizeSimpleTaskSubmission(taskResult.data, userId, {
+        priorStatus: submissionRow.status || 'pending',
+        submissionId: submissionRow.id,
+        creditRewardClient: true
+    });
+}
+
+window.coinrealmMaybeFinalizeSimpleTaskAfterWorkerVerify = maybeFinalizeSimpleTaskAfterWorkerVerify;
 
 async function verifyTwitterSubtask(taskId, userId, actionIndex) {
     if (!taskId || !userId || actionIndex == null) {
@@ -3113,6 +3155,32 @@ async function applyTwitterVerificationSuccess(task, userId, options) {
         incrementParticipants: options.incrementParticipants
     });
 }
+
+async function finalizeSimpleTaskSubmission(task, userId, options) {
+    options = options || {};
+    if (!task || !userId) return false;
+
+    var priorStatus = options.priorStatus || 'pending';
+    var approvedStatus = 'approved';
+
+    console.log('简单任务提交，status：', approvedStatus, {
+        taskId: task.id,
+        userId: userId,
+        submissionId: options.submissionId || null,
+        priorStatus: priorStatus
+    });
+
+    return applyTwitterVerificationSuccess(task, userId, {
+        priorStatus: priorStatus,
+        creditRewardClient: options.creditRewardClient !== false,
+        submissionId: options.submissionId,
+        skipRewardCheck: options.skipRewardCheck,
+        skipStatusUpdate: options.skipStatusUpdate,
+        incrementParticipants: options.incrementParticipants
+    });
+}
+
+window.coinrealmFinalizeSimpleTaskSubmission = finalizeSimpleTaskSubmission;
 
 var PROOF_SCREENSHOT_MAX_SIZE = 5 * 1024 * 1024;
 var PROOF_SCREENSHOT_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];

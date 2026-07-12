@@ -702,11 +702,10 @@
             updatePayload.reviewed_at = submittedAt;
           }
 
-          console.log('简单任务自动审核：', {
+          console.log('简单任务提交，status：', submissionStatus, {
             taskId: activeSubmitContext.taskId,
             userId: userId,
-            taskType: taskType,
-            status: submissionStatus
+            taskType: taskType
           });
 
           var updateResult = await window.supabase
@@ -740,7 +739,15 @@
           });
 
           if (isSimpleAuto && taskRecord) {
-            if (!alreadyRewardedBeforeSubmit && typeof window.coinrealmGrantSimpleTaskRewards === 'function') {
+            if (!alreadyRewardedBeforeSubmit && typeof window.coinrealmFinalizeSimpleTaskSubmission === 'function') {
+              await window.coinrealmFinalizeSimpleTaskSubmission(taskRecord, userId, {
+                priorStatus: priorStatus,
+                submissionId: lookupResult.data[0].id,
+                creditRewardClient: true,
+                skipStatusUpdate: true,
+                skipRewardCheck: true
+              });
+            } else if (!alreadyRewardedBeforeSubmit && typeof window.coinrealmGrantSimpleTaskRewards === 'function') {
               await window.coinrealmGrantSimpleTaskRewards(taskRecord, userId, {
                 priorStatus: priorStatus,
                 creditRewardClient: true

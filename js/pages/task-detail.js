@@ -967,23 +967,7 @@
             .eq('id', currentSubmissionRecord.id);
         }
 
-        await applyTwitterVerificationSuccess(currentTaskRecord, currentUserId, {
-          priorStatus: priorStatus,
-          creditRewardClient: true
-        });
-
-        await reloadCurrentSubmission();
-
-        if (currentTaskRecord && currentTaskRecord.id) {
-          var taskRefresh = await window.supabase
-            .from('tasks')
-            .select('current_participants')
-            .eq('id', currentTaskRecord.id)
-            .maybeSingle();
-          if (!taskRefresh.error && taskRefresh.data) {
-            currentTaskRecord.current_participants = taskRefresh.data.current_participants;
-          }
-        }
+        await finalizeSimplePlatformTaskSubmission();
 
         verifyPanelSuccess = true;
         detailActionState = 'simple_completed';
@@ -1321,12 +1305,16 @@
         if (typeof window.coinrealmRefreshDiscordBindUi === 'function') {
           window.coinrealmRefreshDiscordBindUi();
         }
-        await reloadCurrentSubmission();
-        if (currentSubmissionRecord && currentSubmissionRecord.status === 'approved') {
-          detailActionState = 'simple_completed';
+        if (allSubtasksMarkedDone()) {
+          await finalizeSimplePlatformTaskSubmission();
           if (typeof window.coinrealmShowRewardCelebration === 'function') {
             window.coinrealmShowRewardCelebration(getPerParticipantReward(currentTaskRecord));
           }
+        } else {
+          await reloadCurrentSubmission();
+        }
+        if (currentSubmissionRecord && currentSubmissionRecord.status === 'approved') {
+          detailActionState = 'simple_completed';
         }
       } else {
         var failReason = result.reason || result.error || tdT('td_subtask_fail_hint');
@@ -1396,12 +1384,16 @@
       if (result.verified) {
         markSubtaskDone(st.key);
         clearSubtaskFailure(st);
-        await reloadCurrentSubmission();
-        if (currentSubmissionRecord && currentSubmissionRecord.status === 'approved') {
-          detailActionState = 'simple_completed';
+        if (allSubtasksMarkedDone()) {
+          await finalizeSimplePlatformTaskSubmission();
           if (typeof window.coinrealmShowRewardCelebration === 'function') {
             window.coinrealmShowRewardCelebration(getPerParticipantReward(currentTaskRecord));
           }
+        } else {
+          await reloadCurrentSubmission();
+        }
+        if (currentSubmissionRecord && currentSubmissionRecord.status === 'approved') {
+          detailActionState = 'simple_completed';
         }
       } else {
         setSubtaskFailed(st, result.reason || result.error || tdT('td_subtask_fail_hint'));
@@ -1595,6 +1587,55 @@
       : '';
   }
 
+  async function finalizeSimplePlatformTaskSubmission() {
+    if (!window.supabase || !currentTaskRecord || !currentUserId) return false;
+
+    if (!currentSubmissionRecord) {
+      await reloadCurrentSubmission();
+    }
+    if (!currentSubmissionRecord || !currentSubmissionRecord.id) return false;
+
+    var priorStatus = currentSubmissionRecord.status || 'pending';
+    var finalizeFn = typeof window.coinrealmFinalizeSimpleTaskSubmission === 'function'
+      ? window.coinrealmFinalizeSimpleTaskSubmission
+      : (typeof applyTwitterVerificationSuccess === 'function' ? applyTwitterVerificationSuccess : null);
+
+    if (!finalizeFn) return false;
+
+    var ok = await finalizeFn(currentTaskRecord, currentUserId, {
+      priorStatus: priorStatus,
+      creditRewardClient: true,
+      submissionId: currentSubmissionRecord.id
+    });
+
+    await reloadCurrentSubmission();
+
+    if (currentTaskRecord && currentTaskRecord.id) {
+      var taskRefresh = await window.supabase
+        .from('tasks')
+        .select('current_participants')
+        .eq('id', currentTaskRecord.id)
+        .maybeSingle();
+      if (!taskRefresh.error && taskRefresh.data) {
+        currentTaskRecord.current_participants = taskRefresh.data.current_participants;
+      }
+    }
+
+    if (currentSubmissionRecord && currentSubmissionRecord.status === 'approved') {
+      detailActionState = 'simple_completed';
+      updateBottomActionBar();
+      return true;
+    }
+
+    console.warn('简单任务提交后状态未变为 approved', {
+      taskId: currentTaskRecord.id,
+      userId: currentUserId,
+      submission: currentSubmissionRecord,
+      finalizeOk: ok
+    });
+    return false;
+  }
+
   async function insertTwitterPendingSubmission(userId) {
     if (!window.supabase || !currentTaskRecord || !userId) return false;
 
@@ -1670,11 +1711,7 @@
     var priorStatus = currentSubmissionRecord.status;
 
     try {
-      await applyTwitterVerificationSuccess(currentTaskRecord, currentUserId, {
-        priorStatus: priorStatus,
-        creditRewardClient: true
-      });
-      await reloadCurrentSubmission();
+      await finalizeSimplePlatformTaskSubmission();
       detailActionState = 'simple_completed';
       verifyPanelActive = false;
       verifyPanelSuccess = false;
@@ -1747,12 +1784,7 @@
       }
 
       if (result.verified) {
-        if (priorStatus === 'verifying' || priorStatus === 'rejected' || priorStatus === 'pending') {
-          await applyTwitterVerificationSuccess(currentTaskRecord, currentUserId, {
-            priorStatus: priorStatus,
-            creditRewardClient: useClientRewardCredit
-          });
-        }
+        await finalizeSimplePlatformTaskSubmission();
         if (currentTaskRecord && currentTaskRecord.id) {
           var taskRefresh = await window.supabase
             .from('tasks')
@@ -1856,13 +1888,20 @@
 
     var nowIso = new Date().toISOString();
 
+    console.log('简单任务提交，status：', 'approved', {
+      taskId: taskId,
+      userId: userId,
+      path: 'completeSimpleTaskClaim'
+    });
+
     var insertResult = await window.supabase
       .from('submissions')
       .insert({
         task_id: taskId,
         user_id: userId,
-        status: 'submitted',
-        submitted_at: nowIso
+        status: 'approved',
+        submitted_at: nowIso,
+        reviewed_at: nowIso
       })
       .select()
       .single();
@@ -1872,31 +1911,34 @@
       return;
     }
 
-    var nextCount = current + 1;
-    var updateResult = await window.supabase
-      .from('tasks')
-      .update({ current_participants: nextCount })
-      .eq('id', taskId);
-
-    if (updateResult.error) {
-      alert(tdT('td_alert_claim_fail') + updateResult.error.message);
-      return;
-    }
-
-    currentTaskRecord.current_participants = nextCount;
     currentSubmissionRecord = insertResult.data;
     currentUserId = userId;
 
-    detailActionState = resolveDetailActionState(currentTaskRecord, currentSubmissionRecord, currentUserId);
+    if (typeof window.coinrealmFinalizeSimpleTaskSubmission === 'function') {
+      await window.coinrealmFinalizeSimpleTaskSubmission(currentTaskRecord, userId, {
+        priorStatus: '',
+        submissionId: insertResult.data.id,
+        creditRewardClient: true,
+        skipStatusUpdate: true,
+        skipRewardCheck: true
+      });
+    } else {
+      var nextCount = current + 1;
+      var updateResult = await window.supabase
+        .from('tasks')
+        .update({ current_participants: nextCount })
+        .eq('id', taskId);
+
+      if (updateResult.error) {
+        alert(tdT('td_alert_claim_fail') + updateResult.error.message);
+        return;
+      }
+      currentTaskRecord.current_participants = nextCount;
+    }
+
+    detailActionState = 'simple_completed';
     updateBottomActionBar();
     alert(tdT('td_alert_simple_claim_ok'));
-
-    writeBroadcast({
-      user_id: userId,
-      event_type: 'task_claim',
-      description: '领取了简单任务「' + buildTaskBroadcastTitle(currentTaskRecord.title) + '」',
-      reward_amount: Number(currentTaskRecord.reward_amount) || 0
-    });
   }
 
   async function performSimpleTaskClaim() {
