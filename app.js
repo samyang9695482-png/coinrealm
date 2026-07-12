@@ -2734,6 +2734,18 @@ async function verifyTwitterSubtask(taskId, userId, actionIndex) {
     }
 }
 
+function calculatePerParticipantReward(task) {
+    if (!task) return 0;
+    var rewardAmount = Number(task.reward_amount) || 0;
+    var maxParticipantsRaw = task.max_participants;
+    if (maxParticipantsRaw == null || maxParticipantsRaw === '') return rewardAmount;
+
+    var maxParticipants = parseFloat(maxParticipantsRaw);
+    if (Number.isNaN(maxParticipants) || maxParticipants <= 0) return rewardAmount;
+
+    return rewardAmount / maxParticipants;
+}
+
 async function upgradeUserLevelOnTaskApproved(userId) {
     if (!window.supabase || !userId) return;
 
@@ -2762,6 +2774,18 @@ async function applyTwitterVerificationSuccess(task, userId, options) {
     var now = new Date().toISOString();
     var priorStatus = options.priorStatus || '';
 
+    if (priorStatus === 'approved') return;
+
+    var existingApprovedResult = await window.supabase
+        .from('submissions')
+        .select('id')
+        .eq('task_id', taskId)
+        .eq('user_id', userId)
+        .eq('status', 'approved')
+        .maybeSingle();
+
+    if (!existingApprovedResult.error && existingApprovedResult.data) return;
+
     await window.supabase
         .from('submissions')
         .update({
@@ -2777,7 +2801,7 @@ async function applyTwitterVerificationSuccess(task, userId, options) {
     if (priorStatus === 'verifying' || priorStatus === 'rejected' || priorStatus === 'pending') {
         var taskResult = await window.supabase
             .from('tasks')
-            .select('current_participants, title, reward_amount, reward_type')
+            .select('current_participants, title, reward_amount, reward_type, max_participants')
             .eq('id', taskId)
             .maybeSingle();
 
@@ -2790,8 +2814,27 @@ async function applyTwitterVerificationSuccess(task, userId, options) {
             task.current_participants = current + 1;
             if (!task.title) task.title = taskResult.data.title;
             if (task.reward_amount == null) task.reward_amount = taskResult.data.reward_amount;
+            if (task.reward_type == null) task.reward_type = taskResult.data.reward_type;
+            if (task.max_participants == null) task.max_participants = taskResult.data.max_participants;
         }
     }
+
+    if (task.max_participants == null || task.reward_amount == null) {
+        var rewardTaskResult = await window.supabase
+            .from('tasks')
+            .select('title, reward_amount, reward_type, max_participants')
+            .eq('id', taskId)
+            .maybeSingle();
+
+        if (!rewardTaskResult.error && rewardTaskResult.data) {
+            if (!task.title) task.title = rewardTaskResult.data.title;
+            if (task.reward_amount == null) task.reward_amount = rewardTaskResult.data.reward_amount;
+            if (task.reward_type == null) task.reward_type = rewardTaskResult.data.reward_type;
+            if (task.max_participants == null) task.max_participants = rewardTaskResult.data.max_participants;
+        }
+    }
+
+    var rewardAmount = calculatePerParticipantReward(task);
 
     if (options.creditRewardClient) {
         var userResult = await window.supabase
@@ -2801,7 +2844,6 @@ async function applyTwitterVerificationSuccess(task, userId, options) {
             .maybeSingle();
 
         if (!userResult.error && userResult.data) {
-            var rewardAmount = Number(task.reward_amount) || 0;
             if (rewardAmount > 0) {
                 var rewardType = String(task.reward_type || 'CRLM').toUpperCase();
                 var balanceField = rewardType === 'USDT' ? 'usdt_balance' : 'crlm_balance';
@@ -2820,7 +2862,7 @@ async function applyTwitterVerificationSuccess(task, userId, options) {
         user_id: userId,
         event_type: 'task_approved',
         description: '完成了任务「' + buildTaskBroadcastTitle(broadcastTitle) + '」',
-        reward_amount: Number(task.reward_amount) || 0
+        reward_amount: rewardAmount
     });
 }
 
@@ -4197,17 +4239,35 @@ window.addEventListener('hashchange', function () {
     try {
       var submissionsResult = await window.supabase
         .from('submissions')
-        .select('reviewed_at, submitted_at, task_id, tasks(reward_amount, reward_type, title)')
+        .select('id, reviewed_at, submitted_at, task_id')
         .eq('user_id', userId)
         .eq('status', 'approved')
         .order('reviewed_at', { ascending: false })
         .limit(queryLimit);
 
       if (!submissionsResult.error) {
-        (submissionsResult.data || []).forEach(function (row) {
-          var task = row.tasks || {};
+        var approvedRows = submissionsResult.data || [];
+        var taskIds = approvedRows.map(function (row) { return row.task_id; }).filter(Boolean);
+        var uniqueTaskIds = taskIds.filter(function (id, index) { return taskIds.indexOf(id) === index; });
+        var taskMap = {};
+
+        if (uniqueTaskIds.length) {
+          var tasksResult = await window.supabase
+            .from('tasks')
+            .select('id, title, reward_amount, reward_type, max_participants')
+            .in('id', uniqueTaskIds);
+
+          if (!tasksResult.error) {
+            (tasksResult.data || []).forEach(function (task) {
+              taskMap[task.id] = task;
+            });
+          }
+        }
+
+        approvedRows.forEach(function (row) {
+          var task = taskMap[row.task_id] || {};
           if (!isCrlmLedgerTask(task)) return;
-          var amount = Number(task.reward_amount) || 0;
+          var amount = calculatePerParticipantReward(task);
           if (amount <= 0) return;
           entries.push({
             time: row.reviewed_at || row.submitted_at || new Date().toISOString(),
@@ -8500,7 +8560,8 @@ window.addEventListener('hashchange', function () {
       rv_screenshot_summary: '📷 查看截图（{count}张）',
       rv_alert_login: '请先登录',
       rv_alert_reject_reason: '请填写驳回理由',
-      rv_alert_action_fail: '操作失败：'
+      rv_alert_action_fail: '操作失败：',
+      rv_alert_already_rewarded: '该用户已领取过奖励'
     },
     en: {
       rv_page_title: 'Review Management',
@@ -8523,7 +8584,8 @@ window.addEventListener('hashchange', function () {
       rv_screenshot_summary: '📷 View screenshots ({count})',
       rv_alert_login: 'Please sign in first',
       rv_alert_reject_reason: 'Please enter a rejection reason',
-      rv_alert_action_fail: 'Action failed: '
+      rv_alert_action_fail: 'Action failed: ',
+      rv_alert_already_rewarded: 'This user has already received the reward'
     }
   };
 
@@ -8856,14 +8918,28 @@ window.addEventListener('hashchange', function () {
     }
 
     var submission = submissionResult.data;
+
+    var priorApprovedResult = await window.supabase
+      .from('submissions')
+      .select('id')
+      .eq('task_id', submission.task_id)
+      .eq('user_id', submission.user_id)
+      .eq('status', 'approved')
+      .maybeSingle();
+
+    if (!priorApprovedResult.error && priorApprovedResult.data) {
+      alert(rvT('rv_alert_already_rewarded'));
+      return false;
+    }
+
     var taskResult = await window.supabase
       .from('tasks')
-      .select('title, reward_amount')
+      .select('title, reward_amount, reward_type, max_participants')
       .eq('id', submission.task_id)
       .maybeSingle();
 
     var taskTitle = taskResult.data && taskResult.data.title ? taskResult.data.title : '任务';
-    var rewardAmount = taskResult.data ? Number(taskResult.data.reward_amount) || 0 : 0;
+    var rewardAmount = calculatePerParticipantReward(taskResult.data || {});
 
     var updateResult = await window.supabase
       .from('submissions')
@@ -8876,6 +8952,23 @@ window.addEventListener('hashchange', function () {
     if (updateResult.error) {
       alert(rvT('rv_alert_action_fail') + updateResult.error.message);
       return false;
+    }
+
+    if (rewardAmount > 0 && window.supabase) {
+      var userResult = await window.supabase
+        .from('users')
+        .select('crlm_balance, usdt_balance')
+        .eq('id', submission.user_id)
+        .maybeSingle();
+
+      if (!userResult.error && userResult.data) {
+        var rewardType = String((taskResult.data && taskResult.data.reward_type) || 'CRLM').toUpperCase();
+        var balanceField = rewardType === 'USDT' ? 'usdt_balance' : 'crlm_balance';
+        var currentBalance = Number(userResult.data[balanceField]) || 0;
+        var patch = {};
+        patch[balanceField] = currentBalance + rewardAmount;
+        await window.supabase.from('users').update(patch).eq('id', submission.user_id);
+      }
     }
 
     await upgradeUserLevelOnTaskApproved(submission.user_id);
