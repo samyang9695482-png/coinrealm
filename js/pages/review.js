@@ -263,6 +263,67 @@
     }
   }
 
+  function formatWalletUsernameFallback(walletAddress) {
+    var wallet = String(walletAddress || '').trim();
+    if (!wallet) return '';
+    return wallet.slice(0, 10) + '...';
+  }
+
+  function resolveSubmissionUsername(userId, userRecord) {
+    if (userRecord && typeof userRecord === 'object') {
+      if (userRecord.username != null && String(userRecord.username).trim()) {
+        return String(userRecord.username).trim();
+      }
+
+      var fromEmail = displayNameFromEmail(userRecord.email);
+      if (fromEmail && fromEmail !== 'Unknown') {
+        return fromEmail;
+      }
+
+      var fromWallet = formatWalletUsernameFallback(userRecord.wallet_address);
+      if (fromWallet) {
+        return fromWallet;
+      }
+
+      if (typeof window.coinrealmResolveUserDisplayName === 'function') {
+        var resolved = window.coinrealmResolveUserDisplayName(userRecord);
+        if (resolved && resolved !== '未知发布者') {
+          return resolved;
+        }
+      }
+    }
+
+    return 'Unknown';
+  }
+
+  function normalizeSubmissionUserRecord(rawUser) {
+    if (!rawUser) return null;
+    if (Array.isArray(rawUser)) {
+      return rawUser.length ? rawUser[0] : null;
+    }
+    return rawUser;
+  }
+
+  function mapSubmissionWithUsername(submission) {
+    var userRecord = normalizeSubmissionUserRecord(submission.users);
+    var userId = submission.user_id;
+    var username = resolveSubmissionUsername(userId, userRecord);
+
+    console.log('提交列表-用户名：', { userId: userId, username: username });
+
+    var mapped = Object.assign({}, submission);
+    delete mapped.users;
+    mapped.username = username;
+    mapped.submitter = userRecord ? {
+      id: userRecord.id || userId,
+      username: username,
+      email: userRecord.email || '',
+      avatar_url: userRecord.avatar_url || ''
+    } : (userId ? { id: userId, username: username } : null);
+
+    return mapped;
+  }
+
   async function enrichSubmissionsWithUsers(submissions) {
     if (!submissions.length || !window.supabase) return submissions;
 
@@ -275,32 +336,33 @@
 
     if (!uniqueIds.length) {
       return submissions.map(function (item) {
-        item.username = 'Unknown';
+        item.username = resolveSubmissionUsername(item.user_id, null);
         return item;
       });
     }
 
     var usersResult = await window.supabase
       .from('users')
-      .select('id, username, email, avatar_url')
+      .select('id, username, email, avatar_url, wallet_address')
       .in('id', uniqueIds);
 
     var userMap = {};
     if (!usersResult.error && usersResult.data) {
       usersResult.data.forEach(function (user) {
-        userMap[user.id] = {
-          username: user.username || displayNameFromEmail(user.email) || 'Unknown',
-          avatar_url: user.avatar_url || '',
-          id: user.id,
-          email: user.email
-        };
+        userMap[user.id] = user;
       });
     }
 
     return submissions.map(function (item) {
-      var submitter = userMap[item.user_id];
-      item.submitter = submitter || null;
-      item.username = submitter ? submitter.username : 'Unknown';
+      var userRecord = userMap[item.user_id] || null;
+      var username = resolveSubmissionUsername(item.user_id, userRecord);
+      item.submitter = userRecord ? {
+        id: userRecord.id,
+        username: username,
+        avatar_url: userRecord.avatar_url || '',
+        email: userRecord.email || ''
+      } : (item.user_id ? { id: item.user_id, username: username } : null);
+      item.username = username;
       return item;
     });
   }
@@ -427,14 +489,14 @@
 
     var submissionsResult = await window.supabase
       .from('submissions')
-      .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment, screenshot_urls')
+      .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment, screenshot_urls, users(id, username, email, wallet_address, avatar_url)')
       .eq('task_id', taskId)
       .in('status', statusFilter)
       .order('submitted_at', { ascending: false });
 
     console.log('提交列表查询结果：', { data: submissionsResult.data, error: submissionsResult.error });
 
-    var submissions = submissionsResult.data || [];
+    var submissions = (submissionsResult.data || []).map(mapSubmissionWithUsername);
 
     console.log('审核管理-提交列表数量：', submissions.length);
 
@@ -445,7 +507,18 @@
       return;
     }
 
-    currentSubmissions = await enrichSubmissionsWithUsers(submissions);
+    var needsUserEnrichment = submissions.some(function (item) {
+      return item.username === 'Unknown' && item.user_id;
+    });
+
+    if (needsUserEnrichment) {
+      submissions = await enrichSubmissionsWithUsers(submissions);
+      submissions.forEach(function (item) {
+        console.log('提交列表-用户名：', { userId: item.user_id, username: item.username });
+      });
+    }
+
+    currentSubmissions = submissions;
     renderSubmissionList();
   }
 
