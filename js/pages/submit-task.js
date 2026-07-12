@@ -759,14 +759,19 @@
             path: 'submit-task-page'
           });
 
-          var updateResult = await window.supabase
+          var updateQuery = window.supabase
             .from('submissions')
             .update(updatePayload)
             .eq('id', lookupResult.data[0].id)
-            .eq('user_id', userId)
-            .neq('status', 'approved')
-            .neq('status', 'submitted')
-            .select();
+            .eq('user_id', userId);
+
+          if (isSimpleAuto) {
+            updateQuery = updateQuery.neq('status', 'approved');
+          } else {
+            updateQuery = updateQuery.neq('status', 'approved').neq('status', 'submitted');
+          }
+
+          var updateResult = await updateQuery.select();
 
           console.log('提交页：更新 submissions 结果', {
             taskId: activeSubmitContext.taskId,

@@ -9842,13 +9842,21 @@ window.addEventListener('hashchange', function () {
       }
 
       var nowIso = new Date().toISOString();
+
+      console.log('简单任务提交，status：', 'approved', {
+        taskId: taskId,
+        userId: userId,
+        path: 'performSimpleTaskClaim-simple-tasks-page'
+      });
+
       var insertResult = await window.supabase
         .from('submissions')
         .insert({
           task_id: taskId,
           user_id: userId,
-          status: 'submitted',
-          submitted_at: nowIso
+          status: 'approved',
+          submitted_at: nowIso,
+          reviewed_at: nowIso
         })
         .select()
         .single();
@@ -9858,27 +9866,67 @@ window.addEventListener('hashchange', function () {
         return;
       }
 
-      var nextCount = current + 1;
-      var updateResult = await window.supabase
-        .from('tasks')
-        .update({ current_participants: nextCount })
-        .eq('id', taskId);
+      if (typeof window.coinrealmFinalizeSimpleTaskSubmission === 'function') {
+        await window.coinrealmFinalizeSimpleTaskSubmission(freshTask, userId, {
+          priorStatus: '',
+          submissionId: insertResult.data.id,
+          creditRewardClient: true,
+          skipStatusUpdate: true,
+          skipRewardCheck: true,
+          path: 'performSimpleTaskClaim-simple-tasks-page'
+        });
+      } else if (typeof applyTwitterVerificationSuccess === 'function') {
+        await applyTwitterVerificationSuccess(freshTask, userId, {
+          priorStatus: '',
+          submissionId: insertResult.data.id,
+          creditRewardClient: true,
+          skipStatusUpdate: true,
+          skipRewardCheck: true,
+          path: 'performSimpleTaskClaim-simple-tasks-page'
+        });
+      } else {
+        var nextCount = current + 1;
+        var updateResult = await window.supabase
+          .from('tasks')
+          .update({ current_participants: nextCount })
+          .eq('id', taskId);
 
-      if (updateResult.error) {
-        alert(stT('st_claim_fail') + updateResult.error.message);
-        return;
+        if (updateResult.error) {
+          alert(stT('st_claim_fail') + updateResult.error.message);
+          return;
+        }
+        freshTask.current_participants = nextCount;
+      }
+
+      var refreshedTaskResult = await window.supabase
+        .from('tasks')
+        .select('current_participants')
+        .eq('id', taskId)
+        .maybeSingle();
+
+      if (!refreshedTaskResult.error && refreshedTaskResult.data) {
+        freshTask.current_participants = refreshedTaskResult.data.current_participants;
       }
 
       userSimpleSubmissionMap[taskId] = insertResult.data;
-      task.current_participants = nextCount;
+      task.current_participants = freshTask.current_participants;
 
       var listTask = simpleTasksList.find(function (item) {
         return String(item.id) === String(taskId);
       });
-      if (listTask) listTask.current_participants = nextCount;
+      if (listTask) listTask.current_participants = freshTask.current_participants;
 
       renderSimpleTasksGrid();
       alert(stT('st_claim_success'));
+
+      if (typeof window.coinrealmNotifySubmissionStatusChanged === 'function') {
+        window.coinrealmNotifySubmissionStatusChanged({
+          taskId: taskId,
+          userId: userId,
+          status: 'approved',
+          path: 'performSimpleTaskClaim-simple-tasks-page'
+        });
+      }
 
       if (typeof writeBroadcast === 'function') {
         writeBroadcast({
