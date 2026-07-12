@@ -2590,6 +2590,12 @@ function notifySubmissionStatusChanged(payload) {
             console.warn('刷新首页已完成标记失败', err);
         });
     }
+    if (payload.taskId && typeof window.coinrealmMarkHomeTaskCompleted === 'function') {
+        window.coinrealmMarkHomeTaskCompleted(payload.taskId);
+    }
+    if (payload.taskId && typeof window.coinrealmMarkTaskDetailCompleted === 'function') {
+        window.coinrealmMarkTaskDetailCompleted(payload.taskId, payload.userId);
+    }
 
     try {
         window.dispatchEvent(new CustomEvent('coinrealm:submission-status-changed', { detail: payload }));
@@ -2607,15 +2613,15 @@ async function grantSimpleTaskRewards(task, userId, options) {
     var taskId = task.id;
     var priorStatus = options.priorStatus || '';
 
-    if (!options.skipRewardCheck && await checkUserAlreadyRewardedForTask(taskId, userId)) {
-        console.log('grantSimpleTaskRewards: 已领取奖励，跳过重复发奖', { taskId: taskId, userId: userId, path: options.path || 'grantSimpleTaskRewards' });
+    var duplicateResult = await checkTaskRewardDuplicate(taskId, userId);
+    if (duplicateResult.alreadyRewarded) {
         notifySubmissionStatusChanged({
             taskId: taskId,
             userId: userId,
             status: 'approved',
             path: options.path || 'grantSimpleTaskRewards-duplicate'
         });
-        return true;
+        return { alreadyRewarded: true };
     }
 
     var shouldIncrementParticipants = options.incrementParticipants !== false
@@ -3051,8 +3057,10 @@ async function upgradeUserLevelOnTaskApproved(userId) {
     }
 }
 
-async function checkUserAlreadyRewardedForTask(taskId, userId) {
-    if (!window.supabase || !taskId || !userId) return false;
+async function checkTaskRewardDuplicate(taskId, userId) {
+    if (!window.supabase || !taskId || !userId) {
+        return { alreadyRewarded: false };
+    }
 
     var result = await window.supabase
         .from('submissions')
@@ -3061,14 +3069,28 @@ async function checkUserAlreadyRewardedForTask(taskId, userId) {
         .eq('user_id', userId)
         .eq('status', 'approved');
 
-    console.log('防重复领取检查：', { taskId: taskId, userId: userId, result: result });
+    console.log('防重复发奖检查：', { taskId: taskId, userId: userId, result: result });
 
     if (result.error) {
-        console.warn('防重复领取检查失败：', result.error);
-        return false;
+        console.warn('防重复发奖检查失败：', result.error);
+        return { alreadyRewarded: false, error: result.error };
     }
 
-    return !!(result.data && result.data.length > 0);
+    if (result.data && result.data.length > 0) {
+        console.log('该用户已领取过奖励，跳过发奖', {
+            taskId: taskId,
+            userId: userId,
+            approvedSubmissionIds: result.data.map(function (row) { return row.id; })
+        });
+        return { alreadyRewarded: true, approvedSubmissionIds: result.data.map(function (row) { return row.id; }) };
+    }
+
+    return { alreadyRewarded: false };
+}
+
+async function checkUserAlreadyRewardedForTask(taskId, userId) {
+    var duplicateResult = await checkTaskRewardDuplicate(taskId, userId);
+    return !!duplicateResult.alreadyRewarded;
 }
 
 async function loadUserSubmissionForTask(taskId, userId) {
@@ -3116,6 +3138,7 @@ async function loadUserSubmissionForTask(taskId, userId) {
 }
 
 window.coinrealmCheckUserAlreadyRewardedForTask = checkUserAlreadyRewardedForTask;
+window.coinrealmCheckTaskRewardDuplicate = checkTaskRewardDuplicate;
 window.coinrealmLoadUserSubmissionForTask = loadUserSubmissionForTask;
 window.coinrealmCalculatePerParticipantReward = calculatePerParticipantReward;
 
@@ -3129,14 +3152,35 @@ async function applyTwitterVerificationSuccess(task, userId, options) {
 
     if (priorStatus === 'approved') {
         console.log('防重复领取：提交状态已是 approved，跳过发奖', { taskId: taskId, userId: userId });
-        return false;
+        notifySubmissionStatusChanged({ taskId: taskId, userId: userId, status: 'approved', path: options.path || 'applyTwitterVerificationSuccess-prior-approved' });
+        return { alreadyRewarded: true };
     }
 
-    if (!options.skipRewardCheck && await checkUserAlreadyRewardedForTask(taskId, userId)) {
-        console.log('防重复领取：用户已领取过奖励，跳过发奖', { taskId: taskId, userId: userId });
-        if (!options.silentDuplicate) {
-            alert('该用户已领取过奖励');
-        }
+    var duplicateResult = await checkTaskRewardDuplicate(taskId, userId);
+    if (duplicateResult.alreadyRewarded) {
+        console.log('该用户已领取过奖励，跳过发奖', { taskId: taskId, userId: userId, path: options.path || 'applyTwitterVerificationSuccess' });
+        notifySubmissionStatusChanged({
+            taskId: taskId,
+            userId: userId,
+            status: 'approved',
+            path: options.path || 'applyTwitterVerificationSuccess-duplicate'
+        });
+        return duplicateResult;
+    }
+
+    var grantResult = await grantSimpleTaskRewards(task, userId, {
+        priorStatus: priorStatus,
+        creditRewardClient: options.creditRewardClient !== false,
+        incrementParticipants: options.incrementParticipants,
+        path: options.path || 'applyTwitterVerificationSuccess-grant'
+    });
+
+    if (grantResult && grantResult.alreadyRewarded) {
+        return grantResult;
+    }
+
+    if (!grantResult) {
+        console.warn('简单任务发奖失败，跳过状态更新', { taskId: taskId, userId: userId });
         return false;
     }
 
@@ -3181,23 +3225,40 @@ async function applyTwitterVerificationSuccess(task, userId, options) {
         }
 
         if (!options.submissionId && (!updateResult.data || !updateResult.data.length)) {
-            console.log('防重复领取：无待审核提交可更新，跳过发奖', { taskId: taskId, userId: userId });
-            return false;
+            console.log('防重复领取：无待审核提交可更新', { taskId: taskId, userId: userId });
         }
     }
 
-    return grantSimpleTaskRewards(task, userId, {
-        priorStatus: priorStatus,
-        creditRewardClient: options.creditRewardClient !== false,
-        incrementParticipants: options.incrementParticipants,
-        skipRewardCheck: options.skipRewardCheck,
+    notifySubmissionStatusChanged({
+        taskId: taskId,
+        userId: userId,
+        status: 'approved',
         path: options.path || 'applyTwitterVerificationSuccess'
     });
+
+    return true;
 }
 
 async function finalizeSimpleTaskSubmission(task, userId, options) {
     options = options || {};
     if (!task || !userId) return false;
+
+    var taskId = task.id;
+    var duplicateResult = await checkTaskRewardDuplicate(taskId, userId);
+    if (duplicateResult.alreadyRewarded) {
+        console.log('finalizeSimpleTaskSubmission: 该用户已领取过奖励，跳过', {
+            taskId: taskId,
+            userId: userId,
+            path: options.path || 'finalizeSimpleTaskSubmission'
+        });
+        notifySubmissionStatusChanged({
+            taskId: taskId,
+            userId: userId,
+            status: 'approved',
+            path: options.path || 'finalizeSimpleTaskSubmission-duplicate'
+        });
+        return duplicateResult;
+    }
 
     var priorStatus = options.priorStatus || 'pending';
     var approvedStatus = 'approved';
@@ -3213,7 +3274,6 @@ async function finalizeSimpleTaskSubmission(task, userId, options) {
         priorStatus: priorStatus,
         creditRewardClient: options.creditRewardClient !== false,
         submissionId: options.submissionId,
-        skipRewardCheck: options.skipRewardCheck,
         skipStatusUpdate: options.skipStatusUpdate,
         incrementParticipants: options.incrementParticipants,
         path: options.path || 'finalizeSimpleTaskSubmission'
@@ -9841,6 +9901,31 @@ window.addEventListener('hashchange', function () {
         return;
       }
 
+      var duplicateResult = await checkTaskRewardDuplicate(taskId, userId);
+      if (duplicateResult.alreadyRewarded) {
+        console.log('简单任务专页：用户已完成该任务，禁止重复领取', { taskId: taskId, userId: userId });
+        alert(stT('st_already_claimed'));
+        renderSimpleTasksGrid();
+        return;
+      }
+
+      if (typeof window.coinrealmGrantSimpleTaskRewards === 'function') {
+        var grantResult = await window.coinrealmGrantSimpleTaskRewards(freshTask, userId, {
+          priorStatus: '',
+          creditRewardClient: true,
+          path: 'performSimpleTaskClaim-simple-tasks-page-grant'
+        });
+        if (grantResult && grantResult.alreadyRewarded) {
+          console.log('简单任务专页：发奖跳过，用户已领取', { taskId: taskId, userId: userId });
+          alert(stT('st_already_claimed'));
+          return;
+        }
+        if (!grantResult) {
+          alert(stT('st_claim_fail'));
+          return;
+        }
+      }
+
       var nowIso = new Date().toISOString();
 
       console.log('简单任务提交，status：', 'approved', {
@@ -9864,38 +9949,6 @@ window.addEventListener('hashchange', function () {
       if (insertResult.error) {
         alert(stT('st_claim_fail') + insertResult.error.message);
         return;
-      }
-
-      if (typeof window.coinrealmFinalizeSimpleTaskSubmission === 'function') {
-        await window.coinrealmFinalizeSimpleTaskSubmission(freshTask, userId, {
-          priorStatus: '',
-          submissionId: insertResult.data.id,
-          creditRewardClient: true,
-          skipStatusUpdate: true,
-          skipRewardCheck: true,
-          path: 'performSimpleTaskClaim-simple-tasks-page'
-        });
-      } else if (typeof applyTwitterVerificationSuccess === 'function') {
-        await applyTwitterVerificationSuccess(freshTask, userId, {
-          priorStatus: '',
-          submissionId: insertResult.data.id,
-          creditRewardClient: true,
-          skipStatusUpdate: true,
-          skipRewardCheck: true,
-          path: 'performSimpleTaskClaim-simple-tasks-page'
-        });
-      } else {
-        var nextCount = current + 1;
-        var updateResult = await window.supabase
-          .from('tasks')
-          .update({ current_participants: nextCount })
-          .eq('id', taskId);
-
-        if (updateResult.error) {
-          alert(stT('st_claim_fail') + updateResult.error.message);
-          return;
-        }
-        freshTask.current_participants = nextCount;
       }
 
       var refreshedTaskResult = await window.supabase

@@ -600,6 +600,20 @@
         submitBtn.disabled = true;
 
         try {
+          if (typeof window.coinrealmCheckTaskRewardDuplicate === 'function') {
+            var preSubmitDuplicate = await window.coinrealmCheckTaskRewardDuplicate(activeSubmitContext.taskId, userId);
+            if (preSubmitDuplicate.alreadyRewarded) {
+              console.log('提交前防重复检查：用户已有 approved 记录', {
+                taskId: activeSubmitContext.taskId,
+                userId: userId
+              });
+              alert('您已完成该任务，无需重复提交');
+              submitState = 'completed';
+              updatePageStateUI();
+              return;
+            }
+          }
+
           if (currentSubmissionRecord && currentSubmissionRecord.status === 'approved') {
             console.log('提交前防重复检查：当前提交已是 approved', currentSubmissionRecord);
             alert(stT('st_alert_already_rewarded'));
@@ -628,7 +642,8 @@
           console.log('提交前防重复检查：', approvedCheck);
 
           if (!approvedCheck.error && approvedCheck.data && approvedCheck.data.length > 0) {
-            alert(stT('st_alert_already_rewarded'));
+            console.log('提交前防重复检查：submissions 已有 approved 记录', approvedCheck.data);
+            alert('您已完成该任务，无需重复提交');
             submitState = 'completed';
             updatePageStateUI();
             return;
@@ -733,9 +748,40 @@
           }
 
           var priorStatus = lookupResult.data[0].status;
-          var alreadyRewardedBeforeSubmit = typeof checkUserAlreadyRewardedForTask === 'function'
-            ? await checkUserAlreadyRewardedForTask(activeSubmitContext.taskId, userId)
-            : false;
+          var alreadyRewardedBeforeSubmit = typeof window.coinrealmCheckTaskRewardDuplicate === 'function'
+            ? (await window.coinrealmCheckTaskRewardDuplicate(activeSubmitContext.taskId, userId)).alreadyRewarded
+            : (typeof checkUserAlreadyRewardedForTask === 'function'
+              ? await checkUserAlreadyRewardedForTask(activeSubmitContext.taskId, userId)
+              : false);
+
+          if (alreadyRewardedBeforeSubmit) {
+            console.log('提交前防重复检查：发奖前检测到已完成', {
+              taskId: activeSubmitContext.taskId,
+              userId: userId
+            });
+            alert('您已完成该任务，无需重复提交');
+            submitState = 'completed';
+            updatePageStateUI();
+            return;
+          }
+
+          if (isSimpleAuto && taskRecord && typeof window.coinrealmGrantSimpleTaskRewards === 'function') {
+            var preGrantResult = await window.coinrealmGrantSimpleTaskRewards(taskRecord, userId, {
+              priorStatus: priorStatus,
+              creditRewardClient: true,
+              path: 'submit-task-page-pre-grant'
+            });
+            if (preGrantResult && preGrantResult.alreadyRewarded) {
+              alert('您已完成该任务，无需重复提交');
+              submitState = 'completed';
+              updatePageStateUI();
+              return;
+            }
+            if (!preGrantResult) {
+              alert(stT('st_alert_submit_fail'));
+              return;
+            }
+          }
 
           var submissionStatus = isSimpleAuto ? 'approved' : 'submitted';
           var submittedAt = new Date().toISOString();
@@ -803,29 +849,7 @@
             screenshot_urls: screenshotUrls
           });
 
-          if (isSimpleAuto && taskRecord) {
-            if (!alreadyRewardedBeforeSubmit && typeof window.coinrealmFinalizeSimpleTaskSubmission === 'function') {
-              await window.coinrealmFinalizeSimpleTaskSubmission(taskRecord, userId, {
-                priorStatus: priorStatus,
-                submissionId: lookupResult.data[0].id,
-                creditRewardClient: true,
-                skipStatusUpdate: true,
-                skipRewardCheck: true
-              });
-            } else if (!alreadyRewardedBeforeSubmit && typeof window.coinrealmGrantSimpleTaskRewards === 'function') {
-              await window.coinrealmGrantSimpleTaskRewards(taskRecord, userId, {
-                priorStatus: priorStatus,
-                creditRewardClient: true
-              });
-            } else if (!alreadyRewardedBeforeSubmit && typeof applyTwitterVerificationSuccess === 'function') {
-              await applyTwitterVerificationSuccess(taskRecord, userId, {
-                priorStatus: priorStatus,
-                creditRewardClient: true,
-                skipStatusUpdate: true,
-                skipRewardCheck: true
-              });
-            }
-
+          if (isSimpleAuto) {
             submitState = 'completed';
           } else {
             submitState = 'waiting';

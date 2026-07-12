@@ -334,6 +334,35 @@ async function loadHomeUserApprovedTaskIds() {
     }
 }
 
+function markHomeTaskCompleted(taskId) {
+    if (taskId == null || taskId === '') return;
+
+    homeUserApprovedTaskIds[String(taskId)] = true;
+    console.log('首页：标记任务已完成', { taskId: taskId, homeUserApprovedTaskIds: homeUserApprovedTaskIds });
+
+    var taskGrid = document.getElementById('task-grid');
+    if (!taskGrid) return;
+
+    var cards = taskGrid.querySelectorAll('.task-card[data-task-id]');
+    cards.forEach(function (card) {
+        if (String(card.getAttribute('data-task-id')) !== String(taskId)) return;
+
+        var claimBtn = card.querySelector('.claim-btn');
+        if (!claimBtn) return;
+
+        var completedLabel = window.currentLang === 'en' ? 'Completed' : '已完成';
+        claimBtn.className = 'claim-btn claim-btn-done';
+        claimBtn.disabled = true;
+        claimBtn.removeAttribute('data-task-id');
+        claimBtn.style.background = '#e8e8e8';
+        claimBtn.style.color = '#999';
+        claimBtn.style.cursor = 'not-allowed';
+        claimBtn.textContent = completedLabel;
+    });
+}
+
+window.coinrealmMarkHomeTaskCompleted = markHomeTaskCompleted;
+
 async function refreshHomeApprovedTasks() {
     await loadHomeUserApprovedTaskIds();
     if (typeof applyFiltersAndSort === 'function') {
@@ -675,6 +704,13 @@ function initHomePageLogic() {
 
     if (!homeEventsBound) {
         homeEventsBound = true;
+
+        window.addEventListener('coinrealm:submission-status-changed', function (e) {
+            var detail = e && e.detail ? e.detail : {};
+            if (detail.status === 'approved' && detail.taskId && typeof markHomeTaskCompleted === 'function') {
+                markHomeTaskCompleted(detail.taskId);
+            }
+        });
 
         // C. 类型筛选标签切换交互逻辑
         const tagButtons = document.querySelectorAll('#filter-tags .tag-btn');

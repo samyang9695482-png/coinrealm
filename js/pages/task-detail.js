@@ -970,7 +970,7 @@
         await finalizeSimplePlatformTaskSubmission();
 
         verifyPanelSuccess = true;
-        detailActionState = 'simple_completed';
+        markTaskDetailCompleted(currentTaskRecord.id, currentUserId);
         subtaskUiState = {};
         subtaskFailReasons = {};
         activeSubtaskKey = null;
@@ -1314,7 +1314,7 @@
           await reloadCurrentSubmission();
         }
         if (currentSubmissionRecord && currentSubmissionRecord.status === 'approved') {
-          detailActionState = 'simple_completed';
+          markTaskDetailCompleted(currentTaskRecord.id, currentUserId);
         }
       } else {
         var failReason = result.reason || result.error || tdT('td_subtask_fail_hint');
@@ -1393,7 +1393,7 @@
           await reloadCurrentSubmission();
         }
         if (currentSubmissionRecord && currentSubmissionRecord.status === 'approved') {
-          detailActionState = 'simple_completed';
+          markTaskDetailCompleted(currentTaskRecord.id, currentUserId);
         }
       } else {
         setSubtaskFailed(st, result.reason || result.error || tdT('td_subtask_fail_hint'));
@@ -1419,6 +1419,35 @@
     if (urlMatch) return urlMatch[1];
     return text.replace(/^@+/, '').trim();
   }
+
+  function markTaskDetailCompleted(taskId, userId) {
+    if (!currentTaskRecord || String(currentTaskRecord.id) !== String(taskId)) return;
+    if (userId && currentUserId && String(currentUserId) !== String(userId)) return;
+
+    if (currentSubmissionRecord) {
+      currentSubmissionRecord.status = 'approved';
+    } else if (typeof loadUserSubmissionForTask === 'function' && currentUserId) {
+      loadUserSubmissionForTask(taskId, currentUserId).then(function (row) {
+        if (row) currentSubmissionRecord = row;
+      });
+    }
+
+    detailActionState = isSimpleTaskRecord(currentTaskRecord) ? 'simple_completed' : 'approved';
+    updateBottomActionBar();
+
+    console.log('任务详情：立即更新为已完成状态', {
+      taskId: taskId,
+      userId: userId || currentUserId,
+      detailActionState: detailActionState,
+      submissionStatus: currentSubmissionRecord ? currentSubmissionRecord.status : null
+    });
+
+    if (typeof window.coinrealmMarkHomeTaskCompleted === 'function') {
+      window.coinrealmMarkHomeTaskCompleted(taskId);
+    }
+  }
+
+  window.coinrealmMarkTaskDetailCompleted = markTaskDetailCompleted;
 
   function resolveDetailActionState(task, submission, userId) {
     var max = task.max_participants != null ? Number(task.max_participants) : null;
@@ -1466,8 +1495,20 @@
     return 'go_submit';
   }
 
-  function navigateToSubmitPage() {
-    if (!currentTaskRecord || !currentSubmissionRecord) {
+  async function navigateToSubmitPage() {
+    if (!currentTaskRecord) return;
+
+    if (typeof checkUserAlreadyRewardedForTask === 'function' && currentUserId &&
+        await checkUserAlreadyRewardedForTask(currentTaskRecord.id, currentUserId)) {
+      console.log('任务详情：用户已完成该任务，禁止跳转提交页', {
+        taskId: currentTaskRecord.id,
+        userId: currentUserId
+      });
+      markTaskDetailCompleted(currentTaskRecord.id, currentUserId);
+      return;
+    }
+
+    if (!currentSubmissionRecord) {
       console.log('任务详情：无提交记录，禁止跳转提交页', {
         taskId: currentTaskRecord && currentTaskRecord.id,
         submission: currentSubmissionRecord
@@ -1483,8 +1524,7 @@
         userId: currentUserId,
         status: status
       });
-      detailActionState = 'approved';
-      updateBottomActionBar();
+      markTaskDetailCompleted(currentTaskRecord.id, currentUserId);
       return;
     }
 
@@ -1522,8 +1562,7 @@
         ? await loadUserSubmissionForTask(taskId, userId)
         : currentSubmissionRecord;
       currentUserId = userId;
-      detailActionState = 'approved';
-      updateBottomActionBar();
+      markTaskDetailCompleted(taskId, userId);
       return;
     }
 
@@ -1658,16 +1697,7 @@
     }
 
     if (currentSubmissionRecord && currentSubmissionRecord.status === 'approved') {
-      detailActionState = 'simple_completed';
-      updateBottomActionBar();
-      if (typeof window.coinrealmNotifySubmissionStatusChanged === 'function') {
-        window.coinrealmNotifySubmissionStatusChanged({
-          taskId: currentTaskRecord.id,
-          userId: currentUserId,
-          status: 'approved',
-          path: 'finalizeSimplePlatformTaskSubmission'
-        });
-      }
+      markTaskDetailCompleted(currentTaskRecord.id, currentUserId);
       return true;
     }
 
@@ -1747,22 +1777,18 @@
     }
 
     if (currentSubmissionRecord.status === 'approved') {
-      detailActionState = 'simple_completed';
-      updateBottomActionBar();
+      markTaskDetailCompleted(currentTaskRecord.id, currentUserId);
       return;
     }
 
-    var priorStatus = currentSubmissionRecord.status;
-
     try {
       await finalizeSimplePlatformTaskSubmission();
-      detailActionState = 'simple_completed';
+      markTaskDetailCompleted(currentTaskRecord.id, currentUserId);
       verifyPanelActive = false;
       verifyPanelSuccess = false;
       subtaskUiState = {};
       subtaskFailReasons = {};
       updateTaskDetailSubtaskModeUi();
-      updateBottomActionBar();
       if (typeof window.coinrealmShowRewardCelebration === 'function') {
         window.coinrealmShowRewardCelebration(getPerParticipantReward(currentTaskRecord));
       }
@@ -1859,11 +1885,10 @@
             currentTaskRecord.current_participants = taskRefresh.data.current_participants;
           }
         }
-        detailActionState = 'simple_completed';
+        markTaskDetailCompleted(currentTaskRecord.id, currentUserId);
         twitterPendingAutoVerify = false;
         activeSubtaskKey = null;
         updateTaskDetailSubtaskModeUi();
-        updateBottomActionBar();
         if (options.showAlert !== false && typeof window.coinrealmShowRewardCelebration === 'function') {
           window.coinrealmShowRewardCelebration(getPerParticipantReward(currentTaskRecord));
         }
@@ -1950,6 +1975,29 @@
       return;
     }
 
+    if (typeof checkUserAlreadyRewardedForTask === 'function' &&
+        await checkUserAlreadyRewardedForTask(taskId, userId)) {
+      console.log('任务详情：简单任务已领取奖励，禁止重复领取', { taskId: taskId, userId: userId });
+      markTaskDetailCompleted(taskId, userId);
+      return;
+    }
+
+    if (typeof window.coinrealmGrantSimpleTaskRewards === 'function') {
+      var grantResult = await window.coinrealmGrantSimpleTaskRewards(currentTaskRecord, userId, {
+        priorStatus: '',
+        creditRewardClient: true,
+        path: 'completeSimpleTaskClaim-grant'
+      });
+      if (grantResult && grantResult.alreadyRewarded) {
+        markTaskDetailCompleted(taskId, userId);
+        return;
+      }
+      if (!grantResult) {
+        alert(tdT('td_alert_claim_fail'));
+        return;
+      }
+    }
+
     var nowIso = new Date().toISOString();
 
     console.log('简单任务提交，status：', 'approved', {
@@ -1978,30 +2026,7 @@
     currentSubmissionRecord = insertResult.data;
     currentUserId = userId;
 
-    if (typeof window.coinrealmFinalizeSimpleTaskSubmission === 'function') {
-      await window.coinrealmFinalizeSimpleTaskSubmission(currentTaskRecord, userId, {
-        priorStatus: '',
-        submissionId: insertResult.data.id,
-        creditRewardClient: true,
-        skipStatusUpdate: true,
-        skipRewardCheck: true
-      });
-    } else {
-      var nextCount = current + 1;
-      var updateResult = await window.supabase
-        .from('tasks')
-        .update({ current_participants: nextCount })
-        .eq('id', taskId);
-
-      if (updateResult.error) {
-        alert(tdT('td_alert_claim_fail') + updateResult.error.message);
-        return;
-      }
-      currentTaskRecord.current_participants = nextCount;
-    }
-
-    detailActionState = 'simple_completed';
-    updateBottomActionBar();
+    markTaskDetailCompleted(taskId, userId);
     if (typeof window.coinrealmNotifySubmissionStatusChanged === 'function') {
       window.coinrealmNotifySubmissionStatusChanged({
         taskId: taskId,
@@ -2032,8 +2057,7 @@
         ? await loadUserSubmissionForTask(taskId, userId)
         : currentSubmissionRecord;
       currentUserId = userId;
-      detailActionState = 'approved';
-      updateBottomActionBar();
+      markTaskDetailCompleted(taskId, userId);
       return;
     }
 
@@ -2175,7 +2199,12 @@
             currentSubmissionRecord = await loadUserSubmissionForTask(taskId, currentUserId);
           }
         }
+        detailActionState = isSimpleTaskRecord(currentTaskRecord) ? 'simple_completed' : 'approved';
+      } else {
+        detailActionState = resolveDetailActionState(currentTaskRecord, currentSubmissionRecord, currentUserId);
       }
+    } else {
+      detailActionState = resolveDetailActionState(currentTaskRecord, currentSubmissionRecord, currentUserId);
     }
 
     var publishedCount = 0;
@@ -2188,8 +2217,6 @@
         publishedCount = countResult.count;
       }
     }
-
-    detailActionState = resolveDetailActionState(currentTaskRecord, currentSubmissionRecord, currentUserId);
 
     console.log('任务详情：底部按钮状态', {
       taskId: taskId,
