@@ -331,6 +331,85 @@
     }
   }
 
+  async function resolveSelectedTaskIdWithSubmissions() {
+    if (!publisherTasks.length || !window.supabase) return selectedTaskId;
+
+    var statusFilter = ['submitted', 'pending'];
+
+    if (selectedTaskId) {
+      var matchedTask = publisherTasks.find(function (task) {
+        return String(task.id) === String(selectedTaskId);
+      });
+      var currentTaskId = matchedTask ? matchedTask.id : selectedTaskId;
+      var currentResult = await window.supabase
+        .from('submissions')
+        .select('id')
+        .eq('task_id', currentTaskId)
+        .in('status', statusFilter)
+        .limit(1);
+
+      if (!currentResult.error && currentResult.data && currentResult.data.length) {
+        return currentTaskId;
+      }
+    }
+
+    var taskIds = publisherTasks.map(function (task) { return task.id; });
+    var reviewableResult = await window.supabase
+      .from('submissions')
+      .select('task_id')
+      .in('task_id', taskIds)
+      .in('status', statusFilter)
+      .order('submitted_at', { ascending: false })
+      .limit(1);
+
+    console.log('审核管理-有待审核的任务查询：', {
+      taskIds: taskIds,
+      data: reviewableResult.data,
+      error: reviewableResult.error
+    });
+
+    if (!reviewableResult.error && reviewableResult.data && reviewableResult.data.length) {
+      return reviewableResult.data[0].task_id;
+    }
+
+    return selectedTaskId || publisherTasks[0].id;
+  }
+
+  async function advanceReviewQueueAfterApproval() {
+    if (getReviewableCount() > 0) {
+      return;
+    }
+
+    if (!window.supabase || !publisherTasks.length) {
+      currentSubmissions = [];
+      showReviewEmptyMessage('rv_empty_text');
+      return;
+    }
+
+    var statusFilter = ['submitted', 'pending'];
+    var taskIds = publisherTasks.map(function (task) { return task.id; });
+    var reviewableResult = await window.supabase
+      .from('submissions')
+      .select('task_id')
+      .in('task_id', taskIds)
+      .in('status', statusFilter)
+      .order('submitted_at', { ascending: false })
+      .limit(1);
+
+    if (!reviewableResult.error && reviewableResult.data && reviewableResult.data.length) {
+      var nextTaskId = reviewableResult.data[0].task_id;
+      if (String(nextTaskId) !== String(selectedTaskId)) {
+        selectedTaskId = nextTaskId;
+        renderTaskSelectOptions();
+      }
+      await loadSubmissionsForSelectedTask();
+      return;
+    }
+
+    currentSubmissions = [];
+    showReviewEmptyMessage('rv_empty_text');
+  }
+
   async function loadSubmissionsForSelectedTask() {
     if (!selectedTaskId || !window.supabase) {
       currentSubmissions = [];
@@ -338,21 +417,25 @@
       return;
     }
 
+    var matchedTask = publisherTasks.find(function (task) {
+      return String(task.id) === String(selectedTaskId);
+    });
+    var taskId = matchedTask ? matchedTask.id : selectedTaskId;
+    var statusFilter = ['submitted', 'pending'];
+
+    console.log('提交列表查询条件：', { taskId: taskId, statusFilter: statusFilter });
+
     var submissionsResult = await window.supabase
       .from('submissions')
       .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment, screenshot_urls')
-      .eq('task_id', selectedTaskId)
-      .in('status', ['submitted', 'pending'])
+      .eq('task_id', taskId)
+      .in('status', statusFilter)
       .order('submitted_at', { ascending: false });
+
+    console.log('提交列表查询结果：', { data: submissionsResult.data, error: submissionsResult.error });
 
     var submissions = submissionsResult.data || [];
 
-    console.log('审核管理-提交列表：', {
-      taskId: selectedTaskId,
-      count: submissions.length,
-      submissions: submissions,
-      error: submissionsResult.error
-    });
     console.log('审核管理-提交列表数量：', submissions.length);
 
     if (submissionsResult.error) {
@@ -419,6 +502,9 @@
       selectedTaskId = publisherTasks[0].id;
     }
 
+    selectedTaskId = await resolveSelectedTaskIdWithSubmissions();
+    renderTaskSelectOptions();
+
     await loadSubmissionsForSelectedTask();
   }
 
@@ -482,6 +568,8 @@
       return item;
     });
     renderSubmissionList();
+    console.log('审核通过-本地状态已更新');
+    await advanceReviewQueueAfterApproval();
 
     if (alreadyRewarded) {
       console.log('审核通过：状态已更新，该用户此前已领取奖励，跳过发奖', submissionId);
@@ -604,9 +692,7 @@
         var id = btn.getAttribute('data-id');
         btn.disabled = true;
         var ok = await approveSubmission(id);
-        if (ok) {
-          await loadSubmissionsForSelectedTask();
-        } else {
+        if (!ok) {
           btn.disabled = false;
         }
       });
