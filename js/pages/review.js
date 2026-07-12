@@ -411,12 +411,17 @@
         status: 'approved',
         reviewed_at: reviewedAt
       })
-      .eq('id', submissionId);
+      .eq('id', submissionId)
+      .select();
 
-    console.log('审核通过：', submissionId, updateResult);
+    var data = updateResult.data;
+    var error = updateResult.error;
 
-    if (updateResult.error) {
-      alert(rvT('rv_alert_action_fail') + updateResult.error.message);
+    console.log('审核通过更新结果：', { submissionId: submissionId, data: data, error: error });
+
+    if (error) {
+      console.error('审核通过更新失败：', error);
+      alert(rvT('rv_alert_action_fail') + error.message);
       return false;
     }
 
