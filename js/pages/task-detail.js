@@ -2023,9 +2023,13 @@
     if (currentTaskRecord.publisher_id) {
       var publisherResult = await window.supabase
         .from('users')
-        .select('username, level, reputation_score, email')
+        .select('username, level, reputation_score, email, wallet_address')
         .eq('id', currentTaskRecord.publisher_id)
         .maybeSingle();
+      console.log('任务详情：查询发布者', {
+        publisherId: currentTaskRecord.publisher_id,
+        result: publisherResult
+      });
       if (!publisherResult.error && publisherResult.data) {
         currentPublisherRecord = publisherResult.data;
       }
@@ -2074,7 +2078,10 @@
     detailActionState = resolveDetailActionState(currentTaskRecord, currentSubmissionRecord, currentUserId);
 
     var publisher = currentPublisherRecord || {};
-    var publisherName = publisher.username || displayNameFromEmail(publisher.email);
+    var publisherName = typeof window.coinrealmResolveUserDisplayName === 'function'
+      ? window.coinrealmResolveUserDisplayName(publisher)
+      : (publisher.username || displayNameFromEmail(publisher.email) || '未知发布者');
+    console.log('任务详情：发布者显示名', { publisher: publisher, publisherName: publisherName });
     var publisherLevel = publisher.level != null ? publisher.level : 0;
     var reputationScore = publisher.reputation_score != null ? publisher.reputation_score : 0;
 

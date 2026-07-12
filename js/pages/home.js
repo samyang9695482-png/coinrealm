@@ -154,17 +154,25 @@ function displayNameFromEmail(email) {
     return parts[0] || '';
 }
 
+function resolvePublisherDisplayName(user) {
+    if (typeof window.coinrealmResolveUserDisplayName === 'function') {
+        return window.coinrealmResolveUserDisplayName(user);
+    }
+    if (!user) return '未知发布者';
+    return user.username || displayNameFromEmail(user.email) || '未知发布者';
+}
+
 function resolvePublisherFields(task) {
     var publisher = task.publisher;
     var username = getTaskField(task, ['publisher_username', 'publisher_name'], '');
     var level = getTaskField(task, ['publisher_level'], null);
 
     if (publisher && typeof publisher === 'object') {
-        if (!username) username = publisher.username || displayNameFromEmail(publisher.email) || '';
+        if (!username) username = resolvePublisherDisplayName(publisher);
         if (level == null || level === '') level = publisher.level;
     }
 
-    if (!username) username = getTaskField(task, ['username'], 'Unknown');
+    if (!username) username = getTaskField(task, ['username'], '未知发布者');
     if (level == null || level === '') level = 1;
 
     return { username: username, level: level };
@@ -188,7 +196,7 @@ function enrichTasksWithPublishers(tasks) {
 
     return window.supabase
         .from('users')
-        .select('id, username, level, email, avatar_url')
+        .select('id, username, level, email, wallet_address, avatar_url')
         .in('id', uniqueIds)
         .then(function (userResult) {
             if (userResult.error || !userResult.data) {
@@ -206,7 +214,7 @@ function enrichTasksWithPublishers(tasks) {
                 if (!publisher) return task;
                 return Object.assign({}, task, {
                     publisher: publisher,
-                    publisher_username: publisher.username || displayNameFromEmail(publisher.email),
+                    publisher_username: resolvePublisherDisplayName(publisher),
                     publisher_level: publisher.level
                 });
             });
