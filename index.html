@@ -1,6 +1,12 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+  <script>
+    // 检测移动端，自动跳转手机版
+    if (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      window.location.href = '/mobile.html';
+    }
+  </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CoinRealm</title>
