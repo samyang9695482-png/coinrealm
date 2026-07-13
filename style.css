@@ -1892,6 +1892,12 @@ img {
     flex: 1;
 }
 
+.create-task-req-textarea {
+    min-height: 80px;
+    resize: vertical;
+    line-height: 1.5;
+}
+
 .create-task-req-delete {
     flex-shrink: 0;
     width: 32px;
@@ -2629,6 +2635,32 @@ img {
     background: #e8e8e8;
     color: #999;
     cursor: not-allowed;
+}
+
+.td-proof-text-input {
+    display: block;
+    width: 100%;
+    min-height: 80px;
+    margin-bottom: 12px;
+    padding: 12px 14px;
+    border: 1px solid #e8e8e8;
+    border-radius: 10px;
+    background: #fafafa;
+    color: #333;
+    font-size: 14px;
+    line-height: 1.5;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
+.td-proof-text-input:focus {
+    outline: none;
+    border-color: #f0b90b;
+    background: #fff;
+}
+
+.td-proof-text-input.hidden {
+    display: none;
 }
 
 .create-task-sql-hint {

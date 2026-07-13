@@ -40,6 +40,7 @@
       st_btn_back_home: '返回首页',
       st_reject_title: '驳回理由：',
       st_alert_desc: '请填写任务完成描述',
+      st_alert_need_image: '请至少上传一张截图',
       st_alert_login: '请先登录',
       st_alert_max_files: '最多上传 3 张截图',
       st_alert_invalid_type: '仅支持 JPG、PNG、WebP 格式',
@@ -66,6 +67,7 @@
       st_btn_back_home: 'Back to Home',
       st_reject_title: 'Rejection reason:',
       st_alert_desc: 'Please fill in the task completion description',
+      st_alert_need_image: 'Please upload at least one screenshot',
       st_alert_login: 'Please sign in first',
       st_alert_max_files: 'Maximum 3 screenshots allowed',
       st_alert_invalid_type: 'Only JPG, PNG, and WebP formats are supported',
@@ -296,8 +298,18 @@
       return { ok: false, error: 'missing_params' };
     }
 
+    var proofType = params.proofType || 'screenshot';
+
     if (submission.status !== 'rejected') {
       return { ok: false, error: 'not_rejected' };
+    }
+
+    if (proofType === 'text') {
+      if (!description) {
+        return { ok: false, error: 'description_required' };
+      }
+    } else if (!screenshotUrls.length) {
+      return { ok: false, error: 'screenshot_required' };
     }
 
     if (!description) {
@@ -528,6 +540,23 @@
     formSection.insertBefore(banner, formSection.firstChild);
   }
 
+  function applyProofTypeUi() {
+    var proofType = (activeSubmitContext && activeSubmitContext.proofType) || 'screenshot';
+    var isTextProof = proofType === 'text';
+    var descEl = document.getElementById('st-description');
+    var descField = descEl ? descEl.closest('.submit-task-field') : null;
+    var uploadField = document.getElementById('st-upload-zone')
+      ? document.getElementById('st-upload-zone').closest('.submit-task-field')
+      : null;
+
+    if (descField) descField.classList.toggle('hidden', !isTextProof);
+    if (uploadField) uploadField.classList.toggle('hidden', isTextProof);
+
+    if (descEl && isTextProof) {
+      descEl.placeholder = activeSubmitContext.proofPlaceholder || stT('st_ph_desc');
+    }
+  }
+
   function renderSummaryCard() {
     var titleEl = document.getElementById('st-task-title');
     var rewardEl = document.getElementById('st-task-reward');
@@ -603,6 +632,32 @@
     currentSubmissionRecord = submissionRecord;
     activeSubmitContext.submissionId = submissionRecord.id;
 
+    try {
+      var taskResult = await window.supabase
+        .from('tasks')
+        .select('proof_type, requirements')
+        .eq('id', activeSubmitContext.taskId)
+        .maybeSingle();
+
+      if (!taskResult.error && taskResult.data) {
+        activeSubmitContext.proofType = String(taskResult.data.proof_type || 'screenshot').toLowerCase() === 'text'
+          ? 'text'
+          : 'screenshot';
+        var requirements = taskResult.data.requirements;
+        if (Array.isArray(requirements) && requirements[0]) {
+          activeSubmitContext.proofPlaceholder = String(requirements[0]);
+        } else if (typeof requirements === 'string' && requirements.trim()) {
+          activeSubmitContext.proofPlaceholder = requirements.split('\n').map(function (s) { return s.trim(); }).filter(Boolean)[0] || '';
+        }
+      } else {
+        activeSubmitContext.proofType = 'screenshot';
+      }
+    } catch (taskErr) {
+      activeSubmitContext.proofType = 'screenshot';
+    }
+
+    applyProofTypeUi();
+
     if (submissionRecord.status === 'approved') {
       console.log('提交页：提交记录已是 approved', submissionRecord);
       submitState = 'completed';
@@ -663,7 +718,9 @@
 
         var descEl = document.getElementById('st-description');
         var desc = descEl ? descEl.value.trim() : '';
-        if (!desc) {
+        var proofType = (activeSubmitContext && activeSubmitContext.proofType) || 'screenshot';
+
+        if (proofType === 'text' && !desc) {
           alert(stT('st_alert_desc'));
           return;
         }
@@ -804,6 +861,11 @@
             return !!url && isScreenshotPublicUrl(url);
           });
 
+          if (proofType === 'screenshot' && !screenshotUrls.length) {
+            alert(stT('st_alert_need_image') || '请至少上传一张截图');
+            return;
+          }
+
           var submitResult;
           if (targetSubmission.status === 'rejected') {
             submitResult = await resubmitRegularTaskProof({
@@ -814,6 +876,7 @@
               submission: targetSubmission,
               taskTitle: activeSubmitContext.title || '',
               taskReward: activeSubmitContext.reward || 0,
+              proofType: proofType,
               path: 'submit-task-page-resubmit'
             });
           } else if (typeof window.coinrealmSubmitTaskProof === 'function') {
@@ -825,7 +888,8 @@
               submission: targetSubmission,
               taskTitle: activeSubmitContext.title || '',
               taskReward: activeSubmitContext.reward || 0,
-              requireDescription: true,
+              requireDescription: proofType === 'text',
+              proofType: proofType,
               path: 'submit-task-page'
             });
           } else {
@@ -836,6 +900,10 @@
           if (!submitResult.ok) {
             if (submitResult.error === 'description_required') {
               alert(stT('st_alert_desc'));
+              return;
+            }
+            if (submitResult.error === 'screenshot_required') {
+              alert(stT('st_alert_need_image') || '请至少上传一张截图');
               return;
             }
             if (submitResult.error === 'already_rewarded' || submitResult.error === 'already_approved') {

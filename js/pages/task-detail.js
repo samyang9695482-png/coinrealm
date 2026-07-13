@@ -126,6 +126,8 @@
       td_proof_alert_upload_fail: '上传失败：',
       td_proof_alert_submit_fail: '提交失败：',
       td_proof_alert_need_image: '请至少上传一张截图',
+      td_proof_alert_need_text: '请填写发布者要求的信息',
+      td_proof_ph_default: '请填写发布者要求的信息',
       td_reject_reason_label: '驳回理由：',
       td_btn_approved: '已通过',
       td_btn_rejected: '重新提交',
@@ -261,6 +263,8 @@
       td_proof_alert_upload_fail: 'Upload failed: ',
       td_proof_alert_submit_fail: 'Submit failed: ',
       td_proof_alert_need_image: 'Please upload at least one screenshot',
+      td_proof_alert_need_text: 'Please fill in the information required by the publisher',
+      td_proof_ph_default: 'Please fill in the information required by the publisher',
       td_reject_reason_label: 'Rejection reason: ',
       td_btn_approved: 'Approved',
       td_btn_rejected: 'Resubmit',
@@ -2520,6 +2524,41 @@
     }
   }
 
+  function getCurrentTaskProofType() {
+    if (!currentTaskRecord) return 'screenshot';
+    var proofType = getTaskField(currentTaskRecord, ['proof_type', 'proofType'], 'screenshot');
+    return String(proofType || 'screenshot').toLowerCase() === 'text' ? 'text' : 'screenshot';
+  }
+
+  function getProofTextPlaceholder() {
+    if (!currentTaskRecord) return tdT('td_proof_ph_default');
+    var reqs = parseRequirements(getTaskField(currentTaskRecord, ['requirements'], ''));
+    if (reqs.length && reqs[0]) return String(reqs[0]);
+    return tdT('td_proof_ph_default');
+  }
+
+  function ensureProofTextInput() {
+    var section = document.getElementById('td-proof-upload-section');
+    if (!section) return null;
+
+    var existing = document.getElementById('td-proof-text-input');
+    if (existing) return existing;
+
+    var textarea = document.createElement('textarea');
+    textarea.id = 'td-proof-text-input';
+    textarea.className = 'td-proof-text-input';
+    textarea.setAttribute('rows', '4');
+
+    var uploadZone = document.getElementById('td-proof-upload-zone');
+    if (uploadZone) {
+      section.insertBefore(textarea, uploadZone);
+    } else {
+      section.appendChild(textarea);
+    }
+
+    return textarea;
+  }
+
   function shouldShowProofUploadSection() {
     if (!currentTaskRecord || isSimpleTaskRecord(currentTaskRecord)) return false;
     return detailActionState === 'go_submit' ||
@@ -2535,6 +2574,9 @@
     });
     proofUploadFiles = [];
     renderProofPreviewList();
+
+    var textInput = document.getElementById('td-proof-text-input');
+    if (textInput) textInput.value = '';
   }
 
   function renderProofPreviewList() {
@@ -2710,7 +2752,10 @@
   function updateProofUploadSectionUI() {
     var section = document.getElementById('td-proof-upload-section');
     var uploadZone = document.getElementById('td-proof-upload-zone');
+    var previewList = document.getElementById('td-proof-preview-list');
+    var fileInput = document.getElementById('td-proof-file-input');
     var submitBtn = document.getElementById('td-proof-submit-btn');
+    var textInput = ensureProofTextInput();
     if (!section) return;
 
     if (!shouldShowProofUploadSection()) {
@@ -2721,24 +2766,41 @@
 
     section.classList.remove('hidden');
 
+    var proofType = getCurrentTaskProofType();
+    var isTextProof = proofType === 'text';
     var isWaiting = detailActionState === 'waiting_review';
-    var isRejected = detailActionState === 'rejected_resubmit';
+
+    if (textInput) {
+      textInput.classList.toggle('hidden', !isTextProof || isWaiting);
+      if (isTextProof && !isWaiting) {
+        textInput.placeholder = getProofTextPlaceholder();
+        if (currentSubmissionRecord && currentSubmissionRecord.description && !textInput.value) {
+          textInput.value = String(currentSubmissionRecord.description);
+        }
+      }
+    }
 
     if (uploadZone) {
-      uploadZone.classList.toggle('hidden', isWaiting);
+      uploadZone.classList.toggle('hidden', isWaiting || isTextProof);
+    }
+
+    if (previewList) {
+      previewList.classList.toggle('hidden', isTextProof);
+    }
+
+    if (fileInput && isTextProof) {
+      fileInput.value = '';
     }
 
     if (submitBtn) {
       if (isWaiting) {
         submitBtn.disabled = true;
         submitBtn.textContent = tdT('td_proof_waiting');
-      } else if (isRejected) {
-        submitBtn.disabled = proofSubmitInProgress;
-        submitBtn.textContent = tdT('td_proof_submit');
       } else {
         submitBtn.disabled = proofSubmitInProgress;
         submitBtn.textContent = tdT('td_proof_submit');
       }
+      submitBtn.classList.remove('hidden');
     }
 
     updateRejectionBanner();
@@ -2750,13 +2812,26 @@
 
     if (detailActionState === 'waiting_review') return;
 
-    var uploadedUrls = proofUploadFiles
-      .filter(function (item) { return item.url && !item.uploading; })
-      .map(function (item) { return item.url; });
+    var proofType = getCurrentTaskProofType();
+    var isTextProof = proofType === 'text';
+    var textInput = document.getElementById('td-proof-text-input');
+    var description = isTextProof && textInput ? String(textInput.value || '').trim() : '';
+    var uploadedUrls = [];
 
-    if (!uploadedUrls.length) {
-      alert(tdT('td_proof_alert_need_image'));
-      return;
+    if (isTextProof) {
+      if (!description) {
+        alert(tdT('td_proof_alert_need_text'));
+        return;
+      }
+    } else {
+      uploadedUrls = proofUploadFiles
+        .filter(function (item) { return item.url && !item.uploading; })
+        .map(function (item) { return item.url; });
+
+      if (!uploadedUrls.length) {
+        alert(tdT('td_proof_alert_need_image'));
+        return;
+      }
     }
 
     var userId = await getAuthenticatedUserId();
@@ -2784,12 +2859,13 @@
       var result = await submitFn({
         taskId: currentTaskRecord.id,
         userId: userId,
-        description: '',
+        description: description,
         screenshotUrls: uploadedUrls,
         submission: currentSubmissionRecord,
         taskTitle: currentTaskRecord.title || '',
         taskReward: currentTaskRecord.reward_amount || 0,
-        requireDescription: false,
+        requireDescription: isTextProof,
+        proofType: proofType,
         path: currentSubmissionRecord.status === 'rejected'
           ? 'task-detail-proof-resubmit'
           : 'task-detail-proof-submit'
@@ -2807,6 +2883,14 @@
         }
         if (result.error === 'already_rewarded' || result.error === 'already_approved') {
           markTaskDetailCompleted(currentTaskRecord.id, userId);
+          return;
+        }
+        if (result.error === 'description_required') {
+          alert(tdT('td_proof_alert_need_text'));
+          return;
+        }
+        if (result.error === 'screenshot_required') {
+          alert(tdT('td_proof_alert_need_image'));
           return;
         }
         alert(tdT('td_proof_alert_submit_fail') + (result.error || 'unknown'));

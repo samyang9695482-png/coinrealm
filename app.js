@@ -581,6 +581,52 @@ window.coinrealmApplyExchangeDividendsMenuVisibility = applyExchangeDividendsMen
 window.coinrealmInvalidateShowExchangeCache = invalidateShowExchangeCache;
 window.coinrealmInvalidateShowDividendsCache = invalidateShowDividendsCache;
 
+var ENABLE_USDT_REWARD_DEFAULT = 'false';
+var cachedEnableUsdtReward = null;
+
+function isEnableUsdtRewardEnabled(value) {
+  return isSettingsFlagEnabled(value, ENABLE_USDT_REWARD_DEFAULT);
+}
+
+async function fetchEnableUsdtReward() {
+  if (cachedEnableUsdtReward !== null) {
+    return cachedEnableUsdtReward;
+  }
+
+  var value = ENABLE_USDT_REWARD_DEFAULT;
+  if (!window.supabase) {
+    cachedEnableUsdtReward = value;
+    return value;
+  }
+
+  try {
+    var result = await window.supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'enable_usdt_reward')
+      .maybeSingle();
+
+    if (!result.error && result.data && result.data.value != null && result.data.value !== '') {
+      value = String(result.data.value);
+    }
+  } catch (settingsErr) {
+    console.warn('读取 USDT 奖励开关失败:', settingsErr);
+  }
+
+  cachedEnableUsdtReward = value;
+  return value;
+}
+
+function invalidateEnableUsdtRewardCache() {
+  cachedEnableUsdtReward = null;
+}
+
+window.coinrealmFetchEnableUsdtReward = fetchEnableUsdtReward;
+window.coinrealmIsEnableUsdtRewardEnabled = function () {
+  return fetchEnableUsdtReward().then(isEnableUsdtRewardEnabled);
+};
+window.coinrealmInvalidateEnableUsdtRewardCache = invalidateEnableUsdtRewardCache;
+
 var AIRDROP_MODE_DEFAULT = 'level2';
 var cachedAirdropMode = null;
 
@@ -3565,8 +3611,18 @@ async function submitTaskProofSubmission(options) {
         return { ok: false, error: 'missing_params' };
     }
 
-    if (requireDescription && !description) {
+    var proofType = options.proofType || 'screenshot';
+
+    if (proofType === 'text') {
+        if (!description) {
+            return { ok: false, error: 'description_required' };
+        }
+    } else if (requireDescription && !description) {
         return { ok: false, error: 'description_required' };
+    }
+
+    if (proofType === 'screenshot' && !screenshotUrls.length) {
+        return { ok: false, error: 'screenshot_required' };
     }
 
     if (!description) {
@@ -8886,6 +8942,7 @@ window.addEventListener('hashchange', function () {
       ad_features_title: '功能开关',
       ad_features_show_exchange: '开启兑换市场',
       ad_features_show_dividends: '开启我的分红',
+      ad_features_enable_usdt: '开启 USDT 任务奖励',
       ad_btn_save_features: '保存',
       ad_features_save_ok: '功能开关已保存',
       ad_features_save_fail: '保存功能开关失败：',
@@ -9013,6 +9070,7 @@ window.addEventListener('hashchange', function () {
       ad_features_title: 'Feature Toggles',
       ad_features_show_exchange: 'Enable Exchange Market',
       ad_features_show_dividends: 'Enable My Dividends',
+      ad_features_enable_usdt: 'Enable USDT Task Rewards',
       ad_btn_save_features: 'Save',
       ad_features_save_ok: 'Feature toggles saved',
       ad_features_save_fail: 'Failed to save feature toggles: ',
@@ -9918,6 +9976,11 @@ window.addEventListener('hashchange', function () {
           '<span class="admin-ads-toggle-slider" aria-hidden="true"></span>' +
           '<span class="admin-ads-toggle-text" data-i18n="ad_features_show_dividends">' + adT('ad_features_show_dividends') + '</span>' +
         '</label>' +
+        '<label class="admin-ads-toggle">' +
+          '<input type="checkbox" id="ad-features-enable-usdt" class="admin-ads-toggle-input">' +
+          '<span class="admin-ads-toggle-slider" aria-hidden="true"></span>' +
+          '<span class="admin-ads-toggle-text" data-i18n="ad_features_enable_usdt">' + adT('ad_features_enable_usdt') + '</span>' +
+        '</label>' +
         '<button type="button" id="ad-features-save-btn" class="admin-primary-btn" data-i18n="ad_btn_save_features">' + adT('ad_btn_save_features') + '</button>' +
       '</form>';
 
@@ -9930,20 +9993,43 @@ window.addEventListener('hashchange', function () {
     }
   }
 
+  function ensureAdminUsdtRewardToggle() {
+    if (document.getElementById('ad-features-enable-usdt')) return;
+
+    var form = document.getElementById('ad-features-form');
+    var saveBtn = document.getElementById('ad-features-save-btn');
+    if (!form || !saveBtn) return;
+
+    var toggleWrap = document.createElement('label');
+    toggleWrap.className = 'admin-ads-toggle';
+    toggleWrap.innerHTML =
+      '<input type="checkbox" id="ad-features-enable-usdt" class="admin-ads-toggle-input">' +
+      '<span class="admin-ads-toggle-slider" aria-hidden="true"></span>' +
+      '<span class="admin-ads-toggle-text" data-i18n="ad_features_enable_usdt">' + adT('ad_features_enable_usdt') + '</span>';
+
+    form.insertBefore(toggleWrap, saveBtn);
+  }
+
   async function loadAdminFeatureSettings() {
     ensureAdminFeaturesTab();
+    ensureAdminUsdtRewardToggle();
     applyAdminI18n();
 
     var showExchangeEl = document.getElementById('ad-features-show-exchange');
     var showDividendsEl = document.getElementById('ad-features-show-dividends');
+    var enableUsdtEl = document.getElementById('ad-features-enable-usdt');
     var showExchangeValue = await fetchShowExchange();
     var showDividendsValue = await fetchShowDividends();
+    var enableUsdtValue = await fetchEnableUsdtReward();
 
     if (showExchangeEl) {
       showExchangeEl.checked = isExchangeEnabled(showExchangeValue);
     }
     if (showDividendsEl) {
       showDividendsEl.checked = isDividendsEnabled(showDividendsValue);
+    }
+    if (enableUsdtEl) {
+      enableUsdtEl.checked = isEnableUsdtRewardEnabled(enableUsdtValue);
     }
   }
 
@@ -9952,12 +10038,15 @@ window.addEventListener('hashchange', function () {
 
     var showExchangeEl = document.getElementById('ad-features-show-exchange');
     var showDividendsEl = document.getElementById('ad-features-show-dividends');
+    var enableUsdtEl = document.getElementById('ad-features-enable-usdt');
     var showExchange = !!(showExchangeEl && showExchangeEl.checked);
     var showDividends = !!(showDividendsEl && showDividendsEl.checked);
+    var enableUsdt = !!(enableUsdtEl && enableUsdtEl.checked);
 
     var rows = [
       { key: 'show_exchange', value: showExchange ? 'true' : 'false' },
-      { key: 'show_dividends', value: showDividends ? 'true' : 'false' }
+      { key: 'show_dividends', value: showDividends ? 'true' : 'false' },
+      { key: 'enable_usdt_reward', value: enableUsdt ? 'true' : 'false' }
     ];
 
     var result = await window.supabase
@@ -9971,6 +10060,7 @@ window.addEventListener('hashchange', function () {
 
     invalidateShowExchangeCache();
     invalidateShowDividendsCache();
+    invalidateEnableUsdtRewardCache();
     if (typeof applyExchangeDividendsMenuVisibility === 'function') {
       applyExchangeDividendsMenuVisibility();
     }
@@ -10054,6 +10144,7 @@ window.addEventListener('hashchange', function () {
     ensureAdminInviteLeaderboardToggle();
     ensureAdminAirdropTab();
     ensureAdminFeaturesTab();
+    ensureAdminUsdtRewardToggle();
 
     document.querySelectorAll('#admin-page .admin-tab').forEach(function (btn) {
       btn.addEventListener('click', function () {

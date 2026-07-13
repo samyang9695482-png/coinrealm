@@ -104,6 +104,7 @@
       ct_ph_desc: '请详细描述任务内容和要求',
       ct_ph_desc_simple: '请简单描述任务内容，如“关注 @CoinRealm_X”',
       ct_ph_req: '请输入任务要求',
+      ct_ph_req_text: '请填写你需要用户提交的信息，例如：Twitter 用户名、注册邮箱、交易哈希、邀请码等',
       ct_ph_req_simple: '如“关注后截图上传”',
       ct_label_platform: '任务平台',
       ct_platform_select: '请选择平台',
@@ -236,6 +237,7 @@
       ct_ph_desc: 'Describe the task content and requirements in detail',
       ct_ph_desc_simple: 'Briefly describe the task, e.g. "Follow @CoinRealm_X"',
       ct_ph_req: 'Enter a requirement',
+      ct_ph_req_text: 'Please specify what information you need, e.g. Twitter username, registered email, transaction hash, invite code, etc.',
       ct_ph_req_simple: 'e.g. "Upload a screenshot after following"',
       ct_label_platform: 'Platform',
       ct_platform_select: 'Select a platform',
@@ -627,6 +629,79 @@
     }
   }
 
+  function ensureProofTextRequirementField() {
+    if (document.getElementById('ct-proof-text-req-wrap')) return;
+
+    var proofField = document.getElementById('ct-field-proof');
+    if (!proofField || !proofField.parentNode) return;
+
+    var wrap = document.createElement('div');
+    wrap.id = 'ct-proof-text-req-wrap';
+    wrap.className = 'create-task-field hidden';
+    wrap.innerHTML =
+      '<textarea id="ct-proof-text-req" class="create-task-input create-task-req-textarea" data-placeholder="ct_ph_req_text" rows="3"></textarea>';
+
+    proofField.parentNode.insertBefore(wrap, proofField.nextSibling);
+  }
+
+  function updateProofTextRequirementVisibility() {
+    ensureProofTextRequirementField();
+
+    var isText = isTextProofSelected();
+    var proofTextWrap = document.getElementById('ct-proof-text-req-wrap');
+    var reqField = document.getElementById('ct-field-req');
+    var proofTextReq = document.getElementById('ct-proof-text-req');
+
+    if (proofTextWrap) proofTextWrap.classList.toggle('hidden', !isText || isSimpleTaskTypeSelected());
+    if (reqField) reqField.classList.toggle('hidden', isText && !isSimpleTaskTypeSelected());
+
+    if (proofTextReq) {
+      proofTextReq.setAttribute('data-placeholder', 'ct_ph_req_text');
+      proofTextReq.placeholder = ctT('ct_ph_req_text');
+    }
+  }
+
+  function isTextProofSelected() {
+    if (isSimpleTaskTypeSelected()) return false;
+    var checked = document.querySelector('input[name="ct-proof-type"]:checked');
+    return !!(checked && checked.value === 'text');
+  }
+
+  function getRequirementPlaceholderKey() {
+    return 'ct_ph_req';
+  }
+
+  function buildRequirementFieldHtml(value) {
+    var placeholderKey = getRequirementPlaceholderKey();
+    var placeholder = ctT(placeholderKey);
+    return '<input type="text" class="create-task-input create-task-req-input" data-placeholder="' + placeholderKey + '" placeholder="' + placeholder + '" value="' + (value || '').replace(/"/g, '&quot;') + '">';
+  }
+
+  function updateRequirementInputsForProofType() {
+    updateProofTextRequirementVisibility();
+  }
+
+  async function applyUsdtRewardVisibility() {
+    var enabled = false;
+    if (typeof window.coinrealmIsEnableUsdtRewardEnabled === 'function') {
+      enabled = await window.coinrealmIsEnableUsdtRewardEnabled();
+    }
+
+    var usdtRadio = document.querySelector('input[name="ct-reward-type"][value="USDT"]');
+    var usdtLabel = usdtRadio ? usdtRadio.closest('.create-task-radio-label') : null;
+    if (usdtLabel) {
+      usdtLabel.classList.toggle('hidden', !enabled);
+    }
+
+    if (!enabled) {
+      var crlmRadio = document.querySelector('input[name="ct-reward-type"][value="CRLM"]');
+      if (crlmRadio) crlmRadio.checked = true;
+      updateStakeHint();
+      updateUnitPriceHint();
+      updateSubmitButtonState();
+    }
+  }
+
   function bindRequirementRow(row) {
     var deleteBtn = row.querySelector('.create-task-req-delete');
     if (deleteBtn) {
@@ -645,8 +720,7 @@
 
     var row = document.createElement('div');
     row.className = 'create-task-req-row';
-    row.innerHTML =
-      '<input type="text" class="create-task-input create-task-req-input" data-placeholder="ct_ph_req" placeholder="' + ctT('ct_ph_req') + '">' +
+    row.innerHTML = buildRequirementFieldHtml('') +
       '<button type="button" class="create-task-req-delete" aria-label="Delete">&times;</button>';
     list.appendChild(row);
     bindRequirementRow(row);
@@ -1191,8 +1265,7 @@
     for (var i = 0; i < 3; i++) {
       var row = document.createElement('div');
       row.className = 'create-task-req-row';
-      row.innerHTML =
-        '<input type="text" class="create-task-input create-task-req-input" data-placeholder="ct_ph_req" placeholder="' + ctT('ct_ph_req') + '">' +
+      row.innerHTML = buildRequirementFieldHtml('') +
         '<button type="button" class="create-task-req-delete" aria-label="Delete">&times;</button>';
       list.appendChild(row);
       bindRequirementRow(row);
@@ -1253,8 +1326,10 @@
       renderCtImageList();
     } else {
       ensureDefaultRequirementRows();
+      updateProofTextRequirementVisibility();
     }
 
+    applyUsdtRewardVisibility();
     updateStakeHint();
     updateUnitPriceHint();
     updateSubmitButtonState();
@@ -1282,18 +1357,21 @@
       for (var i = 0; i < 3; i++) {
         var row = document.createElement('div');
         row.className = 'create-task-req-row';
-        row.innerHTML =
-          '<input type="text" class="create-task-input create-task-req-input" data-placeholder="ct_ph_req" placeholder="' + ctT('ct_ph_req') + '">' +
+        row.innerHTML = buildRequirementFieldHtml('') +
           '<button type="button" class="create-task-req-delete" aria-label="Delete">&times;</button>';
         list.appendChild(row);
         bindRequirementRow(row);
       }
+      updateProofTextRequirementVisibility();
     }
 
     var crlmRadio = document.querySelector('input[name="ct-reward-type"][value="CRLM"]');
     var textProof = document.querySelector('input[name="ct-proof-type"][value="text"]');
     if (crlmRadio) crlmRadio.checked = true;
     if (textProof) textProof.checked = true;
+
+    var proofTextReq = document.getElementById('ct-proof-text-req');
+    if (proofTextReq) proofTextReq.value = '';
 
     ctUploadedImages = [];
     ctImageUploadSeq = 0;
@@ -1329,9 +1407,14 @@
     if (!deadline || !deadline.value) return false;
 
     var hasReq = false;
-    reqInputs.forEach(function (input) {
-      if (input.value.trim()) hasReq = true;
-    });
+    if (isTextProofSelected() && !simple) {
+      var proofTextReq = document.getElementById('ct-proof-text-req');
+      hasReq = !!(proofTextReq && proofTextReq.value.trim());
+    } else {
+      reqInputs.forEach(function (input) {
+        if (input.value.trim()) hasReq = true;
+      });
+    }
     if (!hasReq) return false;
 
     if (simple && !validateSimplePlatformFieldsSilent()) return false;
@@ -1346,6 +1429,12 @@
   }
 
   function collectRequirements() {
+    if (isTextProofSelected() && !isSimpleTaskTypeSelected()) {
+      var proofTextReq = document.getElementById('ct-proof-text-req');
+      var proofText = proofTextReq ? proofTextReq.value.trim() : '';
+      return proofText ? [proofText] : [];
+    }
+
     var requirements = [];
     document.querySelectorAll('#ct-requirements-list .create-task-req-input').forEach(function (input) {
       var val = input.value.trim();
@@ -1489,6 +1578,14 @@
         });
     });
 
+    document.querySelectorAll('input[name="ct-proof-type"]').forEach(function (radio) {
+      radio.addEventListener('change', function () {
+        updateProofTextRequirementVisibility();
+        applyCreateTaskI18n();
+        updateSubmitButtonState();
+      });
+    });
+
     var imageList = document.getElementById('ct-image-list');
     var imageInput = document.getElementById('ct-image-input');
     if (imageList) {
@@ -1517,7 +1614,14 @@
 
     renderCtImageList();
     initRequirementList();
+    ensureProofTextRequirementField();
+    updateProofTextRequirementVisibility();
     initTwitterActionToggleGroup();
+
+    var proofTextReq = document.getElementById('ct-proof-text-req');
+    if (proofTextReq) {
+      proofTextReq.addEventListener('input', updateSubmitButtonState);
+    }
   }
 
   async function renderCreateTaskPage() {
@@ -1550,6 +1654,8 @@
     bindSubmitButton();
     applyCreateTaskI18n();
     updateCreateTaskTemplate();
+    applyUsdtRewardVisibility();
+    updateProofTextRequirementVisibility();
     updateUnitPriceHint();
     updateSubmitButtonState();
   }
