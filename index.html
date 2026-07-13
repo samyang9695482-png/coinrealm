@@ -334,6 +334,17 @@
           <h3 class="task-detail-section-title" data-i18n="td_desc_title">任务描述</h3>
           <div id="td-task-description" class="task-detail-desc"></div>
         </div>
+        <div id="td-proof-upload-section" class="task-detail-section hidden">
+          <h3 class="task-detail-section-title" data-i18n="td_proof_title">提交凭证</h3>
+          <input type="file" id="td-proof-file-input" class="td-proof-file-input" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple hidden>
+          <div id="td-proof-upload-zone" class="td-proof-upload-zone" role="button" tabindex="0">
+            <span class="td-proof-upload-icon" aria-hidden="true">📷</span>
+            <span id="td-proof-upload-text" class="td-proof-upload-text" data-i18n="td_proof_upload_main">点击上传截图</span>
+            <span id="td-proof-upload-hint" class="td-proof-upload-hint" data-i18n="td_proof_upload_hint">支持 JPG、PNG、WebP，单张不超过 5MB，最多 3 张</span>
+          </div>
+          <div id="td-proof-preview-list" class="td-proof-preview-list"></div>
+          <button type="button" id="td-proof-submit-btn" class="td-proof-submit-btn" data-i18n="td_proof_submit">提交凭证</button>
+        </div>
         <div id="td-task-images-section" class="task-detail-section hidden">
           <h3 class="task-detail-section-title" data-i18n="td_images_title">任务图片</h3>
           <div id="td-task-images-grid" class="td-task-images-grid"></div>

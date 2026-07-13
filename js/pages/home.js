@@ -304,6 +304,49 @@ function sortTasks(tasks, sortValue) {
     return list;
 }
 
+function isHomeTaskOfficial(task) {
+    return !!task && !!task.is_official;
+}
+
+function isHomeTaskPromoted(task) {
+    if (!task || !task.is_promoted || !task.promotion_expire_at) return false;
+    var expire = new Date(task.promotion_expire_at);
+    if (Number.isNaN(expire.getTime())) return false;
+    return expire.getTime() > Date.now();
+}
+
+function partitionAndSortTasks(tasks, sortValue) {
+    var officialTasks = [];
+    var promotedTasks = [];
+    var incompleteTasks = [];
+    var completedTasks = [];
+
+    tasks.forEach(function (task) {
+        var taskId = getTaskField(task, ['id'], '');
+        var isCompleted = isHomeTaskCompleted(taskId);
+
+        if (isHomeTaskOfficial(task)) {
+            officialTasks.push(task);
+        } else if (isHomeTaskPromoted(task)) {
+            promotedTasks.push(task);
+        } else if (isCompleted) {
+            completedTasks.push(task);
+        } else {
+            incompleteTasks.push(task);
+        }
+    });
+
+    console.log('已完成任务下沉：', {
+        completedCount: completedTasks.length,
+        totalCount: tasks.length
+    });
+
+    return sortTasks(officialTasks, sortValue)
+        .concat(sortTasks(promotedTasks, sortValue))
+        .concat(sortTasks(incompleteTasks, sortValue))
+        .concat(sortTasks(completedTasks, sortValue));
+}
+
 function isHomeTaskCompleted(taskId) {
     return !!homeUserApprovedTaskIds[String(taskId)];
 }
@@ -340,25 +383,9 @@ function markHomeTaskCompleted(taskId) {
     homeUserApprovedTaskIds[String(taskId)] = true;
     console.log('首页：标记任务已完成', { taskId: taskId, homeUserApprovedTaskIds: homeUserApprovedTaskIds });
 
-    var taskGrid = document.getElementById('task-grid');
-    if (!taskGrid) return;
-
-    var cards = taskGrid.querySelectorAll('.task-card[data-task-id]');
-    cards.forEach(function (card) {
-        if (String(card.getAttribute('data-task-id')) !== String(taskId)) return;
-
-        var claimBtn = card.querySelector('.claim-btn');
-        if (!claimBtn) return;
-
-        var completedLabel = window.currentLang === 'en' ? 'Completed' : '已完成';
-        claimBtn.className = 'claim-btn claim-btn-done';
-        claimBtn.disabled = true;
-        claimBtn.removeAttribute('data-task-id');
-        claimBtn.style.background = '#e8e8e8';
-        claimBtn.style.color = '#999';
-        claimBtn.style.cursor = 'not-allowed';
-        claimBtn.textContent = completedLabel;
-    });
+    if (typeof applyFiltersAndSort === 'function') {
+        applyFiltersAndSort();
+    }
 }
 
 window.coinrealmMarkHomeTaskCompleted = markHomeTaskCompleted;
@@ -388,7 +415,7 @@ function buildTaskCardHtml(task) {
     const slotsTotal = escapeHtml(slotsTotalRaw);
     const daysLeft = calcDaysLeft(getTaskField(task, ['deadline', 'end_date', 'ends_at'], null));
     const isOfficial = !!task.is_official;
-    const isPromo = !!task.is_promo;
+    const isPromo = isHomeTaskPromoted(task);
     const isSimple = category === 'simple';
 
     let badgeHtml = '';
@@ -566,7 +593,7 @@ function applyFiltersAndSort() {
         });
     }
 
-    filtered = sortTasks(filtered, sortValue);
+    filtered = partitionAndSortTasks(filtered, sortValue);
 
     if (filtered.length === 0) {
         taskGrid.innerHTML = '';

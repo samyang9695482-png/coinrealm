@@ -35,6 +35,11 @@
   var verifySubmitting = false;
   var verifyPanelSuccess = false;
   var verifyPanelInitialized = false;
+  var proofUploadFiles = [];
+  var proofUploadInProgress = false;
+  var proofUploadInitialized = false;
+  var proofSubmitInProgress = false;
+  var MAX_PROOF_SCREENSHOT_FILES = 3;
   var SUBTASK_PROGRESS_PREFIX = 'coinrealm_subtask_done';
 
   var taskDetailTranslations = {
@@ -111,6 +116,16 @@
       td_btn_manage: '管理任务',
       td_btn_login: '请先登录',
       td_btn_waiting: '已提交，等待审核',
+      td_proof_title: '提交凭证',
+      td_proof_upload_main: '📷 点击上传截图',
+      td_proof_upload_hint: '支持 JPG、PNG、WebP，单张不超过 5MB，最多 3 张',
+      td_proof_submit: '提交凭证',
+      td_proof_submitted: '已提交',
+      td_proof_waiting: '已提交，等待审核',
+      td_proof_alert_max_files: '最多上传 3 张截图',
+      td_proof_alert_upload_fail: '上传失败：',
+      td_proof_alert_submit_fail: '提交失败：',
+      td_proof_alert_need_image: '请至少上传一张截图',
       td_btn_approved: '已通过',
       td_btn_rejected: '重新提交',
       td_btn_level: '等级不足（需Lv.1以上）',
@@ -235,6 +250,16 @@
       td_btn_manage: 'Manage Task',
       td_btn_login: 'Please sign in first',
       td_btn_waiting: 'Submitted, pending review',
+      td_proof_title: 'Submit Proof',
+      td_proof_upload_main: '📷 Click to upload screenshots',
+      td_proof_upload_hint: 'JPG, PNG, WebP supported, max 5MB each, up to 3 files',
+      td_proof_submit: 'Submit Proof',
+      td_proof_submitted: 'Submitted',
+      td_proof_waiting: 'Submitted, pending review',
+      td_proof_alert_max_files: 'Maximum 3 screenshots allowed',
+      td_proof_alert_upload_fail: 'Upload failed: ',
+      td_proof_alert_submit_fail: 'Submit failed: ',
+      td_proof_alert_need_image: 'Please upload at least one screenshot',
       td_btn_approved: 'Approved',
       td_btn_rejected: 'Resubmit',
       td_btn_level: 'Level Too Low (Lv.1+ required)',
@@ -2157,6 +2182,7 @@
     verifyPanelSuccess = false;
     activeSubtaskKey = null;
     activeSubtaskIndex = null;
+    resetProofUploadFiles();
 
     if (currentTaskRecord.publisher_id) {
       var publisherResult = await window.supabase
@@ -2437,6 +2463,18 @@
     }).join('');
   }
 
+  function openTaskDetailImageLightbox(url) {
+    var lightbox = document.getElementById('td-image-lightbox');
+    var lightboxImg = document.getElementById('td-image-lightbox-img');
+    if (!lightbox || !lightboxImg || !url) return;
+    lightboxImg.src = url;
+    lightboxImg.onerror = function () {
+      handleTaskImageError(lightboxImg);
+    };
+    lightbox.classList.remove('hidden');
+    lightbox.setAttribute('aria-hidden', 'false');
+  }
+
   function initTaskDetailImageLightbox() {
     if (taskDetailImageLightboxInitialized) return;
     taskDetailImageLightboxInitialized = true;
@@ -2477,6 +2515,321 @@
       pinStatus.textContent = tdT('td_pin_not_pinned');
     } else {
       pinCard.classList.add('hidden');
+    }
+  }
+
+  function shouldShowProofUploadSection() {
+    if (!currentTaskRecord || isSimpleTaskRecord(currentTaskRecord)) return false;
+    return detailActionState === 'go_submit' ||
+      detailActionState === 'rejected_resubmit' ||
+      detailActionState === 'waiting_review';
+  }
+
+  function resetProofUploadFiles() {
+    proofUploadFiles.forEach(function (item) {
+      if (item.localPreview) {
+        try { URL.revokeObjectURL(item.localPreview); } catch (e) { /* ignore */ }
+      }
+    });
+    proofUploadFiles = [];
+    renderProofPreviewList();
+  }
+
+  function renderProofPreviewList() {
+    var listEl = document.getElementById('td-proof-preview-list');
+    if (!listEl) return;
+
+    listEl.innerHTML = proofUploadFiles.map(function (item) {
+      var thumbSrc = item.url || item.localPreview || '';
+      var progressHtml = item.uploading
+        ? '<div class="td-proof-progress-wrap">' +
+            '<div class="td-proof-progress-track"><div class="td-proof-progress-fill" style="width:' + (item.progress || 0) + '%"></div></div>' +
+            '<div class="td-proof-progress-text">' + (item.progress || 0) + '%</div>' +
+          '</div>'
+        : '';
+
+      return (
+        '<div class="td-proof-preview-item" data-id="' + escapeHtml(item.id) + '">' +
+          (thumbSrc
+            ? '<img class="td-proof-preview-thumb" src="' + escapeHtml(thumbSrc) + '" alt="screenshot" data-preview-url="' + escapeHtml(thumbSrc) + '">'
+            : '<div class="td-proof-preview-thumb"></div>') +
+          (!item.uploading && item.url
+            ? '<button type="button" class="td-proof-preview-delete" data-id="' + escapeHtml(item.id) + '" aria-label="Delete">&times;</button>'
+            : '') +
+          progressHtml +
+        '</div>'
+      );
+    }).join('');
+
+    listEl.querySelectorAll('.td-proof-preview-delete').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var fileId = btn.getAttribute('data-id');
+        proofUploadFiles = proofUploadFiles.filter(function (item) {
+          if (String(item.id) === String(fileId) && item.localPreview) {
+            try { URL.revokeObjectURL(item.localPreview); } catch (err) { /* ignore */ }
+          }
+          return String(item.id) !== String(fileId);
+        });
+        renderProofPreviewList();
+      });
+    });
+
+    listEl.querySelectorAll('.td-proof-preview-thumb[data-preview-url]').forEach(function (img) {
+      img.addEventListener('click', function () {
+        openTaskDetailImageLightbox(img.getAttribute('data-preview-url'));
+      });
+    });
+  }
+
+  async function handleProofFilesSelected(fileList) {
+    if (proofUploadInProgress || proofSubmitInProgress) return;
+
+    var files = Array.from(fileList || []);
+    if (!files.length) return;
+
+    var remaining = MAX_PROOF_SCREENSHOT_FILES - proofUploadFiles.filter(function (item) {
+      return item.url || item.uploading;
+    }).length;
+
+    if (remaining <= 0) {
+      alert(tdT('td_proof_alert_max_files'));
+      return;
+    }
+
+    if (files.length > remaining) {
+      alert(tdT('td_proof_alert_max_files'));
+      files = files.slice(0, remaining);
+    }
+
+    var userId = await getAuthenticatedUserId();
+    if (!userId) {
+      alert(tdT('td_alert_login'));
+      return;
+    }
+
+    var uploadZone = document.getElementById('td-proof-upload-zone');
+    proofUploadInProgress = true;
+    if (uploadZone) uploadZone.classList.add('td-proof-uploading');
+
+    try {
+      for (var i = 0; i < files.length; i++) {
+        var file = files[i];
+        var validateFn = typeof window.coinrealmValidateProofScreenshotFile === 'function'
+          ? window.coinrealmValidateProofScreenshotFile
+          : null;
+        if (validateFn) {
+          var validationError = validateFn(file);
+          if (validationError) {
+            alert(validationError);
+            continue;
+          }
+        }
+
+        var itemId = 'proof_' + Date.now() + '_' + i;
+        var localPreview = URL.createObjectURL(file);
+        var uploadItem = {
+          id: itemId,
+          name: file.name,
+          url: '',
+          path: '',
+          localPreview: localPreview,
+          uploading: true,
+          progress: 0
+        };
+        proofUploadFiles.push(uploadItem);
+        renderProofPreviewList();
+
+        var uploadFn = typeof window.coinrealmUploadProofScreenshotWithProgress === 'function'
+          ? window.coinrealmUploadProofScreenshotWithProgress
+          : (typeof window.coinrealmUploadProofScreenshot === 'function'
+            ? window.coinrealmUploadProofScreenshot
+            : null);
+
+        if (!uploadFn) {
+          alert(tdT('td_proof_alert_upload_fail') + 'upload unavailable');
+          proofUploadFiles = proofUploadFiles.filter(function (item) { return String(item.id) !== String(itemId); });
+          renderProofPreviewList();
+          continue;
+        }
+
+        var uploadResult = await uploadFn(userId, file, function (progress) {
+          uploadItem.progress = progress;
+          renderProofPreviewList();
+        });
+
+        if (!uploadResult || !uploadResult.ok) {
+          alert(tdT('td_proof_alert_upload_fail') + ((uploadResult && uploadResult.error) || 'unknown'));
+          proofUploadFiles = proofUploadFiles.filter(function (item) { return String(item.id) !== String(itemId); });
+          renderProofPreviewList();
+          continue;
+        }
+
+        uploadItem.url = uploadResult.publicUrl;
+        uploadItem.path = uploadResult.path;
+        uploadItem.uploading = false;
+        uploadItem.progress = 100;
+        renderProofPreviewList();
+      }
+    } finally {
+      proofUploadInProgress = false;
+      if (uploadZone) uploadZone.classList.remove('td-proof-uploading');
+    }
+  }
+
+  function updateProofUploadSectionUI() {
+    var section = document.getElementById('td-proof-upload-section');
+    var uploadZone = document.getElementById('td-proof-upload-zone');
+    var submitBtn = document.getElementById('td-proof-submit-btn');
+    if (!section) return;
+
+    if (!shouldShowProofUploadSection()) {
+      section.classList.add('hidden');
+      return;
+    }
+
+    section.classList.remove('hidden');
+
+    var isWaiting = detailActionState === 'waiting_review';
+    var isRejected = detailActionState === 'rejected_resubmit';
+
+    if (uploadZone) {
+      uploadZone.classList.toggle('hidden', isWaiting);
+    }
+
+    if (submitBtn) {
+      if (isWaiting) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = tdT('td_proof_waiting');
+      } else if (isRejected) {
+        submitBtn.disabled = proofSubmitInProgress;
+        submitBtn.textContent = tdT('td_proof_submit');
+      } else {
+        submitBtn.disabled = proofSubmitInProgress;
+        submitBtn.textContent = tdT('td_proof_submit');
+      }
+    }
+  }
+
+  async function submitProofFromDetailPage() {
+    if (proofSubmitInProgress || proofUploadInProgress) return;
+    if (!currentTaskRecord || !currentSubmissionRecord) return;
+
+    if (detailActionState === 'waiting_review') return;
+
+    var uploadedUrls = proofUploadFiles
+      .filter(function (item) { return item.url && !item.uploading; })
+      .map(function (item) { return item.url; });
+
+    if (!uploadedUrls.length) {
+      alert(tdT('td_proof_alert_need_image'));
+      return;
+    }
+
+    var userId = await getAuthenticatedUserId();
+    if (!userId) {
+      alert(tdT('td_alert_login'));
+      return;
+    }
+
+    if (typeof window.coinrealmSubmitTaskProof !== 'function') {
+      alert(tdT('td_proof_alert_submit_fail') + 'submit unavailable');
+      return;
+    }
+
+    proofSubmitInProgress = true;
+    var submitBtn = document.getElementById('td-proof-submit-btn');
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+      var result = await window.coinrealmSubmitTaskProof({
+        taskId: currentTaskRecord.id,
+        userId: userId,
+        description: '',
+        screenshotUrls: uploadedUrls,
+        submission: currentSubmissionRecord,
+        taskTitle: currentTaskRecord.title || '',
+        taskReward: currentTaskRecord.reward_amount || 0,
+        requireDescription: false,
+        path: 'task-detail-proof-submit'
+      });
+
+      if (!result.ok) {
+        if (result.error === 'already_submitted' || result.error === 'waiting_review') {
+          currentSubmissionRecord = Object.assign({}, currentSubmissionRecord, {
+            status: 'submitted'
+          });
+          detailActionState = 'waiting_review';
+          updateBottomActionBar();
+          updateProofUploadSectionUI();
+          return;
+        }
+        if (result.error === 'already_rewarded' || result.error === 'already_approved') {
+          markTaskDetailCompleted(currentTaskRecord.id, userId);
+          return;
+        }
+        alert(tdT('td_proof_alert_submit_fail') + (result.error || 'unknown'));
+        return;
+      }
+
+      currentSubmissionRecord = result.submission;
+      resetProofUploadFiles();
+
+      if (result.submissionStatus === 'approved') {
+        markTaskDetailCompleted(currentTaskRecord.id, userId);
+      } else {
+        detailActionState = 'waiting_review';
+        updateBottomActionBar();
+        updateProofUploadSectionUI();
+      }
+    } finally {
+      proofSubmitInProgress = false;
+      updateProofUploadSectionUI();
+    }
+  }
+
+  function initProofUploadSection() {
+    if (proofUploadInitialized) return;
+    proofUploadInitialized = true;
+
+    var uploadZone = document.getElementById('td-proof-upload-zone');
+    var fileInput = document.getElementById('td-proof-file-input');
+    var submitBtn = document.getElementById('td-proof-submit-btn');
+
+    if (uploadZone && fileInput) {
+      uploadZone.addEventListener('click', function () {
+        if (detailActionState === 'waiting_review') return;
+        fileInput.click();
+      });
+      uploadZone.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          if (detailActionState !== 'waiting_review') fileInput.click();
+        }
+      });
+      uploadZone.addEventListener('dragover', function (e) {
+        e.preventDefault();
+        uploadZone.classList.add('td-proof-dragover');
+      });
+      uploadZone.addEventListener('dragleave', function () {
+        uploadZone.classList.remove('td-proof-dragover');
+      });
+      uploadZone.addEventListener('drop', function (e) {
+        e.preventDefault();
+        uploadZone.classList.remove('td-proof-dragover');
+        if (detailActionState === 'waiting_review') return;
+        handleProofFilesSelected(e.dataTransfer && e.dataTransfer.files);
+      });
+      fileInput.addEventListener('change', function () {
+        handleProofFilesSelected(fileInput.files);
+        fileInput.value = '';
+      });
+    }
+
+    if (submitBtn) {
+      submitBtn.addEventListener('click', function () {
+        submitProofFromDetailPage();
+      });
     }
   }
 
@@ -2607,11 +2960,7 @@
         });
         break;
       case 'go_submit':
-        configureActionButton(buttons.submit, {
-          styleClass: 'td-btn-blue',
-          text: tdT('td_btn_submit'),
-          disabled: false
-        });
+      case 'rejected_resubmit':
         break;
       case 'waiting_review':
         configureActionButton(buttons.ended, {
@@ -2650,6 +2999,8 @@
         });
         break;
     }
+
+    updateProofUploadSectionUI();
   }
 
   function initTaskDetailEvents() {
@@ -2668,7 +3019,10 @@
         } else if (detailActionState === 'can_claim') {
           performClaimTask();
         } else if (detailActionState === 'rejected_resubmit') {
-          navigateToSubmitPage();
+          var proofSection = document.getElementById('td-proof-upload-section');
+          if (proofSection) {
+            proofSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
         }
       });
     }
@@ -2696,9 +3050,14 @@
     var submitBtn = document.getElementById('td-btn-submit');
     if (submitBtn) {
       submitBtn.addEventListener('click', function () {
-        navigateToSubmitPage();
+        var proofSection = document.getElementById('td-proof-upload-section');
+        if (proofSection && shouldShowProofUploadSection()) {
+          proofSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
       });
     }
+
+    initProofUploadSection();
 
     var manageBtn = document.getElementById('td-btn-manage');
     if (manageBtn) {

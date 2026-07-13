@@ -711,169 +711,56 @@
             return;
           }
 
-          var lookupResult = { data: [targetSubmission] };
-
           var screenshotUrls = uploadedFiles.map(function (item) {
             return normalizeScreenshotPublicUrl(item.url || item.path);
           }).filter(function (url) {
             return !!url && isScreenshotPublicUrl(url);
           });
 
-          var taskRecord = null;
-          var taskType = '';
-          var isSimpleAuto = false;
-
-          if (window.supabase) {
-            var taskResult = await window.supabase
-              .from('tasks')
-              .select('id, title, type, task_type, category, platform, verification_type, reward_amount, reward_type, max_participants, current_participants')
-              .eq('id', activeSubmitContext.taskId)
-              .maybeSingle();
-
-            console.log('提交页：加载任务类型', taskResult);
-
-            if (!taskResult.error && taskResult.data) {
-              taskRecord = taskResult.data;
-              if (typeof window.coinrealmResolveSimpleTaskTypeKey === 'function') {
-                taskType = window.coinrealmResolveSimpleTaskTypeKey(taskRecord);
-              } else {
-                taskType = String(taskRecord.type || taskRecord.task_type || taskRecord.category || '').trim().toLowerCase();
-              }
-              if (typeof window.coinrealmIsSimpleAutoApprovalTask === 'function') {
-                isSimpleAuto = window.coinrealmIsSimpleAutoApprovalTask(taskRecord);
-              } else {
-                isSimpleAuto = taskType === 'simple' || taskType === 'twitter' || taskType === 'telegram' || taskType === 'discord';
-              }
-            }
-          }
-
-          var priorStatus = lookupResult.data[0].status;
-          var alreadyRewardedBeforeSubmit = typeof window.coinrealmCheckTaskRewardDuplicate === 'function'
-            ? (await window.coinrealmCheckTaskRewardDuplicate(activeSubmitContext.taskId, userId)).alreadyRewarded
-            : (typeof checkUserAlreadyRewardedForTask === 'function'
-              ? await checkUserAlreadyRewardedForTask(activeSubmitContext.taskId, userId)
-              : false);
-
-          if (alreadyRewardedBeforeSubmit) {
-            console.log('提交前防重复检查：发奖前检测到已完成', {
-              taskId: activeSubmitContext.taskId,
-              userId: userId
-            });
-            alert('您已完成该任务，无需重复提交');
-            submitState = 'completed';
-            updatePageStateUI();
+          if (typeof window.coinrealmSubmitTaskProof !== 'function') {
+            alert(stT('st_alert_submit_fail') + 'submit unavailable');
             return;
           }
 
-          if (isSimpleAuto && taskRecord && typeof window.coinrealmGrantSimpleTaskRewards === 'function') {
-            var preGrantResult = await window.coinrealmGrantSimpleTaskRewards(taskRecord, userId, {
-              priorStatus: priorStatus,
-              creditRewardClient: true,
-              path: 'submit-task-page-pre-grant'
-            });
-            if (preGrantResult && preGrantResult.alreadyRewarded) {
-              alert('您已完成该任务，无需重复提交');
+          var submitResult = await window.coinrealmSubmitTaskProof({
+            taskId: activeSubmitContext.taskId,
+            userId: userId,
+            description: desc,
+            screenshotUrls: screenshotUrls,
+            submission: targetSubmission,
+            taskTitle: activeSubmitContext.title || '',
+            taskReward: activeSubmitContext.reward || 0,
+            requireDescription: true,
+            path: 'submit-task-page'
+          });
+
+          if (!submitResult.ok) {
+            if (submitResult.error === 'description_required') {
+              alert(stT('st_alert_desc'));
+              return;
+            }
+            if (submitResult.error === 'already_rewarded' || submitResult.error === 'already_approved') {
+              alert(stT('st_alert_already_rewarded'));
               submitState = 'completed';
               updatePageStateUI();
               return;
             }
-            if (!preGrantResult) {
-              alert(stT('st_alert_submit_fail'));
+            if (submitResult.error === 'already_submitted' || submitResult.error === 'waiting_review') {
+              currentSubmissionRecord = targetSubmission;
+              submitState = 'waiting';
+              updatePageStateUI();
               return;
             }
-          }
-
-          var submissionStatus = isSimpleAuto ? 'approved' : 'submitted';
-          var submittedAt = new Date().toISOString();
-          var updatePayload = {
-            description: desc,
-            screenshot_urls: screenshotUrls,
-            status: submissionStatus,
-            submitted_at: submittedAt
-          };
-
-          if (isSimpleAuto) {
-            updatePayload.reviewed_at = submittedAt;
-          }
-
-          console.log((isSimpleAuto ? '简单任务提交，status：' : '普通任务提交，status：'), submissionStatus, {
-            taskId: activeSubmitContext.taskId,
-            userId: userId,
-            taskType: taskType,
-            submissionId: lookupResult.data[0].id,
-            priorStatus: priorStatus,
-            path: 'submit-task-page'
-          });
-
-          var updateQuery = window.supabase
-            .from('submissions')
-            .update(updatePayload)
-            .eq('id', lookupResult.data[0].id)
-            .eq('user_id', userId);
-
-          if (isSimpleAuto) {
-            updateQuery = updateQuery.neq('status', 'approved');
-          } else {
-            updateQuery = updateQuery.neq('status', 'approved').neq('status', 'submitted');
-          }
-
-          var updateResult = await updateQuery.select();
-
-          console.log('提交页：更新 submissions 结果', {
-            taskId: activeSubmitContext.taskId,
-            userId: userId,
-            submissionId: lookupResult.data[0].id,
-            targetStatus: submissionStatus,
-            updateResult: updateResult
-          });
-
-          if (updateResult.error) {
-            alert(stT('st_alert_submit_fail') + updateResult.error.message);
+            alert(stT('st_alert_submit_fail') + (submitResult.error || 'unknown'));
             return;
           }
 
-          if (!updateResult.data || !updateResult.data.length) {
-            console.log('提交页：更新失败，可能任务已完成', lookupResult.data[0]);
-            alert(stT('st_alert_already_rewarded'));
-            submitState = 'completed';
-            updatePageStateUI();
-            return;
-          }
-
-          currentSubmissionRecord = Object.assign({}, currentSubmissionRecord || {}, {
-            id: lookupResult.data[0].id,
-            status: submissionStatus,
-            submitted_at: submittedAt,
-            reviewed_at: isSimpleAuto ? submittedAt : null,
-            description: desc,
-            screenshot_urls: screenshotUrls
-          });
-
-          if (isSimpleAuto) {
-            submitState = 'completed';
-          } else {
-            submitState = 'waiting';
-            writeBroadcast({
-              user_id: userId,
-              event_type: 'task_submit',
-              description: '提交了任务「' + buildTaskBroadcastTitle(activeSubmitContext.title) + '」凭证',
-              reward_amount: Number(activeSubmitContext.reward) || 0
-            });
-          }
-
+          currentSubmissionRecord = submitResult.submission;
+          submitState = submitResult.isSimpleAuto ? 'completed' : 'waiting';
           uploadedFiles = [];
           renderFileList();
           updatePageStateUI();
           applySubmitTaskI18n();
-
-          if (typeof window.coinrealmNotifySubmissionStatusChanged === 'function') {
-            window.coinrealmNotifySubmissionStatusChanged({
-              taskId: activeSubmitContext.taskId,
-              userId: userId,
-              status: submissionStatus,
-              path: 'submit-task-page'
-            });
-          }
         } finally {
           if (submitBtn) {
             submitBtn.disabled = submitState === 'waiting';

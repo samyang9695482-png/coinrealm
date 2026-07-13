@@ -3333,6 +3333,217 @@ async function uploadProofScreenshot(userId, file) {
     return { ok: true, publicUrl: publicUrl, path: uploadedPath };
 }
 
+async function uploadProofScreenshotWithProgress(userId, file, onProgress) {
+    if (typeof onProgress === 'function') onProgress(0);
+
+    var progressValue = 8;
+    var progressTimer = null;
+    if (typeof onProgress === 'function') {
+        progressTimer = setInterval(function () {
+            progressValue = Math.min(progressValue + 7, 92);
+            onProgress(progressValue);
+        }, 180);
+    }
+
+    try {
+        var result = await uploadProofScreenshot(userId, file);
+        if (typeof onProgress === 'function') {
+            onProgress(result.ok ? 100 : progressValue);
+        }
+        return result;
+    } finally {
+        if (progressTimer) clearInterval(progressTimer);
+    }
+}
+
+function isSubmissionReadyToSubmitProof(submission) {
+    if (!submission) return false;
+    if (submission.status === 'claimed') return true;
+    if (submission.status === 'pending' && !submission.submitted_at) return true;
+    if (submission.status === 'rejected') return true;
+    return false;
+}
+
+function isSubmissionWaitingReviewProof(submission) {
+    if (!submission) return false;
+    if (submission.status === 'submitted') return true;
+    if (submission.status === 'approved') return true;
+    if (submission.status === 'pending' && submission.submitted_at) return true;
+    return false;
+}
+
+async function submitTaskProofSubmission(options) {
+    options = options || {};
+
+    var taskId = options.taskId;
+    var userId = options.userId;
+    var description = options.description != null ? String(options.description).trim() : '';
+    var screenshotUrls = options.screenshotUrls || [];
+    var submission = options.submission;
+    var taskTitle = options.taskTitle || '';
+    var taskReward = options.taskReward != null ? Number(options.taskReward) : 0;
+    var requireDescription = options.requireDescription !== false;
+    var path = options.path || 'submit-task-proof';
+
+    if (!window.supabase || !taskId || !userId || !submission || !submission.id) {
+        return { ok: false, error: 'missing_params' };
+    }
+
+    if (requireDescription && !description) {
+        return { ok: false, error: 'description_required' };
+    }
+
+    if (!description) {
+        description = '（详情页提交凭证）';
+    }
+
+    if (submission.status === 'approved') {
+        return { ok: false, error: 'already_approved' };
+    }
+
+    if (submission.status === 'submitted') {
+        return { ok: false, error: 'already_submitted', submissionStatus: 'submitted' };
+    }
+
+    if (!isSubmissionReadyToSubmitProof(submission)) {
+        if (isSubmissionWaitingReviewProof(submission)) {
+            return { ok: false, error: 'waiting_review', submissionStatus: submission.status };
+        }
+        return { ok: false, error: 'not_ready' };
+    }
+
+    var alreadyRewardedBeforeSubmit = typeof checkTaskRewardDuplicate === 'function'
+        ? (await checkTaskRewardDuplicate(taskId, userId)).alreadyRewarded
+        : (typeof checkUserAlreadyRewardedForTask === 'function'
+            ? await checkUserAlreadyRewardedForTask(taskId, userId)
+            : false);
+
+    if (alreadyRewardedBeforeSubmit) {
+        return { ok: false, error: 'already_rewarded' };
+    }
+
+    var taskRecord = options.taskRecord || null;
+    var taskType = '';
+    var isSimpleAuto = false;
+
+    if (!taskRecord && window.supabase) {
+        var taskResult = await window.supabase
+            .from('tasks')
+            .select('id, title, type, task_type, category, platform, verification_type, reward_amount, reward_type, max_participants, current_participants')
+            .eq('id', taskId)
+            .maybeSingle();
+
+        if (!taskResult.error && taskResult.data) {
+            taskRecord = taskResult.data;
+        }
+    }
+
+    if (taskRecord) {
+        if (typeof resolveSimpleTaskTypeKey === 'function') {
+            taskType = resolveSimpleTaskTypeKey(taskRecord);
+        } else {
+            taskType = String(taskRecord.type || taskRecord.task_type || taskRecord.category || '').trim().toLowerCase();
+        }
+        if (typeof isSimpleAutoApprovalTask === 'function') {
+            isSimpleAuto = isSimpleAutoApprovalTask(taskRecord);
+        } else {
+            isSimpleAuto = taskType === 'simple' || taskType === 'twitter' || taskType === 'telegram' || taskType === 'discord';
+        }
+    }
+
+    var priorStatus = submission.status;
+
+    if (isSimpleAuto && taskRecord && typeof grantSimpleTaskRewards === 'function') {
+        var preGrantResult = await grantSimpleTaskRewards(taskRecord, userId, {
+            priorStatus: priorStatus,
+            creditRewardClient: true,
+            path: path + '-pre-grant'
+        });
+        if (preGrantResult && preGrantResult.alreadyRewarded) {
+            return { ok: false, error: 'already_rewarded' };
+        }
+        if (!preGrantResult) {
+            return { ok: false, error: 'grant_failed' };
+        }
+    }
+
+    var submissionStatus = isSimpleAuto ? 'approved' : 'submitted';
+    var submittedAt = new Date().toISOString();
+    var updatePayload = {
+        description: description,
+        screenshot_urls: screenshotUrls,
+        status: submissionStatus,
+        submitted_at: submittedAt
+    };
+
+    if (isSimpleAuto) {
+        updatePayload.reviewed_at = submittedAt;
+    }
+
+    var updateQuery = window.supabase
+        .from('submissions')
+        .update(updatePayload)
+        .eq('id', submission.id)
+        .eq('user_id', userId);
+
+    if (isSimpleAuto) {
+        updateQuery = updateQuery.neq('status', 'approved');
+    } else {
+        updateQuery = updateQuery.neq('status', 'approved').neq('status', 'submitted');
+    }
+
+    var updateResult = await updateQuery.select();
+
+    if (updateResult.error) {
+        return { ok: false, error: updateResult.error.message };
+    }
+
+    if (!updateResult.data || !updateResult.data.length) {
+        return { ok: false, error: 'already_rewarded' };
+    }
+
+    var updatedSubmission = Object.assign({}, submission, updateResult.data[0], {
+        status: submissionStatus,
+        submitted_at: submittedAt,
+        reviewed_at: isSimpleAuto ? submittedAt : null,
+        description: description,
+        screenshot_urls: screenshotUrls
+    });
+
+    if (!isSimpleAuto) {
+        writeBroadcast({
+            user_id: userId,
+            event_type: 'task_submit',
+            description: '提交了任务「' + buildTaskBroadcastTitle(taskTitle || (taskRecord && taskRecord.title) || '任务') + '」凭证',
+            reward_amount: taskReward || Number((taskRecord && taskRecord.reward_amount) || 0)
+        });
+    }
+
+    if (typeof notifySubmissionStatusChanged === 'function') {
+        notifySubmissionStatusChanged({
+            taskId: taskId,
+            userId: userId,
+            status: submissionStatus,
+            path: path,
+            submissionId: submission.id
+        });
+    }
+
+    return {
+        ok: true,
+        submissionStatus: submissionStatus,
+        submission: updatedSubmission,
+        isSimpleAuto: isSimpleAuto
+    };
+}
+
+window.coinrealmValidateProofScreenshotFile = validateProofScreenshotFile;
+window.coinrealmUploadProofScreenshot = uploadProofScreenshot;
+window.coinrealmUploadProofScreenshotWithProgress = uploadProofScreenshotWithProgress;
+window.coinrealmSubmitTaskProof = submitTaskProofSubmission;
+window.coinrealmIsSubmissionReadyToSubmitProof = isSubmissionReadyToSubmitProof;
+window.coinrealmIsSubmissionWaitingReviewProof = isSubmissionWaitingReviewProof;
+
 function compareTaskTargetUsername(inputValue, targetValue) {
     var inputNorm = normalizeTwitterUsername(inputValue).toLowerCase();
     var targetNorm = normalizeTwitterUsername(targetValue).toLowerCase();
