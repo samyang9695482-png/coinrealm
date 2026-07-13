@@ -188,17 +188,16 @@
     return wallet.slice(0, 10) + '...';
   }
 
-  function getSubmissionDisplayName(users) {
-    var userRecord = normalizeSubmissionUserRecord(users);
-    if (!userRecord) return getUnknownUserLabel();
+  function getSubmissionDisplayName(submission) {
+    submission = submission || {};
+    var userRecord = normalizeSubmissionUserRecord(submission.users);
 
-    if (userRecord.username != null && String(userRecord.username).trim()) {
+    if (userRecord && userRecord.username != null && String(userRecord.username).trim()) {
       return String(userRecord.username).trim();
     }
 
-    var fromWallet = formatWalletUsername(userRecord.wallet_address);
-    if (fromWallet) {
-      return fromWallet;
+    if (submission.user_id) {
+      return String(submission.user_id).substring(0, 8) + '...';
     }
 
     return getUnknownUserLabel();
@@ -244,7 +243,7 @@
     var actionsHtml = '';
     var summaryHtml = '';
     var statusLabel = getStatusLabel(submission);
-    var displayName = submission.username || getSubmissionDisplayName(submission.users);
+    var displayName = getSubmissionDisplayName(submission);
     var screenshotHtml = renderScreenshotBlock(submission);
 
     console.log('提交列表-用户名数据：', {
@@ -424,7 +423,7 @@
   function mapSubmissionWithUsername(submission) {
     var userRecord = normalizeSubmissionUserRecord(submission.users);
     var userId = submission.user_id;
-    var username = getSubmissionDisplayName(submission.users);
+    var username = getSubmissionDisplayName(submission);
 
     var mapped = Object.assign({}, submission);
     mapped.username = username;
