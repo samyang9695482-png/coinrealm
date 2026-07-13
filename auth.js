@@ -607,10 +607,15 @@
   }
 
   // 构建下拉菜单 HTML
-  function buildDropdownMenuHtml(includeAdmin, showLeaderboard) {
+  function buildDropdownMenuHtml(includeAdmin, showLeaderboard, showExchange, showDividends) {
     if (showLeaderboard === undefined) showLeaderboard = true;
+    if (showExchange === undefined) showExchange = false;
+    if (showDividends === undefined) showDividends = false;
     var routes = menuRoutes.filter(function (route) {
-      return !(route.hash === 'leaderboard' && !showLeaderboard);
+      if (route.hash === 'leaderboard' && !showLeaderboard) return false;
+      if (route.hash === 'exchange' && !showExchange) return false;
+      if (route.hash === 'dividends' && !showDividends) return false;
+      return true;
     });
     if (includeAdmin) {
       routes.push({ key: 'menuAdmin', hash: 'admin' });
@@ -1002,7 +1007,7 @@
     if (isLoggedIn()) {
       var display = getDisplayInfo();
 
-      function renderLoggedInMenu(includeAdmin, showLeaderboard) {
+      function renderLoggedInMenu(includeAdmin, showLeaderboard, showExchange, showDividends) {
         area.innerHTML =
           '<div class="auth-user-wrap">' +
             '<div class="auth-user-trigger">' +
@@ -1010,7 +1015,12 @@
               '<span class="auth-user-name" title="' + display.title + '">' + display.name + '</span>' +
               '<span class="auth-dropdown-arrow" aria-hidden="true">▼</span>' +
             '</div>' +
-            '<div class="auth-dropdown">' + buildDropdownMenuHtml(!!includeAdmin, showLeaderboard !== false) + '</div>' +
+            '<div class="auth-dropdown">' + buildDropdownMenuHtml(
+              !!includeAdmin,
+              showLeaderboard !== false,
+              !!showExchange,
+              !!showDividends
+            ) + '</div>' +
           '</div>';
         bindDropdownEvents();
       }
@@ -1021,11 +1031,17 @@
       var leaderboardPromise = typeof window.coinrealmIsInviteLeaderboardEnabled === 'function'
         ? window.coinrealmIsInviteLeaderboardEnabled()
         : Promise.resolve(true);
+      var exchangePromise = typeof window.coinrealmIsExchangeEnabled === 'function'
+        ? window.coinrealmIsExchangeEnabled()
+        : Promise.resolve(false);
+      var dividendsPromise = typeof window.coinrealmIsDividendsEnabled === 'function'
+        ? window.coinrealmIsDividendsEnabled()
+        : Promise.resolve(false);
 
-      Promise.all([adminPromise, leaderboardPromise]).then(function (results) {
-        renderLoggedInMenu(results[0], results[1]);
+      Promise.all([adminPromise, leaderboardPromise, exchangePromise, dividendsPromise]).then(function (results) {
+        renderLoggedInMenu(results[0], results[1], results[2], results[3]);
       }).catch(function () {
-        renderLoggedInMenu(false, true);
+        renderLoggedInMenu(false, true, false, false);
       });
       return;
     }

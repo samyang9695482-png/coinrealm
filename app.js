@@ -449,6 +449,138 @@ window.coinrealmIsInviteLeaderboardEnabled = function () {
 window.coinrealmApplyLeaderboardMenuVisibility = applyLeaderboardMenuVisibility;
 window.coinrealmInvalidateShowInviteLeaderboardCache = invalidateShowInviteLeaderboardCache;
 
+var SHOW_EXCHANGE_DEFAULT = 'false';
+var SHOW_DIVIDENDS_DEFAULT = 'false';
+var cachedShowExchange = null;
+var cachedShowDividends = null;
+var featurePageOriginalHtml = {};
+
+function isSettingsFlagEnabled(value, defaultValue) {
+  return String(value == null ? defaultValue : value).toLowerCase() === 'true';
+}
+
+function isExchangeEnabled(value) {
+  return isSettingsFlagEnabled(value, SHOW_EXCHANGE_DEFAULT);
+}
+
+function isDividendsEnabled(value) {
+  return isSettingsFlagEnabled(value, SHOW_DIVIDENDS_DEFAULT);
+}
+
+async function fetchShowExchange() {
+  if (cachedShowExchange !== null) {
+    return cachedShowExchange;
+  }
+
+  var value = SHOW_EXCHANGE_DEFAULT;
+  if (!window.supabase) {
+    cachedShowExchange = value;
+    return value;
+  }
+
+  try {
+    var result = await window.supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'show_exchange')
+      .maybeSingle();
+
+    if (!result.error && result.data && result.data.value != null && result.data.value !== '') {
+      value = String(result.data.value);
+    }
+  } catch (settingsErr) {
+    console.warn('读取兑换市场开关失败:', settingsErr);
+  }
+
+  cachedShowExchange = value;
+  return value;
+}
+
+async function fetchShowDividends() {
+  if (cachedShowDividends !== null) {
+    return cachedShowDividends;
+  }
+
+  var value = SHOW_DIVIDENDS_DEFAULT;
+  if (!window.supabase) {
+    cachedShowDividends = value;
+    return value;
+  }
+
+  try {
+    var result = await window.supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'show_dividends')
+      .maybeSingle();
+
+    if (!result.error && result.data && result.data.value != null && result.data.value !== '') {
+      value = String(result.data.value);
+    }
+  } catch (settingsErr) {
+    console.warn('读取我的分红开关失败:', settingsErr);
+  }
+
+  cachedShowDividends = value;
+  return value;
+}
+
+function invalidateShowExchangeCache() {
+  cachedShowExchange = null;
+}
+
+function invalidateShowDividendsCache() {
+  cachedShowDividends = null;
+}
+
+function isFeatureUnavailablePage(pageEl) {
+  return !!(pageEl && pageEl.querySelector('.feature-unavailable-msg'));
+}
+
+function renderFeatureUnavailablePage(pageEl) {
+  if (!pageEl) return;
+  var pageId = pageEl.id;
+  if (!featurePageOriginalHtml[pageId]) {
+    featurePageOriginalHtml[pageId] = pageEl.innerHTML;
+  }
+  pageEl.innerHTML = '<div class="empty-state feature-unavailable-msg">该功能暂未开放，敬请期待</div>';
+  pageEl.classList.remove('hidden');
+}
+
+function restoreFeaturePageContent(pageEl) {
+  if (!pageEl) return;
+  var pageId = pageEl.id;
+  if (isFeatureUnavailablePage(pageEl) && featurePageOriginalHtml[pageId]) {
+    pageEl.innerHTML = featurePageOriginalHtml[pageId];
+  }
+}
+
+function clearFeaturePageOriginalHtmlCache() {
+  featurePageOriginalHtml = {};
+}
+
+async function applyExchangeDividendsMenuVisibility() {
+  if (typeof window.coinrealmApplyProfileExchangeDividendsVisibility === 'function') {
+    await window.coinrealmApplyProfileExchangeDividendsVisibility();
+  }
+}
+
+window.coinrealmFetchShowExchange = fetchShowExchange;
+window.coinrealmIsExchangeEnabled = function () {
+  return fetchShowExchange().then(isExchangeEnabled);
+};
+window.coinrealmFetchShowDividends = fetchShowDividends;
+window.coinrealmIsDividendsEnabled = function () {
+  return fetchShowDividends().then(isDividendsEnabled);
+};
+window.coinrealmRenderFeatureUnavailablePage = renderFeatureUnavailablePage;
+window.coinrealmRestoreFeaturePageContent = restoreFeaturePageContent;
+window.coinrealmIsFeatureUnavailablePage = isFeatureUnavailablePage;
+window.coinrealmClearFeaturePageOriginalHtmlCache = clearFeaturePageOriginalHtmlCache;
+window.coinrealmApplyExchangeDividendsMenuVisibility = applyExchangeDividendsMenuVisibility;
+window.coinrealmInvalidateShowExchangeCache = invalidateShowExchangeCache;
+window.coinrealmInvalidateShowDividendsCache = invalidateShowDividendsCache;
+
 var ADS_CONFIG_DEFAULTS = {
   interval: 5,
   ads: [
@@ -5869,6 +6001,10 @@ window.addEventListener('hashchange', function () {
     if (typeof applyLeaderboardMenuVisibility === 'function') {
       await applyLeaderboardMenuVisibility();
     }
+
+    if (typeof applyExchangeDividendsMenuVisibility === 'function') {
+      await applyExchangeDividendsMenuVisibility();
+    }
   }
 
   function renderAvatarPickerGrid() {
@@ -6037,6 +6173,9 @@ window.addEventListener('hashchange', function () {
         initProfileEvents();
         if (typeof applyLeaderboardMenuVisibility === 'function') {
           applyLeaderboardMenuVisibility();
+        }
+        if (typeof applyExchangeDividendsMenuVisibility === 'function') {
+          applyExchangeDividendsMenuVisibility();
         }
         renderProfilePage();
       } else {
@@ -7941,7 +8080,7 @@ window.addEventListener('hashchange', function () {
     }
   }
 
-  function handleExchangeRoute() {
+  async function handleExchangeRoute() {
     restoreAppContentIfNeeded();
 
     var route = window.location.hash.replace(/^#/, '') || 'home';
@@ -7949,6 +8088,23 @@ window.addEventListener('hashchange', function () {
 
     if (exchangePage) {
       if (route === 'exchange') {
+        var enabled = false;
+        if (typeof window.coinrealmIsExchangeEnabled === 'function') {
+          enabled = await window.coinrealmIsExchangeEnabled();
+        }
+
+        if (!enabled) {
+          if (typeof window.coinrealmRenderFeatureUnavailablePage === 'function') {
+            window.coinrealmRenderFeatureUnavailablePage(exchangePage);
+          } else {
+            exchangePage.classList.remove('hidden');
+          }
+          return;
+        }
+
+        if (typeof window.coinrealmRestoreFeaturePageContent === 'function') {
+          window.coinrealmRestoreFeaturePageContent(exchangePage);
+        }
         exchangePage.classList.remove('hidden');
         renderExchangePage();
       } else {
@@ -8644,6 +8800,7 @@ window.addEventListener('hashchange', function () {
       ad_tab_broadcasts: '广播管理',
       ad_tab_withdraw: '提币设置',
       ad_tab_invite: '邀请设置',
+      ad_tab_features: '功能开关',
       ad_tab_ads: '广告管理',
       ad_ads_title: '广告管理',
       ad_ads_interval: '轮播间隔（秒）',
@@ -8667,6 +8824,12 @@ window.addEventListener('hashchange', function () {
       ad_invite_save_ok: '邀请设置已保存',
       ad_invite_save_fail: '保存邀请设置失败：',
       ad_invite_invalid: '请输入有效的奖励金额',
+      ad_features_title: '功能开关',
+      ad_features_show_exchange: '开启兑换市场',
+      ad_features_show_dividends: '开启我的分红',
+      ad_btn_save_features: '保存',
+      ad_features_save_ok: '功能开关已保存',
+      ad_features_save_fail: '保存功能开关失败：',
       ad_dashboard_title: '数据看板',
       ad_tasks_title: '任务管理',
       ad_users_title: '用户管理',
@@ -8757,6 +8920,7 @@ window.addEventListener('hashchange', function () {
       ad_tab_broadcasts: 'Broadcasts',
       ad_tab_withdraw: 'Withdraw Settings',
       ad_tab_invite: 'Invite Settings',
+      ad_tab_features: 'Feature Toggles',
       ad_tab_ads: 'Ad Management',
       ad_ads_title: 'Ad Management',
       ad_ads_interval: 'Carousel interval (seconds)',
@@ -8780,6 +8944,12 @@ window.addEventListener('hashchange', function () {
       ad_invite_save_ok: 'Invite settings saved',
       ad_invite_save_fail: 'Failed to save invite settings: ',
       ad_invite_invalid: 'Please enter valid reward amounts',
+      ad_features_title: 'Feature Toggles',
+      ad_features_show_exchange: 'Enable Exchange Market',
+      ad_features_show_dividends: 'Enable My Dividends',
+      ad_btn_save_features: 'Save',
+      ad_features_save_ok: 'Feature toggles saved',
+      ad_features_save_fail: 'Failed to save feature toggles: ',
       ad_dashboard_title: 'Dashboard',
       ad_tasks_title: 'Task Management',
       ad_users_title: 'User Management',
@@ -9397,6 +9567,8 @@ window.addEventListener('hashchange', function () {
       await loadAdminWithdrawSettings();
     } else if (adminTab === 'invite') {
       await loadAdminInviteSettings();
+    } else if (adminTab === 'features') {
+      await loadAdminFeatureSettings();
     } else if (adminTab === 'ads') {
       await loadAdminAdsSettings();
     }
@@ -9524,6 +9696,103 @@ window.addEventListener('hashchange', function () {
     alert(adT('ad_invite_save_ok'));
   }
 
+  function ensureAdminFeaturesTab() {
+    if (document.getElementById('admin-panel-features')) return;
+
+    var tabsBar = document.querySelector('#admin-page .admin-tabs');
+    var adsTab = tabsBar && tabsBar.querySelector('[data-admin-tab="ads"]');
+    if (!tabsBar) return;
+
+    var tabBtn = document.createElement('button');
+    tabBtn.type = 'button';
+    tabBtn.className = 'admin-tab';
+    tabBtn.setAttribute('data-admin-tab', 'features');
+    tabBtn.setAttribute('data-i18n', 'ad_tab_features');
+    tabBtn.textContent = adT('ad_tab_features');
+    if (adsTab) {
+      tabsBar.insertBefore(tabBtn, adsTab);
+    } else {
+      tabsBar.appendChild(tabBtn);
+    }
+
+    var panel = document.createElement('section');
+    panel.id = 'admin-panel-features';
+    panel.className = 'admin-panel hidden';
+    panel.innerHTML =
+      '<h2 class="admin-section-title" data-i18n="ad_features_title">' + adT('ad_features_title') + '</h2>' +
+      '<form id="ad-features-form" class="admin-form admin-features-form">' +
+        '<label class="admin-ads-toggle">' +
+          '<input type="checkbox" id="ad-features-show-exchange" class="admin-ads-toggle-input">' +
+          '<span class="admin-ads-toggle-slider" aria-hidden="true"></span>' +
+          '<span class="admin-ads-toggle-text" data-i18n="ad_features_show_exchange">' + adT('ad_features_show_exchange') + '</span>' +
+        '</label>' +
+        '<label class="admin-ads-toggle">' +
+          '<input type="checkbox" id="ad-features-show-dividends" class="admin-ads-toggle-input">' +
+          '<span class="admin-ads-toggle-slider" aria-hidden="true"></span>' +
+          '<span class="admin-ads-toggle-text" data-i18n="ad_features_show_dividends">' + adT('ad_features_show_dividends') + '</span>' +
+        '</label>' +
+        '<button type="button" id="ad-features-save-btn" class="admin-primary-btn" data-i18n="ad_btn_save_features">' + adT('ad_btn_save_features') + '</button>' +
+      '</form>';
+
+    var adsPanel = document.getElementById('admin-panel-ads');
+    if (adsPanel && adsPanel.parentNode) {
+      adsPanel.parentNode.insertBefore(panel, adsPanel);
+    } else {
+      var adminContent = document.getElementById('admin-content');
+      if (adminContent) adminContent.appendChild(panel);
+    }
+  }
+
+  async function loadAdminFeatureSettings() {
+    ensureAdminFeaturesTab();
+    applyAdminI18n();
+
+    var showExchangeEl = document.getElementById('ad-features-show-exchange');
+    var showDividendsEl = document.getElementById('ad-features-show-dividends');
+    var showExchangeValue = await fetchShowExchange();
+    var showDividendsValue = await fetchShowDividends();
+
+    if (showExchangeEl) {
+      showExchangeEl.checked = isExchangeEnabled(showExchangeValue);
+    }
+    if (showDividendsEl) {
+      showDividendsEl.checked = isDividendsEnabled(showDividendsValue);
+    }
+  }
+
+  async function saveAdminFeatureSettings() {
+    if (!window.supabase) return;
+
+    var showExchangeEl = document.getElementById('ad-features-show-exchange');
+    var showDividendsEl = document.getElementById('ad-features-show-dividends');
+    var showExchange = !!(showExchangeEl && showExchangeEl.checked);
+    var showDividends = !!(showDividendsEl && showDividendsEl.checked);
+
+    var rows = [
+      { key: 'show_exchange', value: showExchange ? 'true' : 'false' },
+      { key: 'show_dividends', value: showDividends ? 'true' : 'false' }
+    ];
+
+    var result = await window.supabase
+      .from('settings')
+      .upsert(rows, { onConflict: 'key' });
+
+    if (result.error) {
+      alert(adT('ad_features_save_fail') + result.error.message);
+      return;
+    }
+
+    invalidateShowExchangeCache();
+    invalidateShowDividendsCache();
+    if (typeof applyExchangeDividendsMenuVisibility === 'function') {
+      applyExchangeDividendsMenuVisibility();
+    }
+    if (typeof window.coinrealmRefreshAuthArea === 'function') {
+      window.coinrealmRefreshAuthArea();
+    }
+    alert(adT('ad_features_save_ok'));
+  }
+
   async function loadAdminAdsSettings() {
     var config = await fetchAdsConfig();
     var intervalEl = document.getElementById('ad-ads-interval');
@@ -9596,6 +9865,7 @@ window.addEventListener('hashchange', function () {
     adminInitialized = true;
 
     ensureAdminInviteLeaderboardToggle();
+    ensureAdminFeaturesTab();
 
     document.querySelectorAll('#admin-page .admin-tab').forEach(function (btn) {
       btn.addEventListener('click', function () {
@@ -9686,6 +9956,11 @@ window.addEventListener('hashchange', function () {
     var inviteSaveBtn = document.getElementById('ad-invite-save-btn');
     if (inviteSaveBtn) {
       inviteSaveBtn.addEventListener('click', saveAdminInviteSettings);
+    }
+
+    var featuresSaveBtn = document.getElementById('ad-features-save-btn');
+    if (featuresSaveBtn) {
+      featuresSaveBtn.addEventListener('click', saveAdminFeatureSettings);
     }
 
     var adsSaveBtn = document.getElementById('ad-ads-save-btn');
@@ -10264,5 +10539,76 @@ window.addEventListener('hashchange', function () {
     langToggleBtn.addEventListener('click', function () {
       setTimeout(handleSimpleTasksRoute, 0);
     });
+  }
+})();
+
+// ==========================================
+// 我的分红页 (#dividends) — 功能开关保护
+// ==========================================
+(function () {
+  'use strict';
+
+  var APP_CONTENT_HTML = '';
+  var appContentEl = document.getElementById('app-content');
+  if (appContentEl) {
+    APP_CONTENT_HTML = appContentEl.innerHTML;
+  }
+
+  function restoreAppContentIfNeeded() {
+    if (!appContentEl || !APP_CONTENT_HTML) return;
+    if (!document.getElementById('home-page')) {
+      appContentEl.innerHTML = APP_CONTENT_HTML;
+      if (typeof window.coinrealmClearFeaturePageOriginalHtmlCache === 'function') {
+        window.coinrealmClearFeaturePageOriginalHtmlCache();
+      }
+    }
+  }
+
+  async function handleDividendsFeatureGate() {
+    restoreAppContentIfNeeded();
+
+    var route = window.location.hash.replace(/^#/, '') || 'home';
+    if (route !== 'dividends') return;
+
+    var dividendsPage = document.getElementById('dividends-page');
+    if (!dividendsPage) return;
+
+    var enabled = false;
+    if (typeof window.coinrealmIsDividendsEnabled === 'function') {
+      enabled = await window.coinrealmIsDividendsEnabled();
+    }
+
+    if (!enabled) {
+      if (typeof window.coinrealmRenderFeatureUnavailablePage === 'function') {
+        window.coinrealmRenderFeatureUnavailablePage(dividendsPage);
+      } else {
+        dividendsPage.classList.remove('hidden');
+      }
+      return;
+    }
+
+    if (typeof window.coinrealmIsFeatureUnavailablePage === 'function' &&
+        window.coinrealmIsFeatureUnavailablePage(dividendsPage)) {
+      if (typeof window.coinrealmRestoreFeaturePageContent === 'function') {
+        window.coinrealmRestoreFeaturePageContent(dividendsPage);
+      }
+      dividendsPage.classList.remove('hidden');
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    }
+  }
+
+  function scheduleDividendsFeatureGate() {
+    setTimeout(handleDividendsFeatureGate, 0);
+  }
+
+  window.addEventListener('hashchange', scheduleDividendsFeatureGate);
+
+  window.addEventListener('DOMContentLoaded', function () {
+    scheduleDividendsFeatureGate();
+  });
+
+  var langToggleBtn = document.getElementById('lang-toggle');
+  if (langToggleBtn) {
+    langToggleBtn.addEventListener('click', scheduleDividendsFeatureGate);
   }
 })();
