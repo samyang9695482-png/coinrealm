@@ -1,33 +1,25 @@
 /**
- * CoinRealm Mobile — 路由壳层 + PWA
- * 业务逻辑复用桌面版 app.js / auth.js / js/pages/*
+ * CoinRealm Mobile — 路由壳层 + PWA + 中英文切换
+ * 业务逻辑复用桌面版 app.js / auth.js / js/i18n.js / js/pages/*
  */
 (function () {
   'use strict';
 
   var TAB_ROUTES = ['home', 'my-tasks', 'create-task', 'invite', 'profile'];
 
-  var SUB_ROUTES = {
-    'task-detail': '任务详情',
-    'submit-task': '提交凭证',
-    review: '审核管理',
-    'publish-management': '发布管理',
-    publisher: '发布者',
-    leaderboard: '排行榜',
-    exchange: '兑换市场',
-    dividends: '我的分红',
-    admin: '管理后台',
-    'broadcast-history': '广播动态',
-    'simple-tasks': '简单任务'
-  };
-
-  var TAB_TITLES = {
-    home: '任务中心',
-    'my-tasks': '我的任务',
-    'create-task': '发布任务',
-    invite: '空投中心',
-    profile: '我的'
-  };
+  var SUB_ROUTES = [
+    'task-detail',
+    'submit-task',
+    'review',
+    'publish-management',
+    'publisher',
+    'leaderboard',
+    'exchange',
+    'dividends',
+    'admin',
+    'broadcast-history',
+    'simple-tasks'
+  ];
 
   var mobileInitialized = false;
 
@@ -44,6 +36,100 @@
     return !!(window.supabase && document.querySelector('#auth-area .auth-user-wrap'));
   }
 
+  function getPageTitle(route) {
+    if (!window.translations || !window.currentLang) return 'CoinRealm';
+    var pages = window.translations[window.currentLang].pages;
+    if (pages && pages[route] && pages[route].title) {
+      return pages[route].title;
+    }
+    if (route === 'home' && typeof window.t === 'function') return window.t('nav_home');
+    if (route === 'invite' && typeof window.t === 'function') return window.t('nav_airdrop');
+    return 'CoinRealm';
+  }
+
+  function applyMobilePageTabLabels() {
+    document.querySelectorAll('[data-mobile-page]').forEach(function (el) {
+      var route = el.getAttribute('data-mobile-page');
+      if (route) el.textContent = getPageTitle(route);
+    });
+  }
+
+  function applyMobileLoginSubtitle() {
+    var subtitle = document.getElementById('mobile-login-subtitle');
+    if (!subtitle) return;
+    subtitle.textContent = window.currentLang === 'en'
+      ? 'Web3 Tasks & Airdrop Platform'
+      : 'Web3 任务与空投平台';
+  }
+
+  function syncLoginButtonLabels() {
+    var googleHidden = document.getElementById('google-signin-btn');
+    var walletHidden = document.getElementById('connect-wallet-btn');
+    var googleMobile = document.getElementById('mobile-google-btn');
+    var walletMobile = document.getElementById('mobile-wallet-btn');
+
+    if (googleHidden && googleMobile) {
+      googleMobile.textContent = googleHidden.textContent;
+    }
+    if (walletMobile && typeof window.t === 'function') {
+      walletMobile.textContent = window.t('connectWallet');
+    } else if (walletHidden && walletMobile) {
+      walletMobile.textContent = walletHidden.textContent;
+    }
+  }
+
+  function applyMobileShellI18n() {
+    if (typeof applyLanguageStrings === 'function') {
+      applyLanguageStrings();
+    } else if (typeof window.t === 'function') {
+      document.querySelectorAll('#mobile-header [data-i18n], #mobile-tab-bar [data-i18n], #mobile-content-loading [data-i18n], #mobile-wallet-btn[data-i18n]').forEach(function (el) {
+        var key = el.getAttribute('data-i18n');
+        if (key) el.textContent = window.t(key);
+      });
+    }
+
+    applyMobilePageTabLabels();
+    applyMobileLoginSubtitle();
+    updateLangButton();
+    syncLoginButtonLabels();
+  }
+
+  function refreshCurrentPageContent() {
+    var route = getRouteBase();
+
+    if (route === 'home' && typeof applyFiltersAndSort === 'function') {
+      applyFiltersAndSort();
+      return;
+    }
+
+    if (typeof window.coinrealmApplyRoute === 'function') {
+      window.coinrealmApplyRoute(route);
+    }
+  }
+
+  function toggleMobileLanguage() {
+    var nextLang = window.currentLang === 'zh' ? 'en' : 'zh';
+
+    if (typeof window.switchLanguage === 'function') {
+      window.switchLanguage(nextLang);
+    } else {
+      window.setGlobalLanguage(nextLang);
+      if (typeof applyLanguageStrings === 'function') {
+        applyLanguageStrings();
+      }
+    }
+
+    applyMobileShellI18n();
+
+    if (typeof window.coinrealmRefreshAuthArea === 'function') {
+      window.coinrealmRefreshAuthArea();
+    }
+
+    syncLoginButtonLabels();
+    updateHeader(getRouteBase());
+    refreshCurrentPageContent();
+  }
+
   function syncLoginScreen() {
     var screen = document.getElementById('mobile-login-screen');
     if (!screen) return;
@@ -53,6 +139,7 @@
     } else {
       screen.classList.remove('hidden');
       screen.setAttribute('aria-hidden', 'false');
+      syncLoginButtonLabels();
     }
   }
 
@@ -94,7 +181,7 @@
 
     if (isTabRoute(route)) {
       body.classList.remove('sub-page');
-      titleEl.textContent = TAB_TITLES[route] || 'CoinRealm';
+      titleEl.textContent = getPageTitle(route);
       backBtn.classList.add('hidden');
       if (tabBar) tabBar.style.display = '';
       setActiveTab(route);
@@ -102,7 +189,7 @@
     }
 
     body.classList.add('sub-page');
-    titleEl.textContent = SUB_ROUTES[route] || 'CoinRealm';
+    titleEl.textContent = SUB_ROUTES.indexOf(route) >= 0 ? getPageTitle(route) : 'CoinRealm';
     backBtn.classList.remove('hidden');
     if (tabBar) tabBar.style.display = 'none';
   }
@@ -150,25 +237,14 @@
 
     var langBtn = document.getElementById('mobile-lang-btn');
     if (langBtn) {
-      langBtn.addEventListener('click', function () {
-        var desktopLang = document.getElementById('lang-toggle');
-        if (desktopLang) {
-          desktopLang.click();
-        } else {
-          var current = localStorage.getItem('coinrealm_lang') === 'en' ? 'en' : 'zh';
-          localStorage.setItem('coinrealm_lang', current === 'zh' ? 'en' : 'zh');
-          window.location.reload();
-        }
-        updateLangButton();
-      });
+      langBtn.addEventListener('click', toggleMobileLanguage);
     }
   }
 
   function updateLangButton() {
     var langBtn = document.getElementById('mobile-lang-btn');
-    if (!langBtn) return;
-    var lang = localStorage.getItem('coinrealm_lang') === 'en' ? 'en' : 'zh';
-    langBtn.textContent = lang === 'en' ? 'EN' : '中';
+    if (!langBtn || typeof window.t !== 'function') return;
+    langBtn.textContent = window.t('langToggle');
   }
 
   function handleRouteChange() {
@@ -191,6 +267,7 @@
     if (!authArea || typeof MutationObserver === 'undefined') return;
     var observer = new MutationObserver(function () {
       syncLoginScreen();
+      syncLoginButtonLabels();
     });
     observer.observe(authArea, { childList: true, subtree: true });
   }
@@ -208,9 +285,10 @@
     bindLoginButtons();
     bindTabBar();
     bindHeader();
-    updateLangButton();
     observeAuthChanges();
     registerServiceWorker();
+
+    applyMobileShellI18n();
 
     window.addEventListener('hashchange', handleRouteChange);
 
@@ -219,13 +297,14 @@
       window.coinrealmRefreshAuthArea = function () {
         origRefresh();
         syncLoginScreen();
+        syncLoginButtonLabels();
       };
     }
 
     handleRouteChange();
     syncLoginScreen();
 
-    console.log('[mobile] 手机版壳层已初始化');
+    console.log('[mobile] 手机版壳层已初始化，当前语言:', window.currentLang);
   }
 
   if (document.readyState === 'loading') {

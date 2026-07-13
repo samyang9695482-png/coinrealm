@@ -34,9 +34,9 @@
     <div class="mobile-login-inner">
       <div class="mobile-login-logo" aria-hidden="true">C</div>
       <h1 class="mobile-login-title">CoinRealm</h1>
-      <p class="mobile-login-subtitle">Web3 任务与空投平台</p>
+      <p class="mobile-login-subtitle" id="mobile-login-subtitle">Web3 任务与空投平台</p>
       <button type="button" id="mobile-google-btn" class="mobile-btn mobile-btn-outline">Google 登录</button>
-      <button type="button" id="mobile-wallet-btn" class="mobile-btn mobile-btn-primary">连接钱包</button>
+      <button type="button" id="mobile-wallet-btn" class="mobile-btn mobile-btn-primary" data-i18n="connectWallet">连接钱包</button>
       <p class="mobile-login-legal">
         登录即表示同意
         <a href="#" class="mobile-link">用户协议</a>
@@ -49,7 +49,7 @@
   <header id="mobile-header" class="mobile-header">
     <button type="button" id="mobile-back-btn" class="mobile-header-btn mobile-back-btn hidden" aria-label="返回">←</button>
     <h1 id="mobile-page-title" class="mobile-header-title">任务中心</h1>
-    <button type="button" id="mobile-lang-btn" class="mobile-header-btn mobile-lang-btn" aria-label="切换语言">中</button>
+    <button type="button" id="mobile-lang-btn" class="mobile-header-btn mobile-lang-btn" aria-label="切换语言" data-i18n="langToggle">EN</button>
   </header>
 
   <div id="auth-area" class="mobile-auth-hidden" aria-hidden="true"></div>
@@ -58,31 +58,31 @@
     <div id="app-content" class="app-content mobile-app-content">
       <div id="mobile-content-loading" class="mobile-content-loading">
         <div class="mobile-spinner"></div>
-        <p>加载中...</p>
+        <p data-i18n="loading">加载中...</p>
       </div>
     </div>
   </main>
 
   <nav id="mobile-tab-bar" class="mobile-tab-bar" aria-label="主导航">
-    <button type="button" class="mobile-tab active" data-route="home" data-title="任务中心">
+    <button type="button" class="mobile-tab active" data-route="home">
       <span class="mobile-tab-icon" aria-hidden="true">🏠</span>
-      <span class="mobile-tab-label">首页</span>
+      <span class="mobile-tab-label" data-i18n="nav_home">首页</span>
     </button>
-    <button type="button" class="mobile-tab" data-route="my-tasks" data-title="我的任务">
+    <button type="button" class="mobile-tab" data-route="my-tasks">
       <span class="mobile-tab-icon" aria-hidden="true">📋</span>
-      <span class="mobile-tab-label">任务</span>
+      <span class="mobile-tab-label" data-mobile-page="my-tasks">我的任务</span>
     </button>
-    <button type="button" class="mobile-tab mobile-tab-publish" data-route="create-task" data-title="发布任务">
+    <button type="button" class="mobile-tab mobile-tab-publish" data-route="create-task">
       <span class="mobile-tab-publish-btn" aria-hidden="true">➕</span>
-      <span class="mobile-tab-label">发布</span>
+      <span class="mobile-tab-label" data-mobile-page="create-task">发布任务</span>
     </button>
-    <button type="button" class="mobile-tab" data-route="invite" data-title="空投中心">
+    <button type="button" class="mobile-tab" data-route="invite">
       <span class="mobile-tab-icon" aria-hidden="true">🎁</span>
-      <span class="mobile-tab-label">空投</span>
+      <span class="mobile-tab-label" data-i18n="nav_airdrop">空投</span>
     </button>
-    <button type="button" class="mobile-tab" data-route="profile" data-title="我的">
+    <button type="button" class="mobile-tab" data-route="profile">
       <span class="mobile-tab-icon" aria-hidden="true">👤</span>
-      <span class="mobile-tab-label">我的</span>
+      <span class="mobile-tab-label" data-mobile-page="profile">个人中心</span>
     </button>
   </nav>
 
