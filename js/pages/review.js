@@ -39,7 +39,8 @@
       rv_alert_login: '请先登录',
       rv_alert_reject_reason: '请填写驳回理由',
       rv_alert_action_fail: '操作失败：',
-      rv_alert_already_rewarded: '该用户已领取过奖励'
+      rv_alert_already_rewarded: '该用户已领取过奖励',
+      rv_unknown_user: '未知用户'
     },
     en: {
       rv_page_title: 'Review Management',
@@ -63,7 +64,8 @@
       rv_alert_login: 'Please sign in first',
       rv_alert_reject_reason: 'Please enter a rejection reason',
       rv_alert_action_fail: 'Action failed: ',
-      rv_alert_already_rewarded: 'This user has already received the reward'
+      rv_alert_already_rewarded: 'This user has already received the reward',
+      rv_unknown_user: 'Unknown user'
     }
   };
 
@@ -176,32 +178,30 @@
     return rawUser;
   }
 
+  function getUnknownUserLabel() {
+    return rvT('rv_unknown_user');
+  }
+
+  function formatWalletUsername(walletAddress) {
+    var wallet = String(walletAddress || '').trim();
+    if (!wallet) return '';
+    return wallet.slice(0, 10) + '...';
+  }
+
   function getSubmissionDisplayName(users) {
     var userRecord = normalizeSubmissionUserRecord(users);
-    if (!userRecord) return 'Unknown';
+    if (!userRecord) return getUnknownUserLabel();
 
     if (userRecord.username != null && String(userRecord.username).trim()) {
       return String(userRecord.username).trim();
     }
 
-    if (userRecord.email) {
-      var fromEmail = displayNameFromEmail(userRecord.email);
-      if (fromEmail && fromEmail !== 'Unknown') {
-        return fromEmail;
-      }
+    var fromWallet = formatWalletUsername(userRecord.wallet_address);
+    if (fromWallet) {
+      return fromWallet;
     }
 
-    if (userRecord.wallet_address) {
-      var wallet = String(userRecord.wallet_address).trim();
-      if (wallet) {
-        if (typeof window.coinrealmUsernameFromWalletAddress === 'function') {
-          return window.coinrealmUsernameFromWalletAddress(wallet);
-        }
-        return 'Wallet_' + wallet.slice(0, 6);
-      }
-    }
-
-    return 'Unknown';
+    return getUnknownUserLabel();
   }
 
   function renderScreenshotBlock(submission) {
@@ -244,8 +244,14 @@
     var actionsHtml = '';
     var summaryHtml = '';
     var statusLabel = getStatusLabel(submission);
-    var displayName = getSubmissionDisplayName(submission.users);
+    var displayName = submission.username || getSubmissionDisplayName(submission.users);
     var screenshotHtml = renderScreenshotBlock(submission);
+
+    console.log('提交列表-用户名数据：', {
+      userId: submission.user_id,
+      username: displayName,
+      raw: submission
+    });
 
     if (submission.status === 'approved') {
       summaryHtml = '<span class="rv-status-approved">' + escapeHtml(statusLabel) + '</span>';
@@ -371,38 +377,46 @@
   }
 
   async function enrichSubmissionsWithUsers(submissions) {
-    if (!submissions.length || !window.supabase) {
-      return submissions.map(mapSubmissionWithUsername);
-    }
+    if (!submissions.length) return [];
 
-    var missingUserIds = submissions
-      .filter(function (item) {
-        return !normalizeSubmissionUserRecord(item.users) && item.user_id;
-      })
-      .map(function (item) { return item.user_id; });
-    var uniqueIds = missingUserIds.filter(function (id, index) {
-      return missingUserIds.indexOf(id) === index;
+    var userIds = submissions
+      .map(function (item) { return item.user_id; })
+      .filter(function (id) { return !!id; });
+    var uniqueIds = userIds.filter(function (id, index) {
+      return userIds.indexOf(id) === index;
     });
 
     var userMap = {};
-    if (uniqueIds.length) {
+    if (uniqueIds.length && window.supabase) {
       var usersResult = await window.supabase
         .from('users')
         .select('id, username, email, wallet_address')
         .in('id', uniqueIds);
 
+      console.log('提交列表-users单独查询：', JSON.stringify({
+        userIds: uniqueIds,
+        count: (usersResult.data || []).length,
+        error: usersResult.error ? usersResult.error.message : null
+      }));
+
       if (!usersResult.error && usersResult.data) {
         usersResult.data.forEach(function (user) {
-          userMap[user.id] = user;
+          userMap[String(user.id)] = user;
         });
       }
     }
 
     return submissions.map(function (item) {
       var mappedItem = Object.assign({}, item);
-      if (!normalizeSubmissionUserRecord(mappedItem.users) && userMap[mappedItem.user_id]) {
-        mappedItem.users = userMap[mappedItem.user_id];
+      var joinedUser = normalizeSubmissionUserRecord(mappedItem.users);
+      var fetchedUser = userMap[String(mappedItem.user_id)] || null;
+
+      if (fetchedUser) {
+        mappedItem.users = fetchedUser;
+      } else if (joinedUser) {
+        mappedItem.users = joinedUser;
       }
+
       return mapSubmissionWithUsername(mappedItem);
     });
   }
@@ -411,8 +425,6 @@
     var userRecord = normalizeSubmissionUserRecord(submission.users);
     var userId = submission.user_id;
     var username = getSubmissionDisplayName(submission.users);
-
-    console.log('提交列表-用户名：', { userId: userId, username: username });
 
     var mapped = Object.assign({}, submission);
     mapped.username = username;
@@ -542,10 +554,20 @@
 
     var submissionsResult = await window.supabase
       .from('submissions')
-      .select('id, task_id, user_id, status, description, screenshot_urls, submitted_at, users(username, email, wallet_address)')
+      .select('id, task_id, user_id, status, description, screenshot_urls, submitted_at, users!user_id(username, email, wallet_address)')
       .eq('task_id', taskId)
       .in('status', statusFilter)
       .order('submitted_at', { ascending: false });
+
+    if (submissionsResult.error) {
+      console.log('提交列表-关联查询失败，降级为无关联查询：', submissionsResult.error.message);
+      submissionsResult = await window.supabase
+        .from('submissions')
+        .select('id, task_id, user_id, status, description, screenshot_urls, submitted_at')
+        .eq('task_id', taskId)
+        .in('status', statusFilter)
+        .order('submitted_at', { ascending: false });
+    }
 
     console.log('提交列表查询结果：', JSON.stringify({
       taskId: taskId,
@@ -678,12 +700,6 @@
     await loadSubmissionsForSelectedTask();
   }
 
-  function displayNameFromEmail(email) {
-    if (!email) return 'Unknown';
-    var parts = String(email).split('@');
-    return parts[0] || 'Unknown';
-  }
-
   async function approveSubmission(submissionId) {
     if (!window.supabase || !submissionId) return false;
 
@@ -728,18 +744,19 @@
       return false;
     }
 
+    var approvedSubmission = null;
     currentSubmissions = currentSubmissions.map(function (item) {
       if (String(item.id) === String(submissionId)) {
-        return Object.assign({}, item, {
+        approvedSubmission = Object.assign({}, item, {
           status: 'approved',
           reviewed_at: reviewedAt
         });
+        return approvedSubmission;
       }
       return item;
     });
     renderSubmissionList();
-    console.log('审核通过-本地状态已更新');
-    await advanceReviewQueueAfterApproval();
+    console.log('审核通过-本地状态已更新，status：', approvedSubmission ? approvedSubmission.status : null);
 
     if (alreadyRewarded) {
       console.log('审核通过：状态已更新，该用户此前已领取奖励，跳过发奖', submissionId);
