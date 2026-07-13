@@ -16,6 +16,8 @@
   var uploadInProgress = false;
   var submitTaskInitialized = false;
   var MAX_SCREENSHOT_FILES = 3;
+  var ST_DESC_MIN_LEN = 1;
+  var ST_DESC_MAX_LEN = 2000;
   var MAX_SCREENSHOT_SIZE = 5 * 1024 * 1024;
   var ALLOWED_SCREENSHOT_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
   var SCREENSHOTS_BUCKET = 'screenshots';
@@ -40,6 +42,7 @@
       st_btn_back_home: '返回首页',
       st_reject_title: '驳回理由：',
       st_alert_desc: '请填写任务完成描述',
+      st_alert_desc_too_long: '任务完成描述不能超过 2000 个字符',
       st_alert_need_image: '请至少上传一张截图',
       st_alert_login: '请先登录',
       st_alert_max_files: '最多上传 3 张截图',
@@ -67,6 +70,7 @@
       st_btn_back_home: 'Back to Home',
       st_reject_title: 'Rejection reason:',
       st_alert_desc: 'Please fill in the task completion description',
+      st_alert_desc_too_long: 'Task completion description cannot exceed 2000 characters',
       st_alert_need_image: 'Please upload at least one screenshot',
       st_alert_login: 'Please sign in first',
       st_alert_max_files: 'Maximum 3 screenshots allowed',
@@ -95,6 +99,24 @@
   function getScreenshotExtension(filename) {
     var parts = String(filename || '').toLowerCase().split('.');
     return parts.length > 1 ? parts.pop() : '';
+  }
+
+  function validateSubmitProofInputs(proofType, desc, screenshotCount) {
+    if (proofType === 'text') {
+      var text = desc != null ? String(desc).trim() : '';
+      if (text.length < ST_DESC_MIN_LEN) {
+        return { ok: false, message: stT('st_alert_desc') };
+      }
+      if (text.length > ST_DESC_MAX_LEN) {
+        return { ok: false, message: stT('st_alert_desc_too_long') };
+      }
+    }
+
+    if (screenshotCount > MAX_SCREENSHOT_FILES) {
+      return { ok: false, message: stT('st_alert_max_files') };
+    }
+
+    return { ok: true };
   }
 
   function validateScreenshotFile(file) {
@@ -719,9 +741,9 @@
         var descEl = document.getElementById('st-description');
         var desc = descEl ? descEl.value.trim() : '';
         var proofType = (activeSubmitContext && activeSubmitContext.proofType) || 'screenshot';
-
-        if (proofType === 'text' && !desc) {
-          alert(stT('st_alert_desc'));
+        var proofValidation = validateSubmitProofInputs(proofType, desc, uploadedFiles.length);
+        if (!proofValidation.ok) {
+          alert(proofValidation.message);
           return;
         }
 

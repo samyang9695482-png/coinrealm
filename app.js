@@ -4802,6 +4802,8 @@ window.addEventListener('hashchange', function () {
       pf_withdraw_err_max: '单笔提币不能超过 {max} CRLM',
       pf_withdraw_err_balance: '提现金额不能超过当前余额',
       pf_withdraw_err_wallet: '请输入有效的钱包地址',
+      pf_withdraw_err_wallet_empty: '请输入接收钱包地址',
+      pf_withdraw_err_wallet_format: '钱包地址必须是 0x 开头加 40 位十六进制字符',
       pf_withdraw_err_worker: '提币服务暂不可用，请稍后再试',
       pf_withdraw_err_failed: '提币失败：',
       pf_balance_fetch_fail: '获取余额失败，请稍后重试',
@@ -4882,6 +4884,8 @@ window.addEventListener('hashchange', function () {
       pf_withdraw_err_max: 'Maximum per withdrawal is {max} CRLM',
       pf_withdraw_err_balance: 'Amount cannot exceed your current balance',
       pf_withdraw_err_wallet: 'Please enter a valid wallet address',
+      pf_withdraw_err_wallet_empty: 'Please enter a receiving wallet address',
+      pf_withdraw_err_wallet_format: 'Wallet address must start with 0x followed by 40 hexadecimal characters',
       pf_withdraw_err_worker: 'Withdrawal service is unavailable. Please try again later.',
       pf_withdraw_err_failed: 'Withdrawal failed: ',
       pf_balance_fetch_fail: 'Failed to load balance. Please try again later.',
@@ -5352,8 +5356,7 @@ window.addEventListener('hashchange', function () {
   }
 
   function isValidWithdrawWalletAddress(address) {
-    var value = String(address || '').trim();
-    return value.indexOf('0x') === 0 && value.length > 10;
+    return /^0x[a-fA-F0-9]{40}$/.test(String(address || '').trim());
   }
 
   function hideWithdrawModal() {
@@ -5527,8 +5530,12 @@ window.addEventListener('hashchange', function () {
       showWithdrawError(pfT('pf_withdraw_err_balance'));
       return;
     }
+    if (!walletAddress) {
+      showWithdrawError(pfT('pf_withdraw_err_wallet_empty'));
+      return;
+    }
     if (!isValidWithdrawWalletAddress(walletAddress)) {
-      showWithdrawError(pfT('pf_withdraw_err_wallet'));
+      showWithdrawError(pfT('pf_withdraw_err_wallet_format'));
       return;
     }
 

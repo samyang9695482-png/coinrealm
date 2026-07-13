@@ -13,6 +13,10 @@
   var userLevel = 0;
   var userBalance = 0;
   var ctUploadedImages = [];
+  var CT_TITLE_MAX_LEN = 200;
+  var CT_REWARD_MAX = 100000;
+  var CT_SLOTS_MIN = 1;
+  var CT_SLOTS_MAX = 10000;
   var ctImageUploadInProgress = false;
   var ctImageUploadSeq = 0;
   var CT_MAX_IMAGES = 3;
@@ -205,6 +209,12 @@
       ct_btn_level: '等级不足（需 Lv.2 以上）',
       ct_agreement: '点击发布即表示同意 CoinRealm 发布规则',
       ct_alert_required: '请填写所有必填字段',
+      ct_err_title_required: '任务标题不能为空',
+      ct_err_title_max: '任务标题不能超过 200 个字符',
+      ct_err_reward_positive: '奖励金额必须是大于 0 的数字',
+      ct_err_reward_max: '奖励金额不能超过 100000',
+      ct_err_slots_range: '任务名额必须是 1-10000 的整数',
+      ct_err_deadline_past: '截止时间不能早于当前时间',
       ct_alert_success: '任务发布成功！',
       ct_alert_login: '请先登录后再发布任务',
       ct_alert_fail: '发布失败：',
@@ -338,6 +348,12 @@
       ct_btn_level: 'Level too low (Lv.2+ required)',
       ct_agreement: 'By publishing, you agree to CoinRealm publishing rules',
       ct_alert_required: 'Please fill in all required fields',
+      ct_err_title_required: 'Task title is required',
+      ct_err_title_max: 'Task title cannot exceed 200 characters',
+      ct_err_reward_positive: 'Reward amount must be a number greater than 0',
+      ct_err_reward_max: 'Reward amount cannot exceed 100000',
+      ct_err_slots_range: 'Task slots must be an integer between 1 and 10000',
+      ct_err_deadline_past: 'Deadline cannot be earlier than the current time',
       ct_alert_success: 'Task published successfully!',
       ct_alert_login: 'Please log in before publishing a task',
       ct_alert_fail: 'Publish failed: ',
@@ -1377,11 +1393,75 @@
     ctImageUploadSeq = 0;
     renderCtImageList();
 
+    clearCreateTaskFieldErrors();
     updateStakeHint();
     updateUnitPriceHint();
     updateSubmitButtonState();
     updateCreateTaskTemplate();
     applyCreateTaskI18n();
+  }
+
+  function clearCreateTaskFieldErrors() {
+    document.querySelectorAll('#create-task-page .ct-input-error').forEach(function (el) {
+      el.remove();
+    });
+  }
+
+  function showCreateTaskFieldError(inputEl, message) {
+    if (!inputEl || !inputEl.parentNode) return;
+    var existing = inputEl.parentNode.querySelector('.ct-input-error');
+    if (existing) existing.remove();
+    var errEl = document.createElement('p');
+    errEl.className = 'ct-input-error';
+    errEl.style.cssText = 'color:#ff4d4f;font-size:12px;margin-top:4px;line-height:1.4;';
+    errEl.textContent = message;
+    inputEl.parentNode.appendChild(errEl);
+  }
+
+  function validateCreateTaskInputsWithErrors() {
+    clearCreateTaskFieldErrors();
+    var valid = true;
+    var titleEl = document.getElementById('ct-task-title');
+    var rewardEl = document.getElementById('ct-reward-amount');
+    var slotsEl = document.getElementById('ct-task-slots');
+    var deadlineEl = document.getElementById('ct-deadline');
+
+    var titleVal = titleEl ? titleEl.value.trim() : '';
+    if (!titleVal) {
+      showCreateTaskFieldError(titleEl, ctT('ct_err_title_required'));
+      valid = false;
+    } else if (titleVal.length > CT_TITLE_MAX_LEN) {
+      showCreateTaskFieldError(titleEl, ctT('ct_err_title_max'));
+      valid = false;
+    }
+
+    var rewardRaw = rewardEl ? rewardEl.value.trim() : '';
+    var rewardNum = parseFloat(rewardRaw);
+    if (!rewardRaw || !Number.isFinite(rewardNum) || rewardNum <= 0) {
+      showCreateTaskFieldError(rewardEl, ctT('ct_err_reward_positive'));
+      valid = false;
+    } else if (rewardNum > CT_REWARD_MAX) {
+      showCreateTaskFieldError(rewardEl, ctT('ct_err_reward_max'));
+      valid = false;
+    }
+
+    if (slotsEl && slotsEl.value.trim()) {
+      var slotsNum = parseInt(slotsEl.value.trim(), 10);
+      if (!Number.isInteger(slotsNum) || slotsNum < CT_SLOTS_MIN || slotsNum > CT_SLOTS_MAX) {
+        showCreateTaskFieldError(slotsEl, ctT('ct_err_slots_range'));
+        valid = false;
+      }
+    }
+
+    if (deadlineEl && deadlineEl.value) {
+      var deadlineAt = new Date(deadlineEl.value + 'T23:59:59');
+      if (!Number.isFinite(deadlineAt.getTime()) || deadlineAt.getTime() < Date.now()) {
+        showCreateTaskFieldError(deadlineEl, ctT('ct_err_deadline_past'));
+        valid = false;
+      }
+    }
+
+    return valid;
   }
 
   function validateSimplePlatformFieldsSilent() {
@@ -1396,15 +1476,29 @@
     var type = document.getElementById('ct-task-type');
     var desc = document.getElementById('ct-task-desc');
     var reward = document.getElementById('ct-reward-amount');
+    var slots = document.getElementById('ct-task-slots');
     var deadline = document.getElementById('ct-deadline');
     var reqInputs = document.querySelectorAll('#ct-requirements-list .create-task-req-input');
     var simple = isSimpleTaskTypeSelected();
 
-    if (!title || !title.value.trim()) return false;
+    var titleVal = title ? title.value.trim() : '';
+    if (!titleVal || titleVal.length > CT_TITLE_MAX_LEN) return false;
     if (!type || !type.value || type.value === 'all') return false;
     if (!desc || !desc.value.trim()) return false;
-    if (!reward || !reward.value.trim() || parseFloat(reward.value) <= 0) return false;
+
+    var rewardNum = reward ? parseFloat(reward.value) : NaN;
+    if (!reward || !reward.value.trim() || !Number.isFinite(rewardNum) || rewardNum <= 0 || rewardNum > CT_REWARD_MAX) {
+      return false;
+    }
+
+    if (slots && slots.value.trim()) {
+      var slotsNum = parseInt(slots.value.trim(), 10);
+      if (!Number.isInteger(slotsNum) || slotsNum < CT_SLOTS_MIN || slotsNum > CT_SLOTS_MAX) return false;
+    }
+
     if (!deadline || !deadline.value) return false;
+    var deadlineAt = new Date(deadline.value + 'T23:59:59');
+    if (!Number.isFinite(deadlineAt.getTime()) || deadlineAt.getTime() < Date.now()) return false;
 
     var hasReq = false;
     if (isTextProofSelected() && !simple) {
@@ -1455,14 +1549,18 @@
     freshBtn.addEventListener('click', async function () {
       if (freshBtn.disabled) return;
 
+      var inputsValid = validateCreateTaskInputsWithErrors();
       if (!validateForm()) {
         if (isSimpleTaskTypeSelected() && !validateSimplePlatformFieldsSilent()) {
           validateSimplePlatformFields();
+        } else if (!inputsValid) {
+          // 字段级错误已在输入框下方展示
         } else {
           alert(ctT('ct_alert_required'));
         }
         return;
       }
+      if (!inputsValid) return;
 
       if (!window.supabase) {
         alert(ctT('ct_alert_fail') + 'Supabase unavailable');
