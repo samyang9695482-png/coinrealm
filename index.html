@@ -2,10 +2,16 @@
 <html lang="zh-CN">
 <head>
   <script>
-    // 检测移动端，自动跳转手机版
-    if (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-      window.location.href = '/mobile.html';
-    }
+    (function () {
+      var path = location.pathname || '';
+      if (/mobile\.html$/i.test(path)) return;
+      if (/[?&]desktop=1(?:&|$)/.test(location.search)) return;
+      var ua = navigator.userAgent || '';
+      var isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua)
+        || (window.matchMedia && window.matchMedia('(max-width: 768px)').matches);
+      if (!isMobile) return;
+      location.replace('mobile.html' + location.search + location.hash);
+    })();
   </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">

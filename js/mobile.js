@@ -274,14 +274,22 @@
 
   function removeContentLoading() {
     var loading = document.getElementById('mobile-content-loading');
+    if (!document.getElementById('home-page')) {
+      if (loading) loading.remove();
+      var mount = document.getElementById('app-content');
+      if (mount && !mount.querySelector('.mobile-error-state')) {
+        mount.innerHTML = '<div class="mobile-error-state"><p>页面内容加载失败，请刷新重试</p></div>';
+      }
+      return false;
+    }
     if (loading) loading.remove();
+    return true;
   }
 
   function initMobileShell() {
     if (mobileInitialized) return;
+    if (!removeContentLoading()) return;
     mobileInitialized = true;
-
-    removeContentLoading();
     bindLoginButtons();
     bindTabBar();
     bindHeader();
