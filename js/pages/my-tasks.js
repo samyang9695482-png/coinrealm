@@ -15,6 +15,7 @@
   var myTasksData = {
     active: [],
     completed: [],
+    rejected: [],
     expired: []
   };
   var verifyPollTimer = null;
@@ -26,12 +27,14 @@
       mt_page_title: '我的任务',
       mt_tab_active: '进行中',
       mt_tab_completed: '已完成',
+      mt_tab_rejected: '已驳回',
       mt_tab_expired: '已失效',
       mt_login_required: '请先登录查看任务',
       mt_loading: '加载中...',
       mt_btn_home: '去任务大厅',
       mt_empty_active: '暂无进行中的任务，去任务大厅看看吧~',
       mt_empty_completed: '暂无已完成的任务，继续加油！',
+      mt_empty_rejected: '暂无被驳回的任务',
       mt_empty_expired: '暂无已失效的任务',
       mt_status_pending: '待提交',
       mt_status_submitted: '已提交',
@@ -46,18 +49,25 @@
       mt_reason_expired: '已过期',
       mt_reason_full: '已满员',
       mt_reason_cancelled: '已取消',
+      mt_label_publisher: '发布者',
+      mt_label_reject_reason: '驳回理由',
+      mt_label_reject_time: '驳回时间',
+      mt_badge_rejected: '已驳回',
+      mt_btn_resubmit: '重新提交',
       mt_load_fail: '加载失败：'
     },
     en: {
       mt_page_title: 'My Tasks',
       mt_tab_active: 'In Progress',
       mt_tab_completed: 'Completed',
+      mt_tab_rejected: 'Rejected',
       mt_tab_expired: 'Expired',
       mt_login_required: 'Please sign in to view your tasks',
       mt_loading: 'Loading...',
       mt_btn_home: 'Go to Task Hall',
       mt_empty_active: 'No tasks in progress. Check the task hall!',
       mt_empty_completed: 'No completed tasks yet. Keep going!',
+      mt_empty_rejected: 'No rejected tasks',
       mt_empty_expired: 'No expired tasks',
       mt_status_pending: 'Pending submission',
       mt_status_submitted: 'Submitted',
@@ -72,6 +82,11 @@
       mt_reason_expired: 'Expired',
       mt_reason_full: 'Full',
       mt_reason_cancelled: 'Cancelled',
+      mt_label_publisher: 'Publisher',
+      mt_label_reject_reason: 'Rejection reason',
+      mt_label_reject_time: 'Rejected at',
+      mt_badge_rejected: 'Rejected',
+      mt_btn_resubmit: 'Resubmit',
       mt_load_fail: 'Load failed: '
     }
   };
@@ -100,6 +115,7 @@
   function mapUrlTabToMyTasksTab(urlTab) {
     if (urlTab === 'progress' || urlTab === 'active') return 'active';
     if (urlTab === 'completed') return 'completed';
+    if (urlTab === 'rejected') return 'rejected';
     if (urlTab === 'expired') return 'expired';
     return 'active';
   }
@@ -107,6 +123,7 @@
   function mapMyTasksTabToUrlTab(tab) {
     if (tab === 'active') return 'progress';
     if (tab === 'completed') return 'completed';
+    if (tab === 'rejected') return 'rejected';
     if (tab === 'expired') return 'expired';
     return 'progress';
   }
@@ -193,7 +210,6 @@
   }
 
   function getExpiredReason(submission, task) {
-    if (submission.status === 'rejected') return mtT('mt_reason_rejected');
     if (task.status === 'cancelled') return mtT('mt_reason_cancelled');
     var maxP = task.max_participants != null ? Number(task.max_participants) : null;
     var currentP = Number(task.current_participants) || 0;
@@ -203,7 +219,7 @@
   }
 
   function isExpiredSubmission(submission, task) {
-    if (submission.status === 'rejected') return true;
+    if (submission.status === 'rejected') return false;
     if (task.status === 'cancelled') return true;
     var maxP = task.max_participants != null ? Number(task.max_participants) : null;
     var currentP = Number(task.current_participants) || 0;
@@ -347,6 +363,7 @@
   function categorizeMyTasks(items) {
     var active = [];
     var completed = [];
+    var rejected = [];
     var expired = [];
 
     items.forEach(function (item) {
@@ -355,6 +372,11 @@
 
       if (sub.status === 'approved') {
         completed.push(item);
+        return;
+      }
+
+      if (sub.status === 'rejected') {
+        rejected.push(item);
         return;
       }
 
@@ -372,23 +394,76 @@
       }
     });
 
-    return { active: active, completed: completed, expired: expired };
+    return { active: active, completed: completed, rejected: rejected, expired: expired };
+  }
+
+  async function enrichMyTasksWithPublishers(items) {
+    if (!items.length || !window.supabase) return items;
+
+    var publisherIds = items
+      .map(function (item) { return item.task && item.task.publisher_id; })
+      .filter(function (id) { return !!id; });
+    var uniqueIds = publisherIds.filter(function (id, index) {
+      return publisherIds.indexOf(id) === index;
+    });
+
+    if (!uniqueIds.length) return items;
+
+    var usersResult = await window.supabase
+      .from('users')
+      .select('id, username, email')
+      .in('id', uniqueIds);
+
+    var userMap = {};
+    if (!usersResult.error && usersResult.data) {
+      usersResult.data.forEach(function (user) {
+        userMap[String(user.id)] = user.username || (user.email ? String(user.email).split('@')[0] : 'Unknown');
+      });
+    }
+
+    return items.map(function (item) {
+      var publisherId = item.task && item.task.publisher_id;
+      item.publisherName = publisherId ? (userMap[String(publisherId)] || 'Unknown') : 'Unknown';
+      return item;
+    });
   }
 
   async function fetchMyTasksData(userId) {
-    if (!window.supabase) return { active: [], completed: [], expired: [] };
+    if (!window.supabase) return { active: [], completed: [], rejected: [], expired: [] };
 
     var result = await window.supabase
       .from('submissions')
       .select('id, task_id, user_id, status, submitted_at, reviewed_at, review_comment, tasks(*)')
       .eq('user_id', userId)
-      .order('submitted_at', { ascending: false });
+      .order('reviewed_at', { ascending: false });
 
     if (result.error) {
       throw result.error;
     }
 
-    return categorizeMyTasks(normalizeSubmissionRows(result.data));
+    var categorized = categorizeMyTasks(normalizeSubmissionRows(result.data));
+    var allItems = categorized.active
+      .concat(categorized.completed)
+      .concat(categorized.rejected)
+      .concat(categorized.expired);
+    var enriched = await enrichMyTasksWithPublishers(allItems);
+    var enrichedMap = {};
+    enriched.forEach(function (item) {
+      enrichedMap[item.submission.id] = item;
+    });
+
+    function remap(list) {
+      return list.map(function (item) {
+        return enrichedMap[item.submission.id] || item;
+      });
+    }
+
+    return {
+      active: remap(categorized.active),
+      completed: remap(categorized.completed),
+      rejected: remap(categorized.rejected),
+      expired: remap(categorized.expired)
+    };
   }
 
   function buildMyTaskCardHtml(item, tab) {
@@ -417,16 +492,19 @@
       statusHtml = '<span class="my-task-status my-task-status-done">' + escapeHtml(mtT('mt_status_approved')) + '</span>';
       var doneTime = submission.reviewed_at || submission.submitted_at;
       metaHtml = '<p class="my-task-meta">' + escapeHtml(mtT('mt_label_completed')) + '：' + escapeHtml(formatMtDateTime(doneTime)) + '</p>';
+    } else if (tab === 'rejected') {
+      statusHtml = '<span class="my-task-status my-task-status-rejected">' + escapeHtml(mtT('mt_badge_rejected')) + '</span>';
+      var publisherName = escapeHtml(item.publisherName || 'Unknown');
+      var rejectReason = escapeHtml(submission.review_comment || '—');
+      var rejectTime = escapeHtml(formatMtDateTime(submission.reviewed_at || submission.submitted_at));
+      metaHtml =
+        '<p class="my-task-meta">' + escapeHtml(mtT('mt_label_publisher')) + '：' + publisherName + '</p>' +
+        '<p class="my-task-meta my-task-meta-reject">' + escapeHtml(mtT('mt_label_reject_reason')) + '：' + rejectReason + '</p>' +
+        '<p class="my-task-meta">' + escapeHtml(mtT('mt_label_reject_time')) + '：' + rejectTime + '</p>' +
+        '<button type="button" class="my-task-resubmit-btn" data-task-id="' + taskId + '">' + escapeHtml(mtT('mt_btn_resubmit')) + '</button>';
     } else {
-      if (submission.status === 'rejected') {
-        statusHtml = '<span class="my-task-status my-task-status-rejected">' + escapeHtml(mtT('mt_status_rejected')) + '</span>';
-      } else {
-        statusHtml = '<span class="my-task-status my-task-status-expired">' + escapeHtml(item.expiredReason || mtT('mt_reason_expired')) + '</span>';
-      }
+      statusHtml = '<span class="my-task-status my-task-status-expired">' + escapeHtml(item.expiredReason || mtT('mt_reason_expired')) + '</span>';
       var reasonText = item.expiredReason || mtT('mt_reason_expired');
-      if (submission.status === 'rejected' && submission.review_comment) {
-        reasonText = submission.review_comment;
-      }
       metaHtml = '<p class="my-task-meta">' + escapeHtml(mtT('mt_label_reason')) + '：' + escapeHtml(reasonText) + '</p>';
     }
 
@@ -448,6 +526,7 @@
 
   function getEmptyMessageKey(tab) {
     if (tab === 'completed') return 'mt_empty_completed';
+    if (tab === 'rejected') return 'mt_empty_rejected';
     if (tab === 'expired') return 'mt_empty_expired';
     return 'mt_empty_active';
   }
@@ -535,7 +614,7 @@
     } catch (err) {
       console.warn('加载我的任务失败', err);
       alert(mtT('mt_load_fail') + (err && err.message ? err.message : String(err)));
-      myTasksData = { active: [], completed: [], expired: [] };
+      myTasksData = { active: [], completed: [], rejected: [], expired: [] };
       renderMyTasksList();
       stopVerifyingPoll();
     } finally {
@@ -551,9 +630,45 @@
     console.log('我的任务：切换标签', tab);
   }
 
+  function ensureRejectedTab() {
+    var tabsEl = document.querySelector('#my-tasks-page .my-tasks-tabs');
+    if (!tabsEl || document.getElementById('mt-tab-rejected')) return;
+
+    var rejectedBtn = document.createElement('button');
+    rejectedBtn.type = 'button';
+    rejectedBtn.id = 'mt-tab-rejected';
+    rejectedBtn.className = 'my-tasks-tab';
+    rejectedBtn.setAttribute('data-tab', 'rejected');
+    rejectedBtn.setAttribute('data-i18n', 'mt_tab_rejected');
+    rejectedBtn.textContent = mtT('mt_tab_rejected');
+
+    var expiredBtn = document.getElementById('mt-tab-expired');
+    if (expiredBtn) {
+      tabsEl.insertBefore(rejectedBtn, expiredBtn);
+    } else {
+      tabsEl.appendChild(rejectedBtn);
+    }
+
+    rejectedBtn.addEventListener('click', function () {
+      switchMyTasksTab('rejected');
+    });
+
+    if (!document.getElementById('my-task-resubmit-style')) {
+      var styleEl = document.createElement('style');
+      styleEl.id = 'my-task-resubmit-style';
+      styleEl.textContent =
+        '.my-task-meta-reject{color:#ff4d4f;}' +
+        '.my-task-resubmit-btn{margin-top:12px;padding:8px 16px;border:none;border-radius:8px;background:#ff7a45;color:#fff;font-size:14px;font-weight:600;cursor:pointer;}' +
+        '.my-task-resubmit-btn:hover{opacity:0.92;}';
+      document.head.appendChild(styleEl);
+    }
+  }
+
   function initMyTasksEvents() {
     if (myTasksInitialized) return;
     myTasksInitialized = true;
+
+    ensureRejectedTab();
 
     document.querySelectorAll('#my-tasks-page .my-tasks-tab').forEach(function (btn) {
       btn.addEventListener('click', function () {
@@ -564,6 +679,15 @@
     var listEl = document.getElementById('mt-task-list');
     if (listEl) {
       listEl.addEventListener('click', function (e) {
+        var resubmitBtn = e.target.closest('.my-task-resubmit-btn');
+        if (resubmitBtn && listEl.contains(resubmitBtn)) {
+          e.preventDefault();
+          e.stopPropagation();
+          var resubmitTaskId = resubmitBtn.getAttribute('data-task-id');
+          if (resubmitTaskId) navigateToTaskDetail(resubmitTaskId);
+          return;
+        }
+
         var card = e.target.closest('.my-task-card');
         if (!card || !listEl.contains(card)) return;
         var taskId = card.getAttribute('data-task-id');

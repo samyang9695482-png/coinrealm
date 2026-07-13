@@ -126,6 +126,7 @@
       td_proof_alert_upload_fail: '上传失败：',
       td_proof_alert_submit_fail: '提交失败：',
       td_proof_alert_need_image: '请至少上传一张截图',
+      td_reject_reason_label: '驳回理由：',
       td_btn_approved: '已通过',
       td_btn_rejected: '重新提交',
       td_btn_level: '等级不足（需Lv.1以上）',
@@ -260,6 +261,7 @@
       td_proof_alert_upload_fail: 'Upload failed: ',
       td_proof_alert_submit_fail: 'Submit failed: ',
       td_proof_alert_need_image: 'Please upload at least one screenshot',
+      td_reject_reason_label: 'Rejection reason: ',
       td_btn_approved: 'Approved',
       td_btn_rejected: 'Resubmit',
       td_btn_level: 'Level Too Low (Lv.1+ required)',
@@ -2677,6 +2679,34 @@
     }
   }
 
+  function updateRejectionBanner() {
+    var proofSection = document.getElementById('td-proof-upload-section');
+    if (!proofSection) return;
+
+    var existing = document.getElementById('td-rejection-banner');
+    var shouldShow = detailActionState === 'rejected_resubmit' &&
+      currentSubmissionRecord &&
+      currentSubmissionRecord.review_comment;
+
+    if (!shouldShow) {
+      if (existing) existing.remove();
+      return;
+    }
+
+    if (!existing) {
+      existing = document.createElement('div');
+      existing.id = 'td-rejection-banner';
+      existing.className = 'td-rejection-banner';
+      proofSection.parentNode.insertBefore(existing, proofSection);
+    }
+
+    existing.style.color = '#ff4d4f';
+    existing.style.fontSize = '14px';
+    existing.style.lineHeight = '1.6';
+    existing.style.marginBottom = '12px';
+    existing.textContent = tdT('td_reject_reason_label') + String(currentSubmissionRecord.review_comment);
+  }
+
   function updateProofUploadSectionUI() {
     var section = document.getElementById('td-proof-upload-section');
     var uploadZone = document.getElementById('td-proof-upload-zone');
@@ -2685,6 +2715,7 @@
 
     if (!shouldShowProofUploadSection()) {
       section.classList.add('hidden');
+      updateRejectionBanner();
       return;
     }
 
@@ -2709,6 +2740,8 @@
         submitBtn.textContent = tdT('td_proof_submit');
       }
     }
+
+    updateRejectionBanner();
   }
 
   async function submitProofFromDetailPage() {
@@ -2732,17 +2765,23 @@
       return;
     }
 
-    if (typeof window.coinrealmSubmitTaskProof !== 'function') {
-      alert(tdT('td_proof_alert_submit_fail') + 'submit unavailable');
-      return;
-    }
-
     proofSubmitInProgress = true;
     var submitBtn = document.getElementById('td-proof-submit-btn');
     if (submitBtn) submitBtn.disabled = true;
 
     try {
-      var result = await window.coinrealmSubmitTaskProof({
+      var submitFn;
+      if (currentSubmissionRecord.status === 'rejected' &&
+          typeof window.coinrealmResubmitRegularTaskProof === 'function') {
+        submitFn = window.coinrealmResubmitRegularTaskProof;
+      } else if (typeof window.coinrealmSubmitTaskProof === 'function') {
+        submitFn = window.coinrealmSubmitTaskProof;
+      } else {
+        alert(tdT('td_proof_alert_submit_fail') + 'submit unavailable');
+        return;
+      }
+
+      var result = await submitFn({
         taskId: currentTaskRecord.id,
         userId: userId,
         description: '',
@@ -2751,7 +2790,9 @@
         taskTitle: currentTaskRecord.title || '',
         taskReward: currentTaskRecord.reward_amount || 0,
         requireDescription: false,
-        path: 'task-detail-proof-submit'
+        path: currentSubmissionRecord.status === 'rejected'
+          ? 'task-detail-proof-resubmit'
+          : 'task-detail-proof-submit'
       });
 
       if (!result.ok) {
@@ -2960,7 +3001,13 @@
         });
         break;
       case 'go_submit':
+        break;
       case 'rejected_resubmit':
+        configureActionButton(buttons.claim, {
+          styleClass: 'td-btn-orange',
+          text: tdT('td_btn_rejected'),
+          disabled: false
+        });
         break;
       case 'waiting_review':
         configureActionButton(buttons.ended, {
@@ -2974,13 +3021,6 @@
           styleClass: 'td-btn-disabled',
           text: tdT('td_btn_simple_done'),
           disabled: true
-        });
-        break;
-      case 'rejected_resubmit':
-        configureActionButton(buttons.claim, {
-          styleClass: 'td-btn-gold',
-          text: tdT('td_btn_rejected'),
-          disabled: false
         });
         break;
       case 'manage_task':

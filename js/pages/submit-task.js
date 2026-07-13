@@ -280,6 +280,93 @@
     return false;
   }
 
+  async function resubmitRegularTaskProof(params) {
+    params = params || {};
+
+    var taskId = params.taskId;
+    var userId = params.userId;
+    var description = params.description != null ? String(params.description).trim() : '';
+    var screenshotUrls = params.screenshotUrls || [];
+    var submission = params.submission;
+    var taskTitle = params.taskTitle || '';
+    var taskReward = params.taskReward != null ? Number(params.taskReward) : 0;
+    var path = params.path || 'resubmit-regular-task-proof';
+
+    if (!window.supabase || !taskId || !userId || !submission || !submission.id) {
+      return { ok: false, error: 'missing_params' };
+    }
+
+    if (submission.status !== 'rejected') {
+      return { ok: false, error: 'not_rejected' };
+    }
+
+    if (!description) {
+      description = '（重新提交凭证）';
+    }
+
+    if (typeof window.coinrealmCheckTaskRewardDuplicate === 'function') {
+      var duplicate = await window.coinrealmCheckTaskRewardDuplicate(taskId, userId);
+      if (duplicate.alreadyRewarded) {
+        return { ok: false, error: 'already_rewarded' };
+      }
+    } else if (typeof checkUserAlreadyRewardedForTask === 'function' &&
+        await checkUserAlreadyRewardedForTask(taskId, userId)) {
+      return { ok: false, error: 'already_rewarded' };
+    }
+
+    var submittedAt = new Date().toISOString();
+    var updateResult = await window.supabase
+      .from('submissions')
+      .update({
+        description: description,
+        screenshot_urls: screenshotUrls,
+        status: 'submitted',
+        submitted_at: submittedAt,
+        review_comment: null,
+        reviewed_at: null
+      })
+      .eq('id', submission.id)
+      .eq('user_id', userId)
+      .eq('status', 'rejected')
+      .select();
+
+    if (updateResult.error) {
+      return { ok: false, error: updateResult.error.message };
+    }
+
+    if (!updateResult.data || !updateResult.data.length) {
+      return { ok: false, error: 'update_failed' };
+    }
+
+    var updatedSubmission = Object.assign({}, submission, updateResult.data[0]);
+
+    writeBroadcast({
+      user_id: userId,
+      event_type: 'task_submit',
+      description: '重新提交了任务「' + buildTaskBroadcastTitle(taskTitle || '任务') + '」凭证',
+      reward_amount: taskReward
+    });
+
+    if (typeof window.coinrealmNotifySubmissionStatusChanged === 'function') {
+      window.coinrealmNotifySubmissionStatusChanged({
+        taskId: taskId,
+        userId: userId,
+        status: 'submitted',
+        path: path,
+        submissionId: submission.id
+      });
+    }
+
+    return {
+      ok: true,
+      submissionStatus: 'submitted',
+      submission: updatedSubmission,
+      isSimpleAuto: false
+    };
+  }
+
+  window.coinrealmResubmitRegularTaskProof = resubmitRegularTaskProof;
+
   async function handleFilesSelected(fileList) {
     if (uploadInProgress) return;
 
@@ -717,22 +804,34 @@
             return !!url && isScreenshotPublicUrl(url);
           });
 
-          if (typeof window.coinrealmSubmitTaskProof !== 'function') {
+          var submitResult;
+          if (targetSubmission.status === 'rejected') {
+            submitResult = await resubmitRegularTaskProof({
+              taskId: activeSubmitContext.taskId,
+              userId: userId,
+              description: desc,
+              screenshotUrls: screenshotUrls,
+              submission: targetSubmission,
+              taskTitle: activeSubmitContext.title || '',
+              taskReward: activeSubmitContext.reward || 0,
+              path: 'submit-task-page-resubmit'
+            });
+          } else if (typeof window.coinrealmSubmitTaskProof === 'function') {
+            submitResult = await window.coinrealmSubmitTaskProof({
+              taskId: activeSubmitContext.taskId,
+              userId: userId,
+              description: desc,
+              screenshotUrls: screenshotUrls,
+              submission: targetSubmission,
+              taskTitle: activeSubmitContext.title || '',
+              taskReward: activeSubmitContext.reward || 0,
+              requireDescription: true,
+              path: 'submit-task-page'
+            });
+          } else {
             alert(stT('st_alert_submit_fail') + 'submit unavailable');
             return;
           }
-
-          var submitResult = await window.coinrealmSubmitTaskProof({
-            taskId: activeSubmitContext.taskId,
-            userId: userId,
-            description: desc,
-            screenshotUrls: screenshotUrls,
-            submission: targetSubmission,
-            taskTitle: activeSubmitContext.title || '',
-            taskReward: activeSubmitContext.reward || 0,
-            requireDescription: true,
-            path: 'submit-task-page'
-          });
 
           if (!submitResult.ok) {
             if (submitResult.error === 'description_required') {
