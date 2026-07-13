@@ -342,6 +342,71 @@
     }
   }
 
+  function resolveCanonicalTaskId(taskId) {
+    if (!taskId) return taskId;
+    var matchedTask = publisherTasks.find(function (task) {
+      return String(task.id) === String(taskId);
+    });
+    return matchedTask ? matchedTask.id : taskId;
+  }
+
+  async function findReviewableTaskIdAmongPublisherTasks() {
+    if (!publisherTasks.length || !window.supabase) return null;
+
+    var statusFilter = ['submitted', 'pending'];
+    var taskIds = publisherTasks.map(function (task) { return task.id; });
+    var reviewableResult = await window.supabase
+      .from('submissions')
+      .select('task_id')
+      .in('task_id', taskIds)
+      .in('status', statusFilter)
+      .order('submitted_at', { ascending: false })
+      .limit(1);
+
+    if (!reviewableResult.error && reviewableResult.data && reviewableResult.data.length) {
+      return reviewableResult.data[0].task_id;
+    }
+
+    return null;
+  }
+
+  async function enrichSubmissionsWithUsers(submissions) {
+    if (!submissions.length || !window.supabase) {
+      return submissions.map(mapSubmissionWithUsername);
+    }
+
+    var missingUserIds = submissions
+      .filter(function (item) {
+        return !normalizeSubmissionUserRecord(item.users) && item.user_id;
+      })
+      .map(function (item) { return item.user_id; });
+    var uniqueIds = missingUserIds.filter(function (id, index) {
+      return missingUserIds.indexOf(id) === index;
+    });
+
+    var userMap = {};
+    if (uniqueIds.length) {
+      var usersResult = await window.supabase
+        .from('users')
+        .select('id, username, email, wallet_address')
+        .in('id', uniqueIds);
+
+      if (!usersResult.error && usersResult.data) {
+        usersResult.data.forEach(function (user) {
+          userMap[user.id] = user;
+        });
+      }
+    }
+
+    return submissions.map(function (item) {
+      var mappedItem = Object.assign({}, item);
+      if (!normalizeSubmissionUserRecord(mappedItem.users) && userMap[mappedItem.user_id]) {
+        mappedItem.users = userMap[mappedItem.user_id];
+      }
+      return mapSubmissionWithUsername(mappedItem);
+    });
+  }
+
   function mapSubmissionWithUsername(submission) {
     var userRecord = normalizeSubmissionUserRecord(submission.users);
     var userId = submission.user_id;
@@ -391,44 +456,35 @@
     if (!publisherTasks.length || !window.supabase) return selectedTaskId;
 
     var statusFilter = ['submitted', 'pending'];
+    var canonicalSelectedTaskId = resolveCanonicalTaskId(selectedTaskId);
 
-    if (selectedTaskId) {
-      var matchedTask = publisherTasks.find(function (task) {
-        return String(task.id) === String(selectedTaskId);
-      });
-      var currentTaskId = matchedTask ? matchedTask.id : selectedTaskId;
+    if (canonicalSelectedTaskId) {
       var currentResult = await window.supabase
         .from('submissions')
         .select('id')
-        .eq('task_id', currentTaskId)
+        .eq('task_id', canonicalSelectedTaskId)
         .in('status', statusFilter)
         .limit(1);
 
       if (!currentResult.error && currentResult.data && currentResult.data.length) {
-        return currentTaskId;
+        return canonicalSelectedTaskId;
       }
     }
 
-    var taskIds = publisherTasks.map(function (task) { return task.id; });
-    var reviewableResult = await window.supabase
-      .from('submissions')
-      .select('task_id')
-      .in('task_id', taskIds)
-      .in('status', statusFilter)
-      .order('submitted_at', { ascending: false })
-      .limit(1);
+    var fallbackTaskId = await findReviewableTaskIdAmongPublisherTasks();
 
-    console.log('审核管理-有待审核的任务查询：', {
-      taskIds: taskIds,
-      data: reviewableResult.data,
-      error: reviewableResult.error
-    });
+    console.log('审核管理-有待审核的任务查询：', JSON.stringify({
+      selectedTaskId: selectedTaskId,
+      canonicalSelectedTaskId: canonicalSelectedTaskId,
+      fallbackTaskId: fallbackTaskId,
+      publisherTaskIds: publisherTasks.map(function (task) { return task.id; })
+    }));
 
-    if (!reviewableResult.error && reviewableResult.data && reviewableResult.data.length) {
-      return reviewableResult.data[0].task_id;
+    if (fallbackTaskId) {
+      return fallbackTaskId;
     }
 
-    return selectedTaskId || publisherTasks[0].id;
+    return canonicalSelectedTaskId || publisherTasks[0].id;
   }
 
   async function advanceReviewQueueAfterApproval() {
@@ -466,29 +522,36 @@
     showReviewEmptyMessage('rv_empty_text');
   }
 
-  async function loadSubmissionsForSelectedTask() {
+  async function loadSubmissionsForSelectedTask(allowTaskAutoSwitch) {
     if (!selectedTaskId || !window.supabase) {
       currentSubmissions = [];
       showReviewEmptyMessage('rv_no_submissions');
       return;
     }
 
-    var matchedTask = publisherTasks.find(function (task) {
-      return String(task.id) === String(selectedTaskId);
-    });
-    var taskId = matchedTask ? matchedTask.id : selectedTaskId;
+    var taskId = resolveCanonicalTaskId(selectedTaskId);
+    var hashTaskId = getReviewTaskIdFromHash();
     var statusFilter = ['submitted', 'pending'];
 
-    console.log('提交列表查询条件：', { taskId: taskId, statusFilter: statusFilter });
+    console.log('提交列表查询条件：', JSON.stringify({
+      taskId: taskId,
+      selectedTaskId: selectedTaskId,
+      hashTaskId: hashTaskId,
+      statusFilter: statusFilter
+    }));
 
     var submissionsResult = await window.supabase
       .from('submissions')
-      .select('id, task_id, user_id, status, description, screenshot_urls, submitted_at, users!inner(username, email, wallet_address)')
+      .select('id, task_id, user_id, status, description, screenshot_urls, submitted_at, users(username, email, wallet_address)')
       .eq('task_id', taskId)
       .in('status', statusFilter)
       .order('submitted_at', { ascending: false });
 
-    console.log('提交列表查询结果：', { data: submissionsResult.data, error: submissionsResult.error });
+    console.log('提交列表查询结果：', JSON.stringify({
+      taskId: taskId,
+      count: (submissionsResult.data || []).length,
+      error: submissionsResult.error ? submissionsResult.error.message : null
+    }));
 
     if (submissionsResult.error) {
       alert(rvT('rv_alert_action_fail') + submissionsResult.error.message);
@@ -497,7 +560,48 @@
       return;
     }
 
-    var submissions = (submissionsResult.data || []).map(mapSubmissionWithUsername);
+    var rawSubmissions = submissionsResult.data || [];
+
+    if (!rawSubmissions.length) {
+      var plainResult = await window.supabase
+        .from('submissions')
+        .select('id, task_id, user_id, status, description, screenshot_urls, submitted_at')
+        .eq('task_id', taskId)
+        .in('status', statusFilter)
+        .order('submitted_at', { ascending: false });
+
+      console.log('提交列表-status验证：', JSON.stringify({
+        taskId: taskId,
+        statusFilter: statusFilter,
+        count: (plainResult.data || []).length,
+        sample: (plainResult.data || []).slice(0, 3).map(function (item) {
+          return {
+            id: item.id,
+            task_id: item.task_id,
+            status: item.status
+          };
+        }),
+        error: plainResult.error ? plainResult.error.message : null
+      }));
+
+      if (plainResult.data && plainResult.data.length) {
+        rawSubmissions = plainResult.data;
+      } else if (allowTaskAutoSwitch !== false) {
+        var fallbackTaskId = await findReviewableTaskIdAmongPublisherTasks();
+        if (fallbackTaskId && String(fallbackTaskId) !== String(taskId)) {
+          console.log('提交列表-自动切换任务：', JSON.stringify({
+            fromTaskId: taskId,
+            toTaskId: fallbackTaskId
+          }));
+          selectedTaskId = fallbackTaskId;
+          renderTaskSelectOptions();
+          await loadSubmissionsForSelectedTask(false);
+          return;
+        }
+      }
+    }
+
+    var submissions = await enrichSubmissionsWithUsers(rawSubmissions);
 
     console.log('审核管理-提交列表数量：', submissions.length);
 
@@ -541,10 +645,20 @@
     console.log('审核管理-任务列表：', publisherTasks);
 
     var hashTaskId = getReviewTaskIdFromHash();
-    if (hashTaskId && publisherTasks.some(function (task) {
-      return String(task.id) === String(hashTaskId);
-    })) {
-      selectedTaskId = hashTaskId;
+    console.log('审核管理-URL任务参数：', JSON.stringify({ hashTaskId: hashTaskId }));
+
+    if (hashTaskId) {
+      var hashMatchedTask = publisherTasks.find(function (task) {
+        return String(task.id) === String(hashTaskId);
+      });
+      if (hashMatchedTask) {
+        selectedTaskId = hashMatchedTask.id;
+      } else {
+        console.log('审核管理-URL任务参数无效：', JSON.stringify({
+          hashTaskId: hashTaskId,
+          publisherTaskIds: publisherTasks.map(function (task) { return task.id; })
+        }));
+      }
     }
 
     renderTaskSelectOptions();
@@ -558,7 +672,7 @@
       selectedTaskId = publisherTasks[0].id;
     }
 
-    selectedTaskId = await resolveSelectedTaskIdWithSubmissions();
+    selectedTaskId = resolveCanonicalTaskId(await resolveSelectedTaskIdWithSubmissions());
     renderTaskSelectOptions();
 
     await loadSubmissionsForSelectedTask();
@@ -814,7 +928,7 @@
     var taskSelect = document.getElementById('rv-task-select');
     if (taskSelect) {
       taskSelect.addEventListener('change', async function () {
-        selectedTaskId = taskSelect.value || null;
+        selectedTaskId = resolveCanonicalTaskId(taskSelect.value || null);
         closeRejectModal();
         await loadSubmissionsForSelectedTask();
         applyReviewI18n();
