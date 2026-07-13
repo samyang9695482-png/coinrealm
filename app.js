@@ -581,6 +581,50 @@ window.coinrealmApplyExchangeDividendsMenuVisibility = applyExchangeDividendsMen
 window.coinrealmInvalidateShowExchangeCache = invalidateShowExchangeCache;
 window.coinrealmInvalidateShowDividendsCache = invalidateShowDividendsCache;
 
+var AIRDROP_MODE_DEFAULT = 'level2';
+var cachedAirdropMode = null;
+
+function normalizeAirdropMode(value) {
+  return String(value || AIRDROP_MODE_DEFAULT).toLowerCase() === 'daily_task' ? 'daily_task' : 'level2';
+}
+
+async function fetchAirdropMode() {
+  if (cachedAirdropMode !== null) {
+    return cachedAirdropMode;
+  }
+
+  var value = AIRDROP_MODE_DEFAULT;
+  if (!window.supabase) {
+    cachedAirdropMode = value;
+    return value;
+  }
+
+  try {
+    var result = await window.supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'airdrop_mode')
+      .maybeSingle();
+
+    if (!result.error && result.data && result.data.value != null && result.data.value !== '') {
+      value = normalizeAirdropMode(result.data.value);
+    }
+  } catch (settingsErr) {
+    console.warn('读取空投模式失败:', settingsErr);
+  }
+
+  cachedAirdropMode = value;
+  return value;
+}
+
+function invalidateAirdropModeCache() {
+  cachedAirdropMode = null;
+}
+
+window.coinrealmFetchAirdropMode = fetchAirdropMode;
+window.coinrealmNormalizeAirdropMode = normalizeAirdropMode;
+window.coinrealmInvalidateAirdropModeCache = invalidateAirdropModeCache;
+
 var ADS_CONFIG_DEFAULTS = {
   interval: 5,
   ads: [
@@ -4417,20 +4461,28 @@ async function handleDailyCheckin() {
     checkinInProgress = true;
 
     try {
-        var approvedResult = await window.supabase
-            .from('submissions')
-            .select('id', { count: 'exact', head: true })
-            .eq('user_id', userId)
-            .eq('status', 'approved');
+        if (typeof window.coinrealmCheckAirdropEligibility === 'function') {
+            var eligibility = await window.coinrealmCheckAirdropEligibility(userId);
+            if (!eligibility.ok) {
+                alert(eligibility.message || formatCheckinText('checkin_fail'));
+                return { ok: false, denied: true, reason: eligibility.reason };
+            }
+        } else {
+            var userLevelResult = await window.supabase
+                .from('users')
+                .select('level')
+                .eq('id', userId)
+                .maybeSingle();
 
-        if (approvedResult.error) {
-            alert(formatCheckinText('checkin_fail') + approvedResult.error.message);
-            return { ok: false };
-        }
+            if (userLevelResult.error) {
+                alert(formatCheckinText('checkin_fail') + userLevelResult.error.message);
+                return { ok: false };
+            }
 
-        if (!approvedResult.count) {
-            alert(formatCheckinText('airdrop_task_required'));
-            return { ok: false, taskRequired: true };
+            if ((Number(userLevelResult.data && userLevelResult.data.level) || 0) < 2) {
+                alert(formatCheckinText('airdrop_level_required') || '请先完成任务升级到 Lv.2，即可每日领取空投');
+                return { ok: false, levelRequired: true };
+            }
         }
 
         var today = getLocalDateString(0);
@@ -8800,6 +8852,7 @@ window.addEventListener('hashchange', function () {
       ad_tab_broadcasts: '广播管理',
       ad_tab_withdraw: '提币设置',
       ad_tab_invite: '邀请设置',
+      ad_tab_airdrop: '空投设置',
       ad_tab_features: '功能开关',
       ad_tab_ads: '广告管理',
       ad_ads_title: '广告管理',
@@ -8824,6 +8877,12 @@ window.addEventListener('hashchange', function () {
       ad_invite_save_ok: '邀请设置已保存',
       ad_invite_save_fail: '保存邀请设置失败：',
       ad_invite_invalid: '请输入有效的奖励金额',
+      ad_airdrop_title: '空投设置',
+      ad_airdrop_mode_level2: '升级到 Lv.2 后每天可领取',
+      ad_airdrop_mode_daily_task: '每天完成一个任务才可领取',
+      ad_btn_save_airdrop: '保存',
+      ad_airdrop_save_ok: '空投设置已保存',
+      ad_airdrop_save_fail: '保存空投设置失败：',
       ad_features_title: '功能开关',
       ad_features_show_exchange: '开启兑换市场',
       ad_features_show_dividends: '开启我的分红',
@@ -8920,6 +8979,7 @@ window.addEventListener('hashchange', function () {
       ad_tab_broadcasts: 'Broadcasts',
       ad_tab_withdraw: 'Withdraw Settings',
       ad_tab_invite: 'Invite Settings',
+      ad_tab_airdrop: 'Airdrop Settings',
       ad_tab_features: 'Feature Toggles',
       ad_tab_ads: 'Ad Management',
       ad_ads_title: 'Ad Management',
@@ -8944,6 +9004,12 @@ window.addEventListener('hashchange', function () {
       ad_invite_save_ok: 'Invite settings saved',
       ad_invite_save_fail: 'Failed to save invite settings: ',
       ad_invite_invalid: 'Please enter valid reward amounts',
+      ad_airdrop_title: 'Airdrop Settings',
+      ad_airdrop_mode_level2: 'Claim daily after reaching Lv.2',
+      ad_airdrop_mode_daily_task: 'Complete one task daily to claim',
+      ad_btn_save_airdrop: 'Save',
+      ad_airdrop_save_ok: 'Airdrop settings saved',
+      ad_airdrop_save_fail: 'Failed to save airdrop settings: ',
       ad_features_title: 'Feature Toggles',
       ad_features_show_exchange: 'Enable Exchange Market',
       ad_features_show_dividends: 'Enable My Dividends',
@@ -9333,9 +9399,46 @@ window.addEventListener('hashchange', function () {
   }
 
   async function loadAdminUsers() {
-    if (!window.supabase) return;
-    var result = await window.supabase.from('users').select('*').order('created_at', { ascending: false });
-    adminUsers = result.error ? [] : (result.data || []);
+    if (typeof window.coinrealmLoadAdminUsers === 'function') {
+      adminUsers = await window.coinrealmLoadAdminUsers();
+      return;
+    }
+
+    if (!window.supabase) {
+      adminUsers = [];
+      console.log('用户列表查询结果：', { count: 0, users: adminUsers });
+      return;
+    }
+
+    var users = [];
+    var pageSize = 1000;
+    var from = 0;
+
+    while (true) {
+      var to = from + pageSize - 1;
+      var result = await window.supabase
+        .from('users')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .range(from, to);
+
+      if (result.error) {
+        console.warn('用户列表查询失败：', result.error);
+        break;
+      }
+
+      var batch = result.data || [];
+      users = users.concat(batch);
+
+      if (batch.length < pageSize) {
+        break;
+      }
+
+      from += pageSize;
+    }
+
+    adminUsers = users;
+    console.log('用户列表查询结果：', { count: adminUsers.length, users: adminUsers });
   }
 
   function renderUsersList() {
@@ -9567,6 +9670,8 @@ window.addEventListener('hashchange', function () {
       await loadAdminWithdrawSettings();
     } else if (adminTab === 'invite') {
       await loadAdminInviteSettings();
+    } else if (adminTab === 'airdrop') {
+      await loadAdminAirdropSettings();
     } else if (adminTab === 'features') {
       await loadAdminFeatureSettings();
     } else if (adminTab === 'ads') {
@@ -9694,6 +9799,88 @@ window.addEventListener('hashchange', function () {
       window.coinrealmRefreshAuthArea();
     }
     alert(adT('ad_invite_save_ok'));
+  }
+
+  function ensureAdminAirdropTab() {
+    if (document.getElementById('admin-panel-airdrop')) return;
+
+    var tabsBar = document.querySelector('#admin-page .admin-tabs');
+    var featuresTab = tabsBar && tabsBar.querySelector('[data-admin-tab="features"]');
+    var inviteTab = tabsBar && tabsBar.querySelector('[data-admin-tab="invite"]');
+    if (!tabsBar) return;
+
+    var tabBtn = document.createElement('button');
+    tabBtn.type = 'button';
+    tabBtn.className = 'admin-tab';
+    tabBtn.setAttribute('data-admin-tab', 'airdrop');
+    tabBtn.setAttribute('data-i18n', 'ad_tab_airdrop');
+    tabBtn.textContent = adT('ad_tab_airdrop');
+    if (featuresTab) {
+      tabsBar.insertBefore(tabBtn, featuresTab);
+    } else if (inviteTab && inviteTab.nextSibling) {
+      tabsBar.insertBefore(tabBtn, inviteTab.nextSibling);
+    } else {
+      tabsBar.appendChild(tabBtn);
+    }
+
+    var panel = document.createElement('section');
+    panel.id = 'admin-panel-airdrop';
+    panel.className = 'admin-panel hidden';
+    panel.innerHTML =
+      '<h2 class="admin-section-title" data-i18n="ad_airdrop_title">' + adT('ad_airdrop_title') + '</h2>' +
+      '<form id="ad-airdrop-form" class="admin-form admin-airdrop-form">' +
+        '<label class="admin-airdrop-option">' +
+          '<input type="radio" name="ad-airdrop-mode" id="ad-airdrop-mode-level2" value="level2" class="admin-airdrop-radio">' +
+          '<span data-i18n="ad_airdrop_mode_level2">' + adT('ad_airdrop_mode_level2') + '</span>' +
+        '</label>' +
+        '<label class="admin-airdrop-option">' +
+          '<input type="radio" name="ad-airdrop-mode" id="ad-airdrop-mode-daily-task" value="daily_task" class="admin-airdrop-radio">' +
+          '<span data-i18n="ad_airdrop_mode_daily_task">' + adT('ad_airdrop_mode_daily_task') + '</span>' +
+        '</label>' +
+        '<button type="button" id="ad-airdrop-save-btn" class="admin-primary-btn" data-i18n="ad_btn_save_airdrop">' + adT('ad_btn_save_airdrop') + '</button>' +
+      '</form>';
+
+    var featuresPanel = document.getElementById('admin-panel-features');
+    if (featuresPanel && featuresPanel.parentNode) {
+      featuresPanel.parentNode.insertBefore(panel, featuresPanel);
+    } else {
+      var adminContent = document.getElementById('admin-content');
+      if (adminContent) adminContent.appendChild(panel);
+    }
+  }
+
+  async function loadAdminAirdropSettings() {
+    ensureAdminAirdropTab();
+    applyAdminI18n();
+
+    var mode = normalizeAirdropMode(await fetchAirdropMode());
+    var level2El = document.getElementById('ad-airdrop-mode-level2');
+    var dailyTaskEl = document.getElementById('ad-airdrop-mode-daily-task');
+
+    if (level2El) level2El.checked = mode === 'level2';
+    if (dailyTaskEl) dailyTaskEl.checked = mode === 'daily_task';
+  }
+
+  async function saveAdminAirdropSettings() {
+    if (!window.supabase) return;
+
+    var selected = document.querySelector('input[name="ad-airdrop-mode"]:checked');
+    var mode = normalizeAirdropMode(selected && selected.value);
+
+    var result = await window.supabase
+      .from('settings')
+      .upsert([{ key: 'airdrop_mode', value: mode }], { onConflict: 'key' });
+
+    if (result.error) {
+      alert(adT('ad_airdrop_save_fail') + result.error.message);
+      return;
+    }
+
+    invalidateAirdropModeCache();
+    if (typeof window.coinrealmUpdateAirdropHint === 'function') {
+      window.coinrealmUpdateAirdropHint();
+    }
+    alert(adT('ad_airdrop_save_ok'));
   }
 
   function ensureAdminFeaturesTab() {
@@ -9865,6 +10052,7 @@ window.addEventListener('hashchange', function () {
     adminInitialized = true;
 
     ensureAdminInviteLeaderboardToggle();
+    ensureAdminAirdropTab();
     ensureAdminFeaturesTab();
 
     document.querySelectorAll('#admin-page .admin-tab').forEach(function (btn) {
@@ -9956,6 +10144,11 @@ window.addEventListener('hashchange', function () {
     var inviteSaveBtn = document.getElementById('ad-invite-save-btn');
     if (inviteSaveBtn) {
       inviteSaveBtn.addEventListener('click', saveAdminInviteSettings);
+    }
+
+    var airdropSaveBtn = document.getElementById('ad-airdrop-save-btn');
+    if (airdropSaveBtn) {
+      airdropSaveBtn.addEventListener('click', saveAdminAirdropSettings);
     }
 
     var featuresSaveBtn = document.getElementById('ad-features-save-btn');

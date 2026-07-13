@@ -51,6 +51,10 @@
       iv_airdrop: '空投',
       iv_airdrop_claimed: '已领取',
       iv_airdrop_hint: '每日可领取一次空投，获得随机 CRLM 奖励',
+      iv_airdrop_hint_level2: '升级到 Lv.2 后，每日可领取一次空投，获得随机 CRLM 奖励',
+      iv_airdrop_hint_daily_task: '每日完成至少一个任务后，可领取一次空投，获得随机 CRLM 奖励',
+      iv_airdrop_level_required: '请先完成任务升级到 Lv.2，即可每日领取空投',
+      iv_airdrop_daily_task_required: '请先完成至少一个任务，即可领取今日空投',
       iv_airdrop_earnings_title: '🎁 空投收益',
       iv_airdrop_expand: '查看全部记录',
       iv_airdrop_collapse: '收起记录',
@@ -90,6 +94,10 @@
       iv_airdrop: 'Airdrop',
       iv_airdrop_claimed: 'Claimed',
       iv_airdrop_hint: 'Claim one daily airdrop for a random CRLM reward',
+      iv_airdrop_hint_level2: 'Reach Lv.2 to claim one daily airdrop for a random CRLM reward',
+      iv_airdrop_hint_daily_task: 'Complete at least one task daily to claim a random CRLM airdrop',
+      iv_airdrop_level_required: 'Reach Lv.2 to claim your daily airdrop',
+      iv_airdrop_daily_task_required: 'Complete at least one task today to claim today\'s airdrop',
       iv_airdrop_earnings_title: '🎁 Airdrop earnings',
       iv_airdrop_expand: 'View all records',
       iv_airdrop_collapse: 'Collapse records',
@@ -117,6 +125,111 @@
   }
 
   window.getInviteText = ivT;
+
+  function getLocalDateString(dayOffset) {
+    var d = new Date();
+    if (dayOffset) {
+      d.setDate(d.getDate() + dayOffset);
+    }
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  }
+
+  function normalizeAirdropMode(value) {
+    if (typeof window.coinrealmNormalizeAirdropMode === 'function') {
+      return window.coinrealmNormalizeAirdropMode(value);
+    }
+    return String(value || 'level2').toLowerCase() === 'daily_task' ? 'daily_task' : 'level2';
+  }
+
+  async function fetchAirdropModeSetting() {
+    if (typeof window.coinrealmFetchAirdropMode === 'function') {
+      return normalizeAirdropMode(await window.coinrealmFetchAirdropMode());
+    }
+    return 'level2';
+  }
+
+  function getAirdropDeniedMessage(reason) {
+    if (reason === 'daily_task') {
+      return ivT('iv_airdrop_daily_task_required');
+    }
+    if (reason === 'level2') {
+      return ivT('iv_airdrop_level_required');
+    }
+    return ivT('iv_login_required');
+  }
+
+  async function hasApprovedSubmissionToday(userId) {
+    var today = getLocalDateString(0);
+    var result = await window.supabase
+      .from('submissions')
+      .select('id, reviewed_at, updated_at, created_at')
+      .eq('user_id', userId)
+      .eq('status', 'approved');
+
+    if (result.error) {
+      return { ok: false, error: result.error };
+    }
+
+    var hasToday = (result.data || []).some(function (row) {
+      var dateValue = row.reviewed_at || row.updated_at || row.created_at;
+      if (!dateValue) return false;
+      return String(dateValue).slice(0, 10) === today;
+    });
+
+    return { ok: true, hasToday: hasToday };
+  }
+
+  async function checkAirdropEligibility(userId) {
+    if (!window.supabase || !userId) {
+      return { ok: false, reason: 'login', message: ivT('iv_login_required') };
+    }
+
+    var mode = await fetchAirdropModeSetting();
+
+    if (mode === 'daily_task') {
+      var todayCheck = await hasApprovedSubmissionToday(userId);
+      if (todayCheck.error) {
+        return { ok: false, reason: 'error', message: ivT('iv_loading') };
+      }
+      if (!todayCheck.hasToday) {
+        return { ok: false, reason: 'daily_task', message: getAirdropDeniedMessage('daily_task') };
+      }
+      return { ok: true, mode: mode };
+    }
+
+    var userResult = await window.supabase
+      .from('users')
+      .select('level')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (userResult.error || !userResult.data) {
+      return { ok: false, reason: 'error', message: ivT('iv_loading') };
+    }
+
+    if ((Number(userResult.data.level) || 0) < 2) {
+      return { ok: false, reason: 'level2', message: getAirdropDeniedMessage('level2') };
+    }
+
+    return { ok: true, mode: mode };
+  }
+
+  async function updateAirdropHint() {
+    var hintEl = document.querySelector('#invite-page .invite-mining-hint');
+    if (!hintEl) return;
+
+    var mode = await fetchAirdropModeSetting();
+    var hintKey = mode === 'daily_task' ? 'iv_airdrop_hint_daily_task' : 'iv_airdrop_hint_level2';
+    hintEl.setAttribute('data-i18n', hintKey);
+    hintEl.textContent = ivT(hintKey);
+  }
+
+  window.coinrealmCheckAirdropEligibility = checkAirdropEligibility;
+  window.coinrealmGetAirdropDeniedMessage = getAirdropDeniedMessage;
+  window.coinrealmUpdateAirdropHint = updateAirdropHint;
 
   window.coinrealmRefreshInviteMiningData = function () {
     inviteDataLoaded = false;
@@ -704,6 +817,7 @@
     initInviteEvents();
     applyInviteI18n();
     updateInviteRecordsTabsUI();
+    updateAirdropHint();
 
     if (typeof processPendingInviteRegistration === 'function') {
       processPendingInviteRegistration();
@@ -724,7 +838,9 @@
       renderLeaderboard();
       renderMiningRecords();
       renderInviteRecordsList();
-      applyInviteI18n();
+      updateAirdropHint().then(function () {
+        applyInviteI18n();
+      });
     };
 
     if (inviteDataLoaded && inviteData) {
