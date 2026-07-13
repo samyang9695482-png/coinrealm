@@ -2156,6 +2156,43 @@
     });
   }
 
+  async function resolvePublisherGoogleAvatarUrl(publisherId) {
+    if (!window.supabase || !publisherId) return '';
+    try {
+      var result = await window.supabase.auth.getSession();
+      var session = result.data && result.data.session;
+      if (!session || !session.user || String(session.user.id) !== String(publisherId)) {
+        return '';
+      }
+      return (session.user.user_metadata && session.user.user_metadata.avatar_url) || '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  async function renderPublisherAvatar(publisher, publisherName) {
+    var avatarEl = document.querySelector('#task-detail-page .publisher-avatar');
+    if (!avatarEl) return;
+
+    var publisherUser = {
+      id: publisher.id || (currentTaskRecord && currentTaskRecord.publisher_id),
+      username: publisherName || publisher.username,
+      email: publisher.email,
+      wallet_address: publisher.wallet_address,
+      avatar_url: publisher.avatar_url
+    };
+
+    var googleAvatarUrl = await resolvePublisherGoogleAvatarUrl(publisherUser.id);
+    var avatarUrl = publisherUser.avatar_url || googleAvatarUrl || '';
+    console.log('任务详情-发布者头像：', avatarUrl);
+
+    if (typeof applyAvatarToElement === 'function') {
+      applyAvatarToElement(avatarEl, publisherUser, 'css-avatar', { googleAvatarUrl: googleAvatarUrl });
+    } else if (typeof buildAvatarHtml === 'function') {
+      avatarEl.innerHTML = buildAvatarHtml(publisherUser, 'css-avatar', { googleAvatarUrl: googleAvatarUrl });
+    }
+  }
+
   async function renderTaskDetailPage() {
     var taskId = getTaskIdFromHash();
     if (!taskId) {
@@ -2330,6 +2367,8 @@
         ? 'Lv.' + publisherLevel + ' ' + levelLabel
         : 'Lv.' + publisherLevel;
     }
+
+    await renderPublisherAvatar(publisher, publisherName);
 
     var completionRateEl = document.getElementById('td-completion-rate');
     if (completionRateEl) {
