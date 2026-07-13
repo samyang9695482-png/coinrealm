@@ -101,4 +101,50 @@
   window.coinrealmRefreshProfileSubmissionStats = refreshProfileSubmissionStats;
   window.coinrealmInitProfileStatNavigation = initProfileStatNavigation;
   window.coinrealmNavigateToMyTasksTab = navigateToMyTasksTab;
+
+  async function applyProfileExchangeDividendsVisibility() {
+    var showExchange = false;
+    var showDividends = false;
+
+    if (typeof window.coinrealmIsExchangeEnabled === 'function') {
+      showExchange = await window.coinrealmIsExchangeEnabled();
+    }
+    if (typeof window.coinrealmIsDividendsEnabled === 'function') {
+      showDividends = await window.coinrealmIsDividendsEnabled();
+    }
+
+    var exchangeItem = document.querySelector('#profile-page .profile-menu-item[data-route="exchange"]');
+    var dividendsItem = document.querySelector('#profile-page .profile-menu-item[data-route="dividends"]');
+
+    if (exchangeItem) {
+      if (showExchange) {
+        exchangeItem.classList.remove('hidden');
+      } else {
+        exchangeItem.classList.add('hidden');
+      }
+    }
+
+    if (dividendsItem) {
+      if (showDividends) {
+        dividendsItem.classList.remove('hidden');
+      } else {
+        dividendsItem.classList.add('hidden');
+      }
+    }
+  }
+
+  window.coinrealmApplyProfileExchangeDividendsVisibility = applyProfileExchangeDividendsVisibility;
+
+  function initProfileFeatureMenuDefaults() {
+    ['exchange', 'dividends'].forEach(function (route) {
+      var item = document.querySelector('#profile-page .profile-menu-item[data-route="' + route + '"]');
+      if (item) item.classList.add('hidden');
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initProfileFeatureMenuDefaults);
+  } else {
+    initProfileFeatureMenuDefaults();
+  }
 })();
