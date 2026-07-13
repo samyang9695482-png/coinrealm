@@ -8602,11 +8602,19 @@ window.addEventListener('hashchange', function () {
 
     publisherLoading = true;
 
-    return window.supabase
-      .from('users')
-      .select('*')
-      .eq('id', publisherId)
-      .single()
+    var fetchPublisher = typeof window.coinrealmFetchPublisherUser === 'function'
+      ? window.coinrealmFetchPublisherUser(publisherId)
+      : window.supabase
+          .from('users')
+          .select('id, username, email, wallet_address, level, reputation_score, avatar_url')
+          .eq('id', publisherId)
+          .maybeSingle()
+          .then(function (result) {
+            console.log('发布者查询结果：', { data: result.data, error: result.error });
+            return result;
+          });
+
+    return fetchPublisher
       .then(function (userResult) {
         if (userResult.error || !userResult.data) {
           console.warn('发布者主页：未找到用户', { publisherId: publisherId, error: userResult.error });

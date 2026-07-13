@@ -2191,11 +2191,17 @@
     resetProofUploadFiles();
 
     if (currentTaskRecord.publisher_id) {
-      var publisherResult = await window.supabase
-        .from('users')
-        .select('username, level, reputation_score, email, wallet_address')
-        .eq('id', currentTaskRecord.publisher_id)
-        .maybeSingle();
+      var publisherResult;
+      if (typeof window.coinrealmFetchPublisherUser === 'function') {
+        publisherResult = await window.coinrealmFetchPublisherUser(currentTaskRecord.publisher_id);
+      } else {
+        publisherResult = await window.supabase
+          .from('users')
+          .select('id, username, email, wallet_address, level, reputation_score, avatar_url')
+          .eq('id', currentTaskRecord.publisher_id)
+          .maybeSingle();
+        console.log('发布者查询结果：', { data: publisherResult.data, error: publisherResult.error });
+      }
       console.log('任务详情：查询发布者', {
         publisherId: currentTaskRecord.publisher_id,
         result: publisherResult
