@@ -127,18 +127,27 @@
     });
   }
 
-  function getScreenshotCount(submission) {
+  function getScreenshotUrls(submission) {
     var urls = submission.screenshot_urls;
-    if (Array.isArray(urls)) return urls.length;
+    if (!urls) return [];
+    if (Array.isArray(urls)) {
+      return urls.map(function (url) { return String(url || '').trim(); }).filter(Boolean);
+    }
     if (typeof urls === 'string' && urls.trim()) {
       try {
         var parsed = JSON.parse(urls);
-        if (Array.isArray(parsed)) return parsed.length;
+        if (Array.isArray(parsed)) {
+          return parsed.map(function (url) { return String(url || '').trim(); }).filter(Boolean);
+        }
       } catch (e) {
-        return 1;
+        return [urls.trim()];
       }
     }
-    return 0;
+    return [];
+  }
+
+  function getScreenshotCount(submission) {
+    return getScreenshotUrls(submission).length;
   }
 
   function getStatusLabel(submission) {
@@ -156,21 +165,87 @@
   }
 
   function getSummaryText(submission) {
-    var screenshotCount = getScreenshotCount(submission);
-    if (screenshotCount > 0 && !submission.description) {
-      return rvT('rv_screenshot_summary', { count: screenshotCount });
-    }
-    if (screenshotCount > 0 && submission.description) {
-      return truncateText(submission.description, 50) + ' · ' +
-        rvT('rv_screenshot_summary', { count: screenshotCount });
-    }
     return truncateText(submission.description || '', 50) || '-';
+  }
+
+  function normalizeSubmissionUserRecord(rawUser) {
+    if (!rawUser) return null;
+    if (Array.isArray(rawUser)) {
+      return rawUser.length ? rawUser[0] : null;
+    }
+    return rawUser;
+  }
+
+  function getSubmissionDisplayName(users) {
+    var userRecord = normalizeSubmissionUserRecord(users);
+    if (!userRecord) return 'Unknown';
+
+    if (userRecord.username != null && String(userRecord.username).trim()) {
+      return String(userRecord.username).trim();
+    }
+
+    if (userRecord.email) {
+      var fromEmail = displayNameFromEmail(userRecord.email);
+      if (fromEmail && fromEmail !== 'Unknown') {
+        return fromEmail;
+      }
+    }
+
+    if (userRecord.wallet_address) {
+      var wallet = String(userRecord.wallet_address).trim();
+      if (wallet) {
+        if (typeof window.coinrealmUsernameFromWalletAddress === 'function') {
+          return window.coinrealmUsernameFromWalletAddress(wallet);
+        }
+        return 'Wallet_' + wallet.slice(0, 6);
+      }
+    }
+
+    return 'Unknown';
+  }
+
+  function renderScreenshotBlock(submission) {
+    var urls = getScreenshotUrls(submission);
+    if (!urls.length) return '';
+
+    var thumbStyle = 'max-width:120px;max-height:80px;border-radius:4px;object-fit:cover;display:block;margin-top:8px;';
+    var linkStyle = 'display:inline-block;margin-right:8px;margin-top:8px;';
+    var galleryStyle = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;';
+
+    if (urls.length === 1) {
+      return (
+        '<div class="rv-screenshots">' +
+          '<a class="rv-screenshot-link" href="' + escapeHtml(urls[0]) + '" target="_blank" rel="noopener noreferrer" style="' + linkStyle + '">' +
+            '<img class="rv-screenshot-thumb" src="' + escapeHtml(urls[0]) + '" alt="screenshot" style="' + thumbStyle + '">' +
+          '</a>' +
+        '</div>'
+      );
+    }
+
+    return (
+      '<div class="rv-screenshots">' +
+        '<button type="button" class="rv-screenshot-toggle" data-id="' + escapeHtml(submission.id) + '" style="margin-top:8px;padding:0;border:none;background:none;color:#4f8cff;cursor:pointer;font-size:13px;">' +
+          escapeHtml(rvT('rv_screenshot_summary', { count: urls.length })) +
+        '</button>' +
+        '<div class="rv-screenshot-gallery hidden" id="rv-screenshot-gallery-' + escapeHtml(submission.id) + '" style="' + galleryStyle + '">' +
+          urls.map(function (url, index) {
+            return (
+              '<a class="rv-screenshot-link" href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer" style="' + linkStyle + '">' +
+                '<img class="rv-screenshot-thumb" src="' + escapeHtml(url) + '" alt="screenshot ' + (index + 1) + '" style="' + thumbStyle + '">' +
+              '</a>'
+            );
+          }).join('') +
+        '</div>' +
+      '</div>'
+    );
   }
 
   function renderSubmissionItem(submission) {
     var actionsHtml = '';
     var summaryHtml = '';
     var statusLabel = getStatusLabel(submission);
+    var displayName = getSubmissionDisplayName(submission.users);
+    var screenshotHtml = renderScreenshotBlock(submission);
 
     if (submission.status === 'approved') {
       summaryHtml = '<span class="rv-status-approved">' + escapeHtml(statusLabel) + '</span>';
@@ -193,9 +268,13 @@
       }
     }
 
+    if (screenshotHtml) {
+      summaryHtml += screenshotHtml;
+    }
+
     var submitter = submission.submitter || {
       id: submission.user_id,
-      username: submission.username || 'Unknown'
+      username: displayName
     };
     var avatarHtml = typeof buildAvatarHtml === 'function'
       ? buildAvatarHtml(submitter, 'rv-avatar')
@@ -205,7 +284,7 @@
       '<li class="review-submission-item" data-id="' + escapeHtml(submission.id) + '">' +
         '<div class="rv-user-block">' +
           avatarHtml +
-          '<span class="rv-username">' + escapeHtml(submission.username || 'Unknown') + '</span>' +
+          '<span class="rv-username">' + escapeHtml(displayName) + '</span>' +
         '</div>' +
         '<div class="rv-content-block">' +
           '<p class="rv-submit-time">' + escapeHtml(formatSubmissionTime(submission.submitted_at)) + '</p>' +
@@ -263,108 +342,23 @@
     }
   }
 
-  function formatWalletUsernameFallback(walletAddress) {
-    var wallet = String(walletAddress || '').trim();
-    if (!wallet) return '';
-    return wallet.slice(0, 10) + '...';
-  }
-
-  function resolveSubmissionUsername(userId, userRecord) {
-    if (userRecord && typeof userRecord === 'object') {
-      if (userRecord.username != null && String(userRecord.username).trim()) {
-        return String(userRecord.username).trim();
-      }
-
-      var fromEmail = displayNameFromEmail(userRecord.email);
-      if (fromEmail && fromEmail !== 'Unknown') {
-        return fromEmail;
-      }
-
-      var fromWallet = formatWalletUsernameFallback(userRecord.wallet_address);
-      if (fromWallet) {
-        return fromWallet;
-      }
-
-      if (typeof window.coinrealmResolveUserDisplayName === 'function') {
-        var resolved = window.coinrealmResolveUserDisplayName(userRecord);
-        if (resolved && resolved !== '未知发布者') {
-          return resolved;
-        }
-      }
-    }
-
-    return 'Unknown';
-  }
-
-  function normalizeSubmissionUserRecord(rawUser) {
-    if (!rawUser) return null;
-    if (Array.isArray(rawUser)) {
-      return rawUser.length ? rawUser[0] : null;
-    }
-    return rawUser;
-  }
-
   function mapSubmissionWithUsername(submission) {
     var userRecord = normalizeSubmissionUserRecord(submission.users);
     var userId = submission.user_id;
-    var username = resolveSubmissionUsername(userId, userRecord);
+    var username = getSubmissionDisplayName(submission.users);
 
     console.log('提交列表-用户名：', { userId: userId, username: username });
 
     var mapped = Object.assign({}, submission);
-    delete mapped.users;
     mapped.username = username;
     mapped.submitter = userRecord ? {
-      id: userRecord.id || userId,
+      id: userId,
       username: username,
       email: userRecord.email || '',
-      avatar_url: userRecord.avatar_url || ''
+      wallet_address: userRecord.wallet_address || ''
     } : (userId ? { id: userId, username: username } : null);
 
     return mapped;
-  }
-
-  async function enrichSubmissionsWithUsers(submissions) {
-    if (!submissions.length || !window.supabase) return submissions;
-
-    var userIds = submissions
-      .map(function (item) { return item.user_id; })
-      .filter(function (id) { return !!id; });
-    var uniqueIds = userIds.filter(function (id, index) {
-      return userIds.indexOf(id) === index;
-    });
-
-    if (!uniqueIds.length) {
-      return submissions.map(function (item) {
-        item.username = resolveSubmissionUsername(item.user_id, null);
-        return item;
-      });
-    }
-
-    var usersResult = await window.supabase
-      .from('users')
-      .select('id, username, email, avatar_url, wallet_address')
-      .in('id', uniqueIds);
-
-    var userMap = {};
-    if (!usersResult.error && usersResult.data) {
-      usersResult.data.forEach(function (user) {
-        userMap[user.id] = user;
-      });
-    }
-
-    return submissions.map(function (item) {
-      var userRecord = userMap[item.user_id] || null;
-      var username = resolveSubmissionUsername(item.user_id, userRecord);
-      item.submitter = userRecord ? {
-        id: userRecord.id,
-        username: username,
-        avatar_url: userRecord.avatar_url || '',
-        email: userRecord.email || ''
-      } : (item.user_id ? { id: item.user_id, username: username } : null);
-      item.username = username;
-      return item;
-    });
   }
 
   function updatePendingCountBadge() {
@@ -489,16 +483,12 @@
 
     var submissionsResult = await window.supabase
       .from('submissions')
-      .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment, screenshot_urls, users(id, username, email, wallet_address, avatar_url)')
+      .select('id, task_id, user_id, status, description, screenshot_urls, submitted_at, users!inner(username, email, wallet_address)')
       .eq('task_id', taskId)
       .in('status', statusFilter)
       .order('submitted_at', { ascending: false });
 
     console.log('提交列表查询结果：', { data: submissionsResult.data, error: submissionsResult.error });
-
-    var submissions = (submissionsResult.data || []).map(mapSubmissionWithUsername);
-
-    console.log('审核管理-提交列表数量：', submissions.length);
 
     if (submissionsResult.error) {
       alert(rvT('rv_alert_action_fail') + submissionsResult.error.message);
@@ -507,16 +497,9 @@
       return;
     }
 
-    var needsUserEnrichment = submissions.some(function (item) {
-      return item.username === 'Unknown' && item.user_id;
-    });
+    var submissions = (submissionsResult.data || []).map(mapSubmissionWithUsername);
 
-    if (needsUserEnrichment) {
-      submissions = await enrichSubmissionsWithUsers(submissions);
-      submissions.forEach(function (item) {
-        console.log('提交列表-用户名：', { userId: item.user_id, username: item.username });
-      });
-    }
+    console.log('审核管理-提交列表数量：', submissions.length);
 
     currentSubmissions = submissions;
     renderSubmissionList();
@@ -775,6 +758,15 @@
       btn.addEventListener('click', function () {
         pendingRejectId = btn.getAttribute('data-id');
         openRejectModal();
+      });
+    });
+
+    listEl.querySelectorAll('.rv-screenshot-toggle').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var submissionId = btn.getAttribute('data-id');
+        var gallery = document.getElementById('rv-screenshot-gallery-' + submissionId);
+        if (!gallery) return;
+        gallery.classList.toggle('hidden');
       });
     });
   }
