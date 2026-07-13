@@ -1,0 +1,572 @@
+/* CoinRealm Mobile — 浅色模式 + 大留白 + 柔和阴影 */
+
+:root {
+  --m-bg: #fafbfc;
+  --m-card: #ffffff;
+  --m-accent: #6366f1;
+  --m-accent-soft: rgba(99, 102, 241, 0.12);
+  --m-reward: #10b981;
+  --m-text: #1e293b;
+  --m-text-muted: #94a3b8;
+  --m-border: #e2e8f0;
+  --m-shadow: 0 2px 12px rgba(15, 23, 42, 0.06);
+  --m-shadow-lg: 0 8px 24px rgba(99, 102, 241, 0.18);
+  --m-radius: 16px;
+  --m-gap: 12px;
+  --m-header-h: 44px;
+  --m-tab-h: 56px;
+  --m-max-w: 430px;
+  --m-safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body.mobile-app {
+  margin: 0;
+  padding: 0;
+  background: var(--m-bg);
+  color: var(--m-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  height: 100%;
+}
+
+body.mobile-app {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+body.mobile-app > * {
+  width: 100%;
+  max-width: var(--m-max-w);
+}
+
+body.mobile-app .navbar {
+  display: none !important;
+}
+
+.mobile-auth-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: -1px !important;
+}
+
+.mobile-header {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: var(--m-max-w);
+  height: var(--m-header-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  background: rgba(250, 251, 252, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--m-border);
+  z-index: 200;
+}
+
+.mobile-header-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--m-text);
+  line-height: var(--m-header-h);
+}
+
+.mobile-header-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  background: transparent;
+  color: var(--m-text);
+  font-size: 18px;
+  cursor: pointer;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-back-btn { left: 4px; }
+.mobile-lang-btn { right: 4px; font-size: 13px; font-weight: 600; color: var(--m-accent); }
+
+.mobile-scroll {
+  flex: 1;
+  width: 100%;
+  max-width: var(--m-max-w);
+  margin-top: var(--m-header-h);
+  margin-bottom: calc(var(--m-tab-h) + var(--m-safe-bottom));
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  height: calc(100vh - var(--m-header-h) - var(--m-tab-h) - var(--m-safe-bottom));
+}
+
+body.mobile-app.sub-page .mobile-scroll {
+  margin-bottom: var(--m-safe-bottom);
+  height: calc(100vh - var(--m-header-h) - var(--m-safe-bottom));
+}
+
+.mobile-app-content {
+  padding: var(--m-gap);
+  padding-bottom: calc(var(--m-gap) + 8px);
+  background: var(--m-bg);
+  min-height: 100%;
+}
+
+.mobile-content-loading,
+.mobile-error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  color: var(--m-text-muted);
+  gap: 12px;
+}
+
+.mobile-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--m-border);
+  border-top-color: var(--m-accent);
+  border-radius: 50%;
+  animation: m-spin 0.8s linear infinite;
+}
+
+@keyframes m-spin { to { transform: rotate(360deg); } }
+
+.mobile-tab-bar {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: var(--m-max-w);
+  height: calc(var(--m-tab-h) + var(--m-safe-bottom));
+  padding-bottom: var(--m-safe-bottom);
+  display: flex;
+  align-items: stretch;
+  background: var(--m-card);
+  border-top: 1px solid var(--m-border);
+  box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.04);
+  z-index: 200;
+}
+
+body.mobile-app.sub-page .mobile-tab-bar { display: none; }
+
+.mobile-tab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 0;
+  cursor: pointer;
+  color: var(--m-text-muted);
+  font-size: 10px;
+  min-height: 44px;
+}
+
+.mobile-tab-icon { font-size: 20px; line-height: 1; }
+.mobile-tab-label { font-size: 10px; font-weight: 500; }
+.mobile-tab.active { color: var(--m-accent); }
+.mobile-tab.active .mobile-tab-label { font-weight: 600; }
+
+.mobile-tab-publish-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: #fff;
+  font-size: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--m-shadow-lg);
+  margin-top: -18px;
+  border: 3px solid var(--m-card);
+}
+
+.mobile-login-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: var(--m-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.mobile-login-screen.hidden { display: none !important; }
+
+.mobile-login-inner { width: 100%; max-width: 320px; text-align: center; }
+
+.mobile-login-logo {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 16px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  font-size: 36px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--m-shadow-lg);
+}
+
+.mobile-login-title { margin: 0 0 6px; font-size: 24px; font-weight: 700; }
+.mobile-login-subtitle { margin: 0 0 32px; font-size: 14px; color: var(--m-text-muted); }
+
+.mobile-btn {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 12px;
+  border: none;
+}
+
+.mobile-btn-primary {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  box-shadow: var(--m-shadow-lg);
+}
+
+.mobile-btn-outline {
+  background: var(--m-card);
+  color: var(--m-text);
+  border: 1px solid var(--m-border);
+}
+
+.mobile-login-legal { margin-top: 24px; font-size: 12px; color: var(--m-text-muted); line-height: 1.6; }
+.mobile-link { color: var(--m-accent); text-decoration: none; }
+
+body.mobile-app .hidden { display: none !important; }
+
+body.mobile-app #ads-carousel {
+  margin-bottom: var(--m-gap);
+  border-radius: var(--m-radius);
+  overflow: hidden;
+  box-shadow: var(--m-shadow);
+  min-height: 80px;
+}
+
+body.mobile-app .ads-carousel-slide {
+  min-height: 80px;
+  background: linear-gradient(135deg, var(--m-accent-soft), rgba(16, 185, 129, 0.08));
+  border-radius: var(--m-radius);
+}
+
+body.mobile-app #task-search {
+  width: 100%;
+  min-height: 44px;
+  border: none;
+  border-radius: 12px;
+  background: #f1f5f9;
+  padding: 0 14px;
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+
+body.mobile-app #filter-tags {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+body.mobile-app .filter-tag {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--m-border);
+  background: var(--m-card);
+  color: var(--m-text-muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+body.mobile-app .filter-tag.active {
+  background: var(--m-accent);
+  border-color: var(--m-accent);
+  color: #fff;
+}
+
+body.mobile-app #task-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-gap);
+}
+
+body.mobile-app .task-card {
+  border-radius: var(--m-radius);
+  background: var(--m-card);
+  box-shadow: var(--m-shadow);
+  padding: 14px;
+  border: none;
+}
+
+body.mobile-app .task-card-reward { color: var(--m-reward) !important; font-weight: 700; }
+body.mobile-app .task-card-btn { min-height: 44px; border-radius: 12px; font-weight: 600; }
+body.mobile-app .post-task-btn, body.mobile-app #back-to-top-btn { display: none !important; }
+
+body.mobile-app .my-tasks-header { display: none; }
+body.mobile-app .my-tasks-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: var(--m-gap);
+  background: #f1f5f9;
+  border-radius: 12px;
+  padding: 4px;
+}
+
+body.mobile-app .my-tasks-tab {
+  flex: 1;
+  min-height: 40px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--m-text-muted);
+  font-size: 13px;
+}
+
+body.mobile-app .my-tasks-tab-active {
+  background: var(--m-card);
+  color: var(--m-accent);
+  font-weight: 600;
+  box-shadow: var(--m-shadow);
+}
+
+body.mobile-app .my-tasks-list { display: flex; flex-direction: column; gap: var(--m-gap); }
+body.mobile-app .my-tasks-card {
+  border-radius: var(--m-radius);
+  background: var(--m-card);
+  box-shadow: var(--m-shadow);
+  padding: 14px;
+}
+
+body.mobile-app .create-task-header { display: none; }
+body.mobile-app .create-task-field,
+body.mobile-app .create-task-section {
+  background: var(--m-card);
+  border-radius: var(--m-radius);
+  box-shadow: var(--m-shadow);
+  padding: 14px;
+  margin-bottom: var(--m-gap);
+}
+
+body.mobile-app .create-task-input,
+body.mobile-app .create-task-textarea,
+body.mobile-app .create-task-select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--m-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 14px;
+  background: #f8fafc;
+}
+
+body.mobile-app #ct-submit-btn {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+  color: #fff !important;
+  font-weight: 600;
+  border: none;
+  box-shadow: var(--m-shadow-lg);
+}
+
+body.mobile-app .invite-title { display: none; }
+body.mobile-app .invite-layout { display: flex; flex-direction: column; gap: var(--m-gap); }
+body.mobile-app .invite-panel {
+  background: var(--m-card);
+  border-radius: var(--m-radius);
+  box-shadow: var(--m-shadow);
+  padding: 16px;
+  margin-bottom: var(--m-gap);
+}
+
+body.mobile-app #invite-mining-btn {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+  color: #fff !important;
+  font-size: 18px;
+  font-weight: 700;
+  border: none;
+  box-shadow: var(--m-shadow-lg);
+}
+
+body.mobile-app .invite-mining-progress-wrap {
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 12px 0;
+}
+
+body.mobile-app .invite-mining-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1, #10b981);
+}
+
+body.mobile-app .profile-user-card,
+body.mobile-app .profile-asset-card,
+body.mobile-app .profile-stats-row,
+body.mobile-app .profile-menu-card {
+  background: var(--m-card);
+  border-radius: var(--m-radius);
+  box-shadow: var(--m-shadow);
+  margin-bottom: var(--m-gap);
+}
+
+body.mobile-app .profile-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--m-border);
+  color: var(--m-text);
+  text-decoration: none;
+  font-size: 14px;
+  background: transparent;
+  width: 100%;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+body.mobile-app .profile-menu-status-bound { color: var(--m-reward) !important; }
+
+body.mobile-app .task-detail-header { display: none; }
+body.mobile-app .task-detail-card,
+body.mobile-app .publisher-info-card {
+  background: var(--m-card);
+  border-radius: var(--m-radius);
+  box-shadow: var(--m-shadow);
+  padding: 14px;
+  margin-bottom: var(--m-gap);
+}
+
+body.mobile-app #td-reward-amount {
+  color: var(--m-reward) !important;
+  font-size: 24px !important;
+  font-weight: 700 !important;
+}
+
+body.mobile-app .task-detail-action-bar,
+body.mobile-app .submit-task-action-bar {
+  position: fixed;
+  bottom: var(--m-safe-bottom);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: var(--m-max-w);
+  padding: 10px var(--m-gap);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--m-border);
+  z-index: 150;
+}
+
+body.mobile-app .td-action-btn,
+body.mobile-app #st-submit-btn {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+body.mobile-app .td-btn-gold,
+body.mobile-app .td-btn-primary,
+body.mobile-app .st-btn-gold {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+  color: #fff !important;
+  border: none;
+}
+
+body.mobile-app .submit-task-header,
+body.mobile-app .review-header,
+body.mobile-app .publish-mgmt-header,
+body.mobile-app .publisher-header,
+body.mobile-app .simple-tasks-banner { display: none; }
+
+body.mobile-app .submit-task-summary-card,
+body.mobile-app .submit-task-field,
+body.mobile-app .review-card {
+  background: var(--m-card);
+  border-radius: var(--m-radius);
+  box-shadow: var(--m-shadow);
+  padding: 14px;
+  margin-bottom: var(--m-gap);
+}
+
+body.mobile-app #st-description {
+  width: 100%;
+  min-height: 120px;
+  border: 1px solid var(--m-border);
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 14px;
+}
+
+body.mobile-app #st-upload-zone {
+  min-height: 120px;
+  border: 2px dashed var(--m-border);
+  border-radius: var(--m-radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--m-text-muted);
+}
+
+body.mobile-app .withdraw-input,
+body.mobile-app .td-twitter-token-input {
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--m-border);
+  width: 100%;
+  padding: 10px 12px;
+}
+
+body.mobile-app .td-twitter-modal-primary,
+body.mobile-app #withdraw-confirm-btn {
+  background: var(--m-accent) !important;
+  color: #fff !important;
+  min-height: 44px;
+  border-radius: 10px;
+}

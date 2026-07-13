@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#6366f1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="CoinRealm">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>CoinRealm</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%236366f1' width='100' height='100' rx='20'/%3E%3Ctext x='50' y='62' text-anchor='middle' fill='white' font-size='48' font-family='Arial' font-weight='bold'%3EC%3C/text%3E%3C/svg%3E">
+  <script>
+    (function () {
+      var ua = navigator.userAgent || '';
+      var isDesktop = !/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua) && window.innerWidth > 768;
+      if (isDesktop && !/[?&]mobile=1/.test(window.location.search) && window.location.hash.indexOf('mobile=1') === -1) {
+        window.location.replace('index.html' + window.location.hash + window.location.search);
+      }
+    })();
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    window.SUPABASE_URL = 'https://ocpuksssvnueknhfcfco.supabase.co';
+    window.SUPABASE_ANON_KEY = 'sb_publishable_XXFWPmwswaH4ESVjcBSIfg_6X7h7S4a';
+    window.supabase = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+  </script>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="css/mobile.css">
+</head>
+<body class="mobile-app">
+  <div id="mobile-login-screen" class="mobile-login-screen hidden" aria-hidden="true">
+    <div class="mobile-login-inner">
+      <div class="mobile-login-logo" aria-hidden="true">C</div>
+      <h1 class="mobile-login-title">CoinRealm</h1>
+      <p class="mobile-login-subtitle">Web3 任务与空投平台</p>
+      <button type="button" id="mobile-google-btn" class="mobile-btn mobile-btn-outline">Google 登录</button>
+      <button type="button" id="mobile-wallet-btn" class="mobile-btn mobile-btn-primary">连接钱包</button>
+      <p class="mobile-login-legal">
+        登录即表示同意
+        <a href="#" class="mobile-link">用户协议</a>
+        与
+        <a href="#" class="mobile-link">隐私政策</a>
+      </p>
+    </div>
+  </div>
+
+  <header id="mobile-header" class="mobile-header">
+    <button type="button" id="mobile-back-btn" class="mobile-header-btn mobile-back-btn hidden" aria-label="返回">←</button>
+    <h1 id="mobile-page-title" class="mobile-header-title">任务中心</h1>
+    <button type="button" id="mobile-lang-btn" class="mobile-header-btn mobile-lang-btn" aria-label="切换语言">中</button>
+  </header>
+
+  <div id="auth-area" class="mobile-auth-hidden" aria-hidden="true"></div>
+
+  <main id="mobile-scroll" class="mobile-scroll">
+    <div id="app-content" class="app-content mobile-app-content">
+      <div id="mobile-content-loading" class="mobile-content-loading">
+        <div class="mobile-spinner"></div>
+        <p>加载中...</p>
+      </div>
+    </div>
+  </main>
+
+  <nav id="mobile-tab-bar" class="mobile-tab-bar" aria-label="主导航">
+    <button type="button" class="mobile-tab active" data-route="home" data-title="任务中心">
+      <span class="mobile-tab-icon" aria-hidden="true">🏠</span>
+      <span class="mobile-tab-label">首页</span>
+    </button>
+    <button type="button" class="mobile-tab" data-route="my-tasks" data-title="我的任务">
+      <span class="mobile-tab-icon" aria-hidden="true">📋</span>
+      <span class="mobile-tab-label">任务</span>
+    </button>
+    <button type="button" class="mobile-tab mobile-tab-publish" data-route="create-task" data-title="发布任务">
+      <span class="mobile-tab-publish-btn" aria-hidden="true">➕</span>
+      <span class="mobile-tab-label">发布</span>
+    </button>
+    <button type="button" class="mobile-tab" data-route="invite" data-title="空投中心">
+      <span class="mobile-tab-icon" aria-hidden="true">🎁</span>
+      <span class="mobile-tab-label">空投</span>
+    </button>
+    <button type="button" class="mobile-tab" data-route="profile" data-title="我的">
+      <span class="mobile-tab-icon" aria-hidden="true">👤</span>
+      <span class="mobile-tab-label">我的</span>
+    </button>
+  </nav>
+
+  <script>
+    (function bootstrapAppContent() {
+      var mount = document.getElementById('app-content');
+      if (!mount) return;
+      try {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', 'index.html', false);
+        xhr.send(null);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          var parser = new DOMParser();
+          var doc = parser.parseFromString(xhr.responseText, 'text/html');
+          var src = doc.getElementById('app-content');
+          if (src) {
+            mount.innerHTML = src.innerHTML;
+          }
+        }
+      } catch (err) {
+        console.error('[mobile] 加载 index.html 内容失败:', err);
+        mount.innerHTML = '<div class="mobile-error-state"><p>页面加载失败，请刷新重试</p></div>';
+      }
+    })();
+  </script>
+  <script src="js/i18n.js"></script>
+  <script src="auth.js"></script>
+  <script src="js/pages/leaderboard.js"></script>
+  <script src="js/pages/dividends.js"></script>
+  <script src="js/pages/invite.js"></script>
+  <script src="js/pages/admin.js"></script>
+  <script src="js/pages/home.js"></script>
+  <script src="js/pages/publisher.js"></script>
+  <script src="js/pages/task-detail.js"></script>
+  <script src="js/pages/create-task.js"></script>
+  <script src="js/pages/submit-task.js"></script>
+  <script src="js/pages/review.js"></script>
+  <script src="js/pages/profile.js"></script>
+  <script src="js/pages/my-tasks.js"></script>
+  <script src="app.js?v=20260702"></script>
+  <script src="js/mobile.js"></script>
+</body>
+</html>
