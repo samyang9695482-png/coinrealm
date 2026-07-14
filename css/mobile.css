@@ -86,6 +86,12 @@ body.mobile-app .navbar {
   font-weight: 600;
   color: var(--m-text);
   line-height: var(--m-header-h);
+  text-align: center;
+  max-width: calc(100% - 168px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .mobile-header-btn {
@@ -106,28 +112,43 @@ body.mobile-app .navbar {
 }
 
 .mobile-back-btn { left: 4px; }
-.mobile-lang-btn { right: 4px; font-size: 13px; font-weight: 600; color: var(--m-accent); }
 
-/* 通知铃铛：语言切换左侧 */
-.mobile-notif-wrap {
-  position: absolute;
-  top: 50%;
+/* 右侧：语言在左、铃铛在右 */
+.mobile-lang-btn {
   right: 48px;
-  transform: translateY(-50%);
-  margin: 0;
-  z-index: 2;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--m-accent);
 }
 
-.mobile-notif-btn {
+/* 覆盖 app.js 注入的 .cr-notif-wrap { position: relative }，避免铃铛进入文档流居中 */
+body.mobile-app .mobile-header .cr-notif-wrap.mobile-notif-wrap,
+body.mobile-app .mobile-notif-wrap {
+  position: absolute !important;
+  top: 50%;
+  right: 4px;
+  left: auto;
+  transform: translateY(-50%);
+  margin: 0 !important;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+}
+
+body.mobile-app .mobile-header .mobile-notif-btn,
+body.mobile-app .mobile-notif-btn {
   position: relative;
   top: auto;
+  right: auto;
+  left: auto;
   transform: none;
-  min-width: 40px;
-  min-height: 40px;
+  min-width: 44px;
+  min-height: 44px;
   font-size: 18px;
+  color: var(--m-text);
 }
 
-.mobile-notif-dropdown {
+body.mobile-app .mobile-notif-dropdown {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
@@ -136,7 +157,7 @@ body.mobile-app .navbar {
   z-index: 250;
 }
 
-body.mobile-app .cr-notif-badge {
+body.mobile-app .mobile-header .cr-notif-badge {
   top: 4px;
   right: 4px;
 }
