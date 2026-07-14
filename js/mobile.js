@@ -254,12 +254,14 @@
   }
 
   function registerServiceWorker() {
-    if (!('serviceWorker' in navigator)) return;
-    window.addEventListener('load', function () {
-      navigator.serviceWorker.register('sw.js').catch(function (err) {
-        console.warn('[mobile] Service Worker 注册失败:', err);
-      });
-    });
+    // 临时禁用 Service Worker 注册，排查缓存/安装问题
+    // if (!('serviceWorker' in navigator)) return;
+    // window.addEventListener('load', function () {
+    //   navigator.serviceWorker.register('sw.js').catch(function (err) {
+    //     console.warn('[mobile] Service Worker 注册失败:', err);
+    //   });
+    // });
+    return;
   }
 
   function observeAuthChanges() {
