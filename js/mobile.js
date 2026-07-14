@@ -110,6 +110,7 @@
     applyMobileLoginSubtitle();
     updateLangButton();
     syncLoginButtonLabels();
+    refreshMobileFilterLabels();
   }
 
   function enhanceOfficialRecommendCards() {
@@ -143,16 +144,185 @@
     }
   }
 
+  var MOBILE_FILTER_PRIMARY = ['simple', 'official', 'airdrop'];
+  var MOBILE_FILTER_ALL = [
+    { type: 'all', zh: '全部', en: 'All' },
+    { type: 'simple', zh: '简单任务', en: 'Simple' },
+    { type: 'official', zh: '官方', en: 'Official' },
+    { type: 'airdrop', zh: '空投', en: 'Airdrop' },
+    { type: 'register', zh: '注册', en: 'Register' },
+    { type: 'trade', zh: '交易', en: 'Trade' },
+    { type: 'game', zh: '游戏', en: 'Game' },
+    { type: 'content', zh: '内容', en: 'Content' },
+    { type: 'test', zh: '测试', en: 'Test' }
+  ];
+
+  function getMobileFilterLabel(type) {
+    for (var i = 0; i < MOBILE_FILTER_ALL.length; i++) {
+      if (MOBILE_FILTER_ALL[i].type === type) {
+        return window.currentLang === 'en' ? MOBILE_FILTER_ALL[i].en : MOBILE_FILTER_ALL[i].zh;
+      }
+    }
+    return type;
+  }
+
+  function getActiveDesktopFilterType() {
+    var active = document.querySelector('#filter-tags > .tag-btn.active');
+    return active ? active.getAttribute('data-type') : 'all';
+  }
+
+  function applyDesktopFilterType(type) {
+    var buttons = document.querySelectorAll('#filter-tags > .tag-btn');
+    var matched = false;
+    buttons.forEach(function (btn) {
+      var isMatch = btn.getAttribute('data-type') === type;
+      btn.classList.toggle('active', isMatch);
+      if (isMatch) matched = true;
+    });
+    if (!matched && buttons.length) {
+      buttons.forEach(function (btn) {
+        btn.classList.toggle('active', btn.getAttribute('data-type') === 'all');
+      });
+      type = 'all';
+    }
+    syncMobileFilterChips(type);
+    if (typeof applyFiltersAndSort === 'function') {
+      applyFiltersAndSort();
+    }
+  }
+
+  function syncMobileFilterChips(type) {
+    var bar = document.querySelector('.mobile-filter-bar');
+    if (!bar) return;
+    type = type || getActiveDesktopFilterType();
+    var isPrimary = MOBILE_FILTER_PRIMARY.indexOf(type) >= 0;
+    bar.querySelectorAll('.mobile-filter-chip[data-type]').forEach(function (chip) {
+      chip.classList.toggle('active', isPrimary && chip.getAttribute('data-type') === type);
+    });
+    var moreBtn = bar.querySelector('.mobile-filter-more-btn');
+    if (moreBtn) {
+      moreBtn.classList.toggle('active', !isPrimary);
+      if (!isPrimary && type && type !== 'all') {
+        moreBtn.textContent = getMobileFilterLabel(type) + ' ▼';
+      } else if (!isPrimary && type === 'all') {
+        moreBtn.textContent = (window.currentLang === 'en' ? 'All' : '全部') + ' ▼';
+      } else {
+        moreBtn.textContent = (window.currentLang === 'en' ? 'More' : '更多') + ' ▼';
+      }
+    }
+    bar.querySelectorAll('.mobile-filter-dropdown-item').forEach(function (item) {
+      item.classList.toggle('active', item.getAttribute('data-type') === type);
+    });
+  }
+
+  function closeMobileFilterDropdown() {
+    var dropdown = document.querySelector('.mobile-filter-dropdown');
+    if (dropdown) dropdown.classList.remove('open');
+  }
+
+  function setupMobileFilterTags() {
+    var host = document.getElementById('filter-tags');
+    if (!host) return;
+
+    var existing = host.querySelector('.mobile-filter-bar');
+    if (existing) {
+      syncMobileFilterChips(getActiveDesktopFilterType());
+      return;
+    }
+
+    var bar = document.createElement('div');
+    bar.className = 'mobile-filter-bar';
+
+    var primaryDefs = [
+      { type: 'simple', zh: '简单', en: 'Simple' },
+      { type: 'official', zh: '官方', en: 'Official' },
+      { type: 'airdrop', zh: '空投', en: 'Airdrop' }
+    ];
+
+    primaryDefs.forEach(function (def) {
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'mobile-filter-chip';
+      chip.setAttribute('data-type', def.type);
+      chip.textContent = window.currentLang === 'en' ? def.en : def.zh;
+      chip.addEventListener('click', function () {
+        closeMobileFilterDropdown();
+        applyDesktopFilterType(def.type);
+      });
+      bar.appendChild(chip);
+    });
+
+    var moreWrap = document.createElement('div');
+    moreWrap.className = 'mobile-filter-more-wrap';
+
+    var moreBtn = document.createElement('button');
+    moreBtn.type = 'button';
+    moreBtn.className = 'mobile-filter-chip mobile-filter-more-btn';
+    moreBtn.textContent = (window.currentLang === 'en' ? 'More' : '更多') + ' ▼';
+    moreBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var dropdown = moreWrap.querySelector('.mobile-filter-dropdown');
+      if (!dropdown) return;
+      dropdown.classList.toggle('open');
+    });
+
+    var dropdown = document.createElement('div');
+    dropdown.className = 'mobile-filter-dropdown';
+    MOBILE_FILTER_ALL.forEach(function (def) {
+      var item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'mobile-filter-dropdown-item';
+      item.setAttribute('data-type', def.type);
+      item.textContent = window.currentLang === 'en' ? def.en : def.zh;
+      item.addEventListener('click', function (e) {
+        e.stopPropagation();
+        closeMobileFilterDropdown();
+        applyDesktopFilterType(def.type);
+      });
+      dropdown.appendChild(item);
+    });
+
+    moreWrap.appendChild(moreBtn);
+    moreWrap.appendChild(dropdown);
+    bar.appendChild(moreWrap);
+    host.insertBefore(bar, host.firstChild);
+
+    syncMobileFilterChips(getActiveDesktopFilterType());
+  }
+
+  function refreshMobileFilterLabels() {
+    var bar = document.querySelector('.mobile-filter-bar');
+    if (!bar) {
+      setupMobileFilterTags();
+      return;
+    }
+    var map = {
+      simple: window.currentLang === 'en' ? 'Simple' : '简单',
+      official: window.currentLang === 'en' ? 'Official' : '官方',
+      airdrop: window.currentLang === 'en' ? 'Airdrop' : '空投'
+    };
+    bar.querySelectorAll('.mobile-filter-chip[data-type]').forEach(function (chip) {
+      var type = chip.getAttribute('data-type');
+      if (map[type]) chip.textContent = map[type];
+    });
+    bar.querySelectorAll('.mobile-filter-dropdown-item').forEach(function (item) {
+      item.textContent = getMobileFilterLabel(item.getAttribute('data-type'));
+    });
+    syncMobileFilterChips(getActiveDesktopFilterType());
+  }
+
   function observeHomeCardEnhancements() {
     if (typeof MutationObserver === 'undefined') return;
-    var target = document.getElementById('official-recommend-grid') || document.getElementById('app-content');
+    var target = document.getElementById('app-content');
     if (!target) return;
     if (cardEnhanceObserver) cardEnhanceObserver.disconnect();
     cardEnhanceObserver = new MutationObserver(function () {
       enhanceOfficialRecommendCards();
+      setupMobileFilterTags();
     });
     cardEnhanceObserver.observe(target, { childList: true, subtree: true });
     enhanceOfficialRecommendCards();
+    setupMobileFilterTags();
   }
 
   function refreshCurrentPageContent() {
@@ -321,7 +491,13 @@
     updateHeader(route);
     syncLoginScreen();
     if (route === 'home') {
-      setTimeout(enhanceOfficialRecommendCards, 50);
+      setTimeout(function () {
+        setupMobileFilterTags();
+        enhanceOfficialRecommendCards();
+      }, 50);
+    }
+    if (route === 'create-task') {
+      setActiveTab('create-task');
     }
   }
 
@@ -370,6 +546,13 @@
     observeAuthChanges();
     observeHomeCardEnhancements();
     registerServiceWorker();
+    setupMobileFilterTags();
+
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('.mobile-filter-more-wrap')) {
+        closeMobileFilterDropdown();
+      }
+    });
 
     applyMobileShellI18n();
 
@@ -386,6 +569,7 @@
 
     handleRouteChange();
     syncLoginScreen();
+    setupMobileFilterTags();
     enhanceOfficialRecommendCards();
 
     console.log('[mobile] 手机版壳层已初始化，当前语言:', window.currentLang);
