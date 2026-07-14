@@ -63,6 +63,26 @@
       td_high_risk: '⚠️ 高风险任务',
       td_risk_title: '⚠️ 风险提示',
       td_risk_content: 'CoinRealm 不对该任务的真实性做背书。请自行判断项目风险，切勿投入超出你承受能力的资金。如任务要求转账、提供私钥或助记词，请立即举报。',
+      td_report_btn: '⚠ 举报',
+      td_report_title: '举报任务',
+      td_report_reason_label: '举报原因',
+      td_report_desc_label: '补充说明（选填）',
+      td_report_desc_ph: '请补充说明（选填）',
+      td_report_submit: '提交举报',
+      td_report_cancel: '取消',
+      td_report_reason_fake: '虚假任务',
+      td_report_reason_scam: '诈骗/钓鱼',
+      td_report_reason_illegal: '内容违规',
+      td_report_reason_impossible: '任务无法完成',
+      td_report_reason_no_review: '发布者不审核',
+      td_report_reason_other: '其他',
+      td_report_login: '请先登录后再举报',
+      td_report_own: '不能举报自己发布的任务',
+      td_report_need_reason: '请选择举报原因',
+      td_report_success: '举报已提交，平台将在24小时内处理',
+      td_report_fail: '举报提交失败：',
+      td_report_already: '你已举报过该任务，请等待平台处理',
+      td_report_no_table: '举报功能尚未初始化，请联系管理员在数据库创建 reports 表：\n\nCREATE TABLE IF NOT EXISTS reports (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  task_id UUID REFERENCES tasks(id),\n  reporter_id UUID REFERENCES users(id),\n  reason TEXT NOT NULL,\n  description TEXT,\n  status TEXT DEFAULT \'pending\',\n  reviewed_at TIMESTAMPTZ,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);',
       td_btn_claim: '领取任务',
       td_btn_claim_now: '立即领取',
       td_btn_simple_claim: '一键领取',
@@ -200,6 +220,26 @@
       td_high_risk: '⚠️ High Risk Task',
       td_risk_title: '⚠️ Risk Warning',
       td_risk_content: 'CoinRealm does not endorse the authenticity of this task. Assess project risks yourself and never invest more than you can afford to lose. Report immediately if the task asks for transfers, private keys, or seed phrases.',
+      td_report_btn: '⚠ Report',
+      td_report_title: 'Report Task',
+      td_report_reason_label: 'Reason',
+      td_report_desc_label: 'Details (optional)',
+      td_report_desc_ph: 'Additional details (optional)',
+      td_report_submit: 'Submit Report',
+      td_report_cancel: 'Cancel',
+      td_report_reason_fake: 'Fake task',
+      td_report_reason_scam: 'Scam / phishing',
+      td_report_reason_illegal: 'Prohibited content',
+      td_report_reason_impossible: 'Task cannot be completed',
+      td_report_reason_no_review: 'Publisher does not review',
+      td_report_reason_other: 'Other',
+      td_report_login: 'Please sign in before reporting',
+      td_report_own: 'You cannot report your own task',
+      td_report_need_reason: 'Please select a reason',
+      td_report_success: 'Report submitted. The platform will review within 24 hours.',
+      td_report_fail: 'Failed to submit report: ',
+      td_report_already: 'You already reported this task. Please wait for review.',
+      td_report_no_table: 'Reports table is missing. Ask an admin to create it:\n\nCREATE TABLE IF NOT EXISTS reports (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  task_id UUID REFERENCES tasks(id),\n  reporter_id UUID REFERENCES users(id),\n  reason TEXT NOT NULL,\n  description TEXT,\n  status TEXT DEFAULT \'pending\',\n  reviewed_at TIMESTAMPTZ,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);',
       td_btn_claim: 'Claim Task',
       td_btn_claim_now: 'Claim Now',
       td_btn_simple_claim: 'Claim Now',
@@ -2154,6 +2194,10 @@
         el.setAttribute('placeholder', tdT(key));
       }
     });
+    if (document.getElementById('td-report-btn') || document.getElementById('td-report-modal')) {
+      ensureReportButton();
+      syncReportModalI18n();
+    }
   }
 
   async function resolvePublisherGoogleAvatarUrl(publisherId) {
@@ -2379,6 +2423,9 @@
     if (publishedCountEl) {
       publishedCountEl.textContent = tdT('td_published_count', { count: publishedCount });
     }
+
+    ensureReportUi();
+    updateReportButtonVisibility();
 
     var taskTitleEl = document.getElementById('td-task-title');
     if (taskTitleEl) taskTitleEl.textContent = currentTaskRecord.title || '';
@@ -3170,6 +3217,292 @@
     }
 
     updateProofUploadSectionUI();
+  }
+
+  function ensureReportStyles() {
+    if (document.getElementById('coinrealm-report-styles')) return;
+    var style = document.createElement('style');
+    style.id = 'coinrealm-report-styles';
+    style.textContent = [
+      '.publisher-info-card { position: relative; }',
+      '.td-report-btn {',
+      '  position: absolute; top: 10px; right: 12px; z-index: 2;',
+      '  margin: 0; padding: 0; border: none; background: transparent;',
+      '  color: #999; font-size: 12px; line-height: 1.2; cursor: pointer;',
+      '  font-family: inherit;',
+      '}',
+      '.td-report-btn:hover { color: #e74c3c; }',
+      '.publisher-info-card.td-has-official-badge .td-report-btn { top: 34px; }',
+      '#td-report-modal .td-report-field { margin-bottom: 14px; }',
+      '#td-report-modal .td-report-label {',
+      '  display: block; margin-bottom: 6px; font-size: 13px; color: #555; font-weight: 600;',
+      '}',
+      '#td-report-modal .td-report-select,',
+      '#td-report-modal .td-report-textarea {',
+      '  width: 100%; box-sizing: border-box; border: 1px solid #ddd; border-radius: 8px;',
+      '  padding: 10px 12px; font-size: 14px; font-family: inherit; background: #fff;',
+      '}',
+      '#td-report-modal .td-report-textarea { min-height: 88px; resize: vertical; }',
+      '#td-report-modal .td-report-actions {',
+      '  display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px;',
+      '}',
+      '#td-report-modal .td-report-cancel-btn {',
+      '  min-height: 40px; padding: 0 16px; border-radius: 8px; border: 1px solid #ddd;',
+      '  background: #f5f5f5; color: #333; cursor: pointer; font-size: 14px;',
+      '}',
+      '#td-report-modal .td-report-submit-btn {',
+      '  min-height: 40px; padding: 0 16px; border-radius: 8px; border: none;',
+      '  background: #e74c3c; color: #fff; cursor: pointer; font-size: 14px; font-weight: 600;',
+      '}',
+      '#td-report-modal .td-report-submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }',
+      '.my-task-report-tag {',
+      '  display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px;',
+      '  font-size: 12px; font-weight: 600; line-height: 1.4;',
+      '}',
+      '.my-task-report-pending { background: #fff7e6; color: #d48806; }',
+      '.my-task-report-approved { background: #f6ffed; color: #389e0d; }',
+      '.my-task-report-rejected { background: #f5f5f5; color: #8c8c8c; }',
+      '.ad-reports-banner {',
+      '  margin: 0 0 12px; padding: 10px 14px; border-radius: 8px;',
+      '  background: #fff1f0; border: 1px solid #ffa39e; color: #cf1322;',
+      '  font-size: 14px; font-weight: 600;',
+      '}',
+      '.ad-reports-section { margin: 0 0 20px; }',
+      '.ad-reports-title {',
+      '  margin: 0 0 10px; font-size: 15px; font-weight: 700; color: #1a1a2e;',
+      '}',
+      '.ad-report-desc {',
+      '  margin: 4px 0 0; color: #666; font-size: 13px; white-space: pre-wrap;',
+      '}'
+    ].join('\n');
+    document.head.appendChild(style);
+  }
+
+  function getReportReasonOptions() {
+    return [
+      { value: '虚假任务', key: 'td_report_reason_fake' },
+      { value: '诈骗/钓鱼', key: 'td_report_reason_scam' },
+      { value: '内容违规', key: 'td_report_reason_illegal' },
+      { value: '任务无法完成', key: 'td_report_reason_impossible' },
+      { value: '发布者不审核', key: 'td_report_reason_no_review' },
+      { value: '其他', key: 'td_report_reason_other' }
+    ];
+  }
+
+  function ensureReportModal() {
+    var existing = document.getElementById('td-report-modal');
+    var modal = existing;
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'td-report-modal';
+      modal.className = 'td-twitter-modal hidden';
+      modal.setAttribute('aria-hidden', 'true');
+      modal.innerHTML =
+        '<div class="td-twitter-modal-overlay" id="td-report-overlay"></div>' +
+        '<div class="td-twitter-modal-panel" role="dialog" aria-modal="true" aria-labelledby="td-report-title">' +
+          '<h3 id="td-report-title" class="td-twitter-modal-title"></h3>' +
+          '<div class="td-report-field">' +
+            '<label class="td-report-label" for="td-report-reason" id="td-report-reason-label"></label>' +
+            '<select id="td-report-reason" class="td-report-select"></select>' +
+          '</div>' +
+          '<div class="td-report-field">' +
+            '<label class="td-report-label" for="td-report-desc" id="td-report-desc-label"></label>' +
+            '<textarea id="td-report-desc" class="td-report-textarea" rows="4"></textarea>' +
+          '</div>' +
+          '<div class="td-report-actions">' +
+            '<button type="button" id="td-report-cancel" class="td-report-cancel-btn"></button>' +
+            '<button type="button" id="td-report-submit" class="td-report-submit-btn"></button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(modal);
+    }
+
+    if (!modal.dataset.reportBound) {
+      modal.dataset.reportBound = '1';
+      var overlay = document.getElementById('td-report-overlay') || modal.querySelector('.td-twitter-modal-overlay');
+      var cancelBtn = document.getElementById('td-report-cancel');
+      var submitBtn = document.getElementById('td-report-submit');
+      if (overlay) overlay.addEventListener('click', closeReportModal);
+      if (cancelBtn) cancelBtn.addEventListener('click', closeReportModal);
+      if (submitBtn) submitBtn.addEventListener('click', submitTaskReport);
+    }
+
+    syncReportModalI18n();
+    return modal;
+  }
+
+  function syncReportModalI18n() {
+    var title = document.getElementById('td-report-title');
+    var reasonLabel = document.getElementById('td-report-reason-label');
+    var descLabel = document.getElementById('td-report-desc-label');
+    var desc = document.getElementById('td-report-desc');
+    var cancelBtn = document.getElementById('td-report-cancel');
+    var submitBtn = document.getElementById('td-report-submit');
+    var reasonSelect = document.getElementById('td-report-reason');
+
+    if (title) title.textContent = tdT('td_report_title');
+    if (reasonLabel) reasonLabel.textContent = tdT('td_report_reason_label');
+    if (descLabel) descLabel.textContent = tdT('td_report_desc_label');
+    if (desc) desc.placeholder = tdT('td_report_desc_ph');
+    if (cancelBtn) cancelBtn.textContent = tdT('td_report_cancel');
+    if (submitBtn) submitBtn.textContent = tdT('td_report_submit');
+
+    if (reasonSelect) {
+      var current = reasonSelect.value;
+      reasonSelect.innerHTML = '<option value="">' + escapeHtml(tdT('td_report_reason_label')) + '</option>' +
+        getReportReasonOptions().map(function (opt) {
+          return '<option value="' + escapeHtml(opt.value) + '">' + escapeHtml(tdT(opt.key)) + '</option>';
+        }).join('');
+      if (current) reasonSelect.value = current;
+    }
+  }
+
+  function ensureReportButton() {
+    var card = document.querySelector('#task-detail-page .publisher-info-card');
+    if (!card) return null;
+
+    var btn = document.getElementById('td-report-btn');
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.type = 'button';
+      btn.id = 'td-report-btn';
+      btn.className = 'td-report-btn';
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        openReportModal();
+      });
+      card.appendChild(btn);
+    }
+    btn.textContent = tdT('td_report_btn');
+    return btn;
+  }
+
+  function ensureReportUi() {
+    ensureReportStyles();
+    ensureReportModal();
+    ensureReportButton();
+  }
+
+  window.coinrealmEnsureTaskReportUi = ensureReportUi;
+
+  function updateReportButtonVisibility() {
+    var btn = document.getElementById('td-report-btn');
+    var card = document.querySelector('#task-detail-page .publisher-info-card');
+    if (!btn || !card || !currentTaskRecord) return;
+
+    var officialBadge = document.getElementById('td-official-badge');
+    var hasOfficial = officialBadge && !officialBadge.classList.contains('hidden');
+    card.classList.toggle('td-has-official-badge', !!hasOfficial);
+
+    var isOwnTask = !!(currentUserId && currentTaskRecord.publisher_id &&
+      String(currentUserId) === String(currentTaskRecord.publisher_id));
+    btn.classList.toggle('hidden', isOwnTask);
+  }
+
+  function openReportModal() {
+    if (!currentTaskRecord || !currentTaskRecord.id) return;
+
+    ensureReportUi();
+    syncReportModalI18n();
+
+    var reasonSelect = document.getElementById('td-report-reason');
+    var desc = document.getElementById('td-report-desc');
+    if (reasonSelect) reasonSelect.value = '';
+    if (desc) desc.value = '';
+
+    showTwitterModal('td-report-modal');
+  }
+
+  function closeReportModal() {
+    hideTwitterModal('td-report-modal');
+  }
+
+  function isReportsTableMissingError(error) {
+    if (!error) return false;
+    var msg = String(error.message || error.details || error.hint || '').toLowerCase();
+    var code = String(error.code || '');
+    return code === '42P01' || code === 'PGRST205' ||
+      msg.indexOf('reports') !== -1 && (msg.indexOf('does not exist') !== -1 || msg.indexOf('schema cache') !== -1 || msg.indexOf('could not find') !== -1);
+  }
+
+  async function submitTaskReport() {
+    if (!currentTaskRecord || !currentTaskRecord.id || !window.supabase) return;
+
+    var userId = typeof getAuthenticatedUserId === 'function'
+      ? await getAuthenticatedUserId()
+      : await getCurrentUserId();
+    if (!userId) {
+      alert(tdT('td_report_login'));
+      return;
+    }
+
+    if (currentTaskRecord.publisher_id && String(currentTaskRecord.publisher_id) === String(userId)) {
+      alert(tdT('td_report_own'));
+      return;
+    }
+
+    var reasonSelect = document.getElementById('td-report-reason');
+    var descEl = document.getElementById('td-report-desc');
+    var reason = reasonSelect ? reasonSelect.value.trim() : '';
+    var description = descEl ? descEl.value.trim() : '';
+    if (!reason) {
+      alert(tdT('td_report_need_reason'));
+      return;
+    }
+
+    var submitBtn = document.getElementById('td-report-submit');
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+      var existing = await window.supabase
+        .from('reports')
+        .select('id, status')
+        .eq('task_id', currentTaskRecord.id)
+        .eq('reporter_id', userId)
+        .limit(1);
+
+      if (existing.error) {
+        if (isReportsTableMissingError(existing.error)) {
+          alert(tdT('td_report_no_table'));
+        } else {
+          alert(tdT('td_report_fail') + existing.error.message);
+        }
+        return;
+      }
+
+      if (existing.data && existing.data.length) {
+        alert(tdT('td_report_already'));
+        closeReportModal();
+        return;
+      }
+
+      var insertResult = await window.supabase
+        .from('reports')
+        .insert({
+          task_id: currentTaskRecord.id,
+          reporter_id: userId,
+          reason: reason,
+          description: description || null,
+          status: 'pending'
+        })
+        .select('id')
+        .single();
+
+      if (insertResult.error) {
+        if (isReportsTableMissingError(insertResult.error)) {
+          alert(tdT('td_report_no_table'));
+        } else {
+          alert(tdT('td_report_fail') + insertResult.error.message);
+        }
+        return;
+      }
+
+      alert(tdT('td_report_success'));
+      closeReportModal();
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+    }
   }
 
   function initTaskDetailEvents() {

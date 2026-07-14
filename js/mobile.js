@@ -559,6 +559,21 @@
     langBtn.textContent = window.t('langToggle');
   }
 
+  function enhanceTaskDetailReportUi() {
+    var card = document.querySelector('#task-detail-page .publisher-info-card');
+    var btn = document.getElementById('td-report-btn');
+    if (card && !btn && typeof window.coinrealmEnsureTaskReportUi === 'function') {
+      window.coinrealmEnsureTaskReportUi();
+      btn = document.getElementById('td-report-btn');
+    }
+    if (card) {
+      card.classList.add('mobile-publisher-card');
+    }
+    if (btn) {
+      btn.classList.add('mobile-report-btn');
+    }
+  }
+
   function handleRouteChange() {
     var route = getRouteBase();
     updateHeader(route);
@@ -572,6 +587,10 @@
     if (route === 'simple-tasks') {
       setTimeout(enhanceSimpleTaskCards, 50);
       setTimeout(enhanceSimpleTaskCards, 300);
+    }
+    if (route === 'task-detail') {
+      setTimeout(enhanceTaskDetailReportUi, 80);
+      setTimeout(enhanceTaskDetailReportUi, 400);
     }
     if (route === 'create-task') {
       setActiveTab('create-task');

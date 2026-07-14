@@ -21,6 +21,60 @@
   var verifyPollTimer = null;
   var VERIFY_POLL_MS = 30000;
   var myTasksUserId = null;
+  var myReportsByTaskId = {};
+
+  function ensureMyTasksReportStyles() {
+    if (document.getElementById('coinrealm-my-tasks-report-styles')) return;
+    var style = document.createElement('style');
+    style.id = 'coinrealm-my-tasks-report-styles';
+    style.textContent = [
+      '.my-task-report-tag {',
+      '  display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px;',
+      '  font-size: 12px; font-weight: 600; line-height: 1.4; margin-left: 4px;',
+      '}',
+      '.my-task-report-pending { background: #fff7e6; color: #d48806; }',
+      '.my-task-report-approved { background: #f6ffed; color: #389e0d; }',
+      '.my-task-report-rejected { background: #f5f5f5; color: #8c8c8c; }'
+    ].join('\n');
+    document.head.appendChild(style);
+  }
+
+  async function fetchMyReportsMap(userId) {
+    var map = {};
+    if (!window.supabase || !userId) return map;
+
+    var result = await window.supabase
+      .from('reports')
+      .select('id, task_id, status, created_at, reviewed_at')
+      .eq('reporter_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (result.error) {
+      console.warn('加载我的举报记录失败：', result.error);
+      return map;
+    }
+
+    (result.data || []).forEach(function (report) {
+      if (!report || !report.task_id) return;
+      var key = String(report.task_id);
+      if (!map[key]) map[key] = report;
+    });
+    return map;
+  }
+
+  function buildReportStatusHtml(taskId) {
+    var report = myReportsByTaskId[String(taskId)];
+    if (!report) return '';
+
+    var status = String(report.status || 'pending').toLowerCase();
+    if (status === 'approved') {
+      return '<span class="my-task-report-tag my-task-report-approved">' + escapeHtml(mtT('mt_report_approved')) + '</span>';
+    }
+    if (status === 'rejected') {
+      return '<span class="my-task-report-tag my-task-report-rejected">' + escapeHtml(mtT('mt_report_rejected')) + '</span>';
+    }
+    return '<span class="my-task-report-tag my-task-report-pending">' + escapeHtml(mtT('mt_report_pending')) + '</span>';
+  }
 
   var myTasksTranslations = {
     zh: {
@@ -54,7 +108,10 @@
       mt_label_reject_time: '驳回时间',
       mt_badge_rejected: '已驳回',
       mt_btn_resubmit: '重新提交',
-      mt_load_fail: '加载失败：'
+      mt_load_fail: '加载失败：',
+      mt_report_pending: '已举报',
+      mt_report_approved: '举报成立',
+      mt_report_rejected: '举报不成立'
     },
     en: {
       mt_page_title: 'My Tasks',
@@ -87,7 +144,10 @@
       mt_label_reject_time: 'Rejected at',
       mt_badge_rejected: 'Rejected',
       mt_btn_resubmit: 'Resubmit',
-      mt_load_fail: 'Load failed: '
+      mt_load_fail: 'Load failed: ',
+      mt_report_pending: 'Reported',
+      mt_report_approved: 'Report upheld',
+      mt_report_rejected: 'Report dismissed'
     }
   };
 
@@ -516,6 +576,7 @@
           '<div class="my-task-card-tags">' +
             '<span class="type-label label-' + escapeHtml(category) + '" data-i18n="' + typeLabelKey + '"></span>' +
             statusHtml +
+            buildReportStatusHtml(task.id) +
           '</div>' +
           '<div class="my-task-reward">' + reward + '</div>' +
           metaHtml +
@@ -607,6 +668,8 @@
 
     setMyTasksLoading(true);
     try {
+      ensureMyTasksReportStyles();
+      myReportsByTaskId = await fetchMyReportsMap(userId);
       myTasksData = await fetchMyTasksData(userId);
       renderMyTasksList();
       await verifyActiveTwitterSubmissions();
