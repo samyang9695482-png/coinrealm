@@ -86,6 +86,34 @@
     </button>
   </nav>
 
+  <!-- 举报弹窗（任务详情页也会在 JS 中确保存在；此处便于手机端优先挂载） -->
+  <div id="td-report-modal" class="td-twitter-modal hidden" aria-hidden="true">
+    <div class="td-twitter-modal-overlay" id="td-report-overlay"></div>
+    <div class="td-twitter-modal-panel" role="dialog" aria-modal="true" aria-labelledby="td-report-title">
+      <h3 id="td-report-title" class="td-twitter-modal-title">举报任务</h3>
+      <div class="td-report-field">
+        <label class="td-report-label" for="td-report-reason" id="td-report-reason-label">举报原因</label>
+        <select id="td-report-reason" class="td-report-select">
+          <option value="">举报原因</option>
+          <option value="虚假任务">虚假任务</option>
+          <option value="诈骗/钓鱼">诈骗/钓鱼</option>
+          <option value="内容违规">内容违规</option>
+          <option value="任务无法完成">任务无法完成</option>
+          <option value="发布者不审核">发布者不审核</option>
+          <option value="其他">其他</option>
+        </select>
+      </div>
+      <div class="td-report-field">
+        <label class="td-report-label" for="td-report-desc" id="td-report-desc-label">补充说明（选填）</label>
+        <textarea id="td-report-desc" class="td-report-textarea" rows="4" placeholder="请补充说明（选填）"></textarea>
+      </div>
+      <div class="td-report-actions">
+        <button type="button" id="td-report-cancel" class="td-report-cancel-btn">取消</button>
+        <button type="button" id="td-report-submit" class="td-report-submit-btn">提交举报</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     (function bootstrapAppContent() {
       var mount = document.getElementById('app-content');
