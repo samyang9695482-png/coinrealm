@@ -305,50 +305,234 @@
     }).join('');
   }
 
+  function normalizeReportStatus(status) {
+    return String(status == null ? '' : status).trim().toLowerCase();
+  }
+
+  function isPendingReport(report) {
+    return normalizeReportStatus(report && report.status) === 'pending';
+  }
+
+  /**
+   * 按调试约定查询 pending 举报：
+   * from('reports').select('*, tasks(title), users(username)').eq('status', 'pending')
+   * 若联表失败则降级为 reports(*) + 手动关联 tasks/users。
+   */
+  async function queryPendingReportsRaw() {
+    if (!window.supabase) {
+      return { data: [], error: null, strategy: 'no-supabase' };
+    }
+
+    // 1) 用户提供的调试查询（优先）
+    var joined = await window.supabase
+      .from('reports')
+      .select('*, tasks(title), users!reporter_id(username)')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+
+    console.log('[admin] reports 联表查询结果：', joined);
+
+    if (!joined.error && joined.data && joined.data.length) {
+      return { data: joined.data || [], error: null, strategy: 'embed-reporter_id' };
+    }
+
+    // 2) 无 FK hint 的简写（部分库关系名就是 users）
+    var joinedSimple = await window.supabase
+      .from('reports')
+      .select('*, tasks(title), users(username)')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+
+    console.log('[admin] reports 简写联表查询结果：', joinedSimple);
+
+    if (!joinedSimple.error && joinedSimple.data && joinedSimple.data.length) {
+      return { data: joinedSimple.data || [], error: null, strategy: 'embed-users' };
+    }
+
+    // 3) 仅查 reports，后续手动关联（最稳妥；联表为空时也走这里）
+    var plain = await window.supabase
+      .from('reports')
+      .select('*')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+
+    console.log('[admin] reports 单表查询结果：', plain);
+
+    if (!plain.error && plain.data && plain.data.length) {
+      return { data: plain.data || [], error: null, strategy: 'plain' };
+    }
+
+    if (plain.error || (joined.error && joinedSimple.error)) {
+      // 再放宽：不带 status 过滤，前端自行筛 pending（防止 status 大小写/空格差异）
+      var allRows = await window.supabase
+        .from('reports')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      console.log('[admin] reports 全量抽样查询结果：', allRows);
+
+      if (allRows.error) {
+        return {
+          data: [],
+          error: plain.error || allRows.error || joined.error || joinedSimple.error,
+          strategy: 'failed',
+          diagnostics: { joined: joined, joinedSimple: joinedSimple, plain: plain, allRows: allRows }
+        };
+      }
+
+      var pendingOnly = (allRows.data || []).filter(isPendingReport);
+      console.log('[admin] reports 前端筛选 pending：', {
+        total: (allRows.data || []).length,
+        pending: pendingOnly.length,
+        statuses: (allRows.data || []).map(function (row) { return row.status; })
+      });
+      if (pendingOnly.length) {
+        return { data: pendingOnly, error: null, strategy: 'client-filter-pending' };
+      }
+    }
+
+    // 联表与单表都为空：保留“成功但无数据”，交给上层诊断 RLS
+    if (!plain.error) {
+      return { data: [], error: null, strategy: 'plain-empty' };
+    }
+
+    return {
+      data: [],
+      error: plain.error || joinedSimple.error || joined.error,
+      strategy: 'failed',
+      diagnostics: { joined: joined, joinedSimple: joinedSimple, plain: plain }
+    };
+  }
+
+  async function diagnoseEmptyReportsQuery() {
+    if (!window.supabase) return null;
+
+    var listEl = document.getElementById('ad-reports-list');
+    var anyRows = await window.supabase
+      .from('reports')
+      .select('id, task_id, reporter_id, status, reason, created_at')
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    console.log('[admin] reports 诊断查询（不限 status）：', anyRows);
+
+    if (anyRows.error) {
+      console.warn(
+        '[admin] 无法读取 reports 表，可能是表权限/RLS 拦截。',
+        anyRows.error,
+        '\n建议在 Supabase SQL 中检查策略，例如：\n' +
+        'ALTER TABLE reports ENABLE ROW LEVEL SECURITY;\n' +
+        '-- 允许已登录用户读取（或仅管理员）：\n' +
+        'CREATE POLICY "reports_select_authenticated" ON reports\n' +
+        '  FOR SELECT TO authenticated USING (true);\n'
+      );
+      if (listEl) {
+        listEl.innerHTML =
+          '<p class="admin-empty">无法读取举报数据：' + escapeHtml(anyRows.error.message || '权限错误') +
+          '。请检查 reports 表的 RLS SELECT 策略。</p>';
+      }
+      return { kind: 'error', error: anyRows.error };
+    }
+
+    var rows = anyRows.data || [];
+    if (!rows.length) {
+      console.warn(
+        '[admin] reports 查询成功但结果为空。若表中其实有数据，通常是 RLS 策略阻止了管理员 SELECT。\n' +
+        '请在 Supabase → Authentication/Policies 检查 reports 的 SELECT 策略，确保管理员可读取全部行。\n' +
+        '可在控制台执行：\n' +
+        "await window.supabase.from('reports').select('*, tasks(title), users(username)').eq('status', 'pending')"
+      );
+      if (listEl) {
+        listEl.innerHTML =
+          '<p class="admin-empty">暂无待处理举报。若确认 reports 表有数据，请检查 RLS：管理员需要 SELECT 全部举报的策略。' +
+          '详见控制台 [admin] 日志。</p>';
+      }
+      return { kind: 'rls-or-empty' };
+    }
+
+    var pendingCount = rows.filter(isPendingReport).length;
+    console.log('[admin] reports 表可读，当前抽样 status 分布：', rows.map(function (row) {
+      return { id: row.id, status: row.status };
+    }));
+
+    if (!pendingCount && listEl) {
+      listEl.innerHTML =
+        '<p class="admin-empty">reports 表可读，但没有 status=pending 的记录（抽样 ' +
+        rows.length + ' 条）。详见控制台。</p>';
+    }
+
+    return { kind: 'has-rows', rows: rows, pendingCount: pendingCount };
+  }
+
   async function loadPendingReports() {
     ensureAdminReportsUi();
     pendingReports = [];
 
     if (!window.supabase) {
+      console.log('[admin] pending reports：supabase 未初始化');
       renderAdminReports();
       return pendingReports;
     }
 
-    var result = await window.supabase
-      .from('reports')
-      .select('id, task_id, reporter_id, reason, description, status, created_at, reviewed_at, tasks(id, title, status, publisher_id, reward_amount, reward_type, deposit_amount, max_participants, current_participants), users:reporter_id(id, username, email, wallet_address)')
-      .eq('status', 'pending')
-      .order('created_at', { ascending: false });
+    var queryResult = await queryPendingReportsRaw();
 
-    if (result.error) {
-      // 某些环境下联表别名可能失败，降级为普通查询再手动补全
-      var fallback = await window.supabase
-        .from('reports')
-        .select('*')
-        .eq('status', 'pending')
-        .order('created_at', { ascending: false });
-
-      if (fallback.error) {
-        if (isReportsTableMissingError(fallback.error) || isReportsTableMissingError(result.error)) {
-          notifyReportsTableMissing(fallback.error || result.error);
-        } else {
-          console.warn('加载待处理举报失败：', result.error, fallback.error);
-        }
-        renderAdminReports();
-        return pendingReports;
+    if (queryResult.error) {
+      if (isReportsTableMissingError(queryResult.error)) {
+        notifyReportsTableMissing(queryResult.error);
+      } else {
+        console.warn('加载待处理举报失败：', queryResult.error, queryResult.diagnostics || null);
+        alert('加载举报失败：' + (queryResult.error.message || String(queryResult.error)));
       }
-
-      pendingReports = fallback.data || [];
-      await enrichPendingReports(pendingReports);
       renderAdminReports();
       return pendingReports;
     }
 
-    pendingReports = (result.data || []).map(function (report) {
-      report._taskTitle = report.tasks && report.tasks.title;
-      report._reporterName = displayUserLabel(report.users);
+    pendingReports = (queryResult.data || []).filter(isPendingReport);
+    console.log('[admin] pending reports 最终结果：', {
+      strategy: queryResult.strategy,
+      count: pendingReports.length,
+      rows: pendingReports
+    });
+
+    if (!pendingReports.length) {
+      console.log('[admin] pending reports 为空，开始诊断…');
+      var diagnosis = await diagnoseEmptyReportsQuery();
+      if (!(diagnosis && (diagnosis.kind === 'error' || diagnosis.kind === 'rls-or-empty' || diagnosis.kind === 'has-rows'))) {
+        renderAdminReports();
+      } else if (diagnosis.kind === 'has-rows' && diagnosis.pendingCount > 0) {
+        // 诊断发现有 pending，但主查询未取到——再尝试一次全量筛选
+        pendingReports = (diagnosis.rows || []).filter(isPendingReport);
+        await enrichPendingReports(pendingReports);
+        renderAdminReports();
+      } else if (diagnosis.kind === 'has-rows' && !diagnosis.pendingCount) {
+        // 文案已在 diagnose 中写入 list
+        var banner = document.getElementById('ad-reports-banner');
+        if (banner) {
+          banner.classList.add('hidden');
+          banner.textContent = '';
+        }
+      }
+      return pendingReports;
+    }
+
+    // 联表可能只有 tasks(title)/users(username)，补全任务与用户信息供处理与展示
+    await enrichPendingReports(pendingReports);
+
+    pendingReports = pendingReports.map(function (report) {
+      if (report.tasks && report.tasks.title) {
+        report._taskTitle = report.tasks.title;
+      }
+      if (report.users) {
+        report._reporterName = displayUserLabel(report.users);
+      } else if (report.users === null && report.reporter) {
+        report.users = report.reporter;
+        report._reporterName = displayUserLabel(report.reporter);
+      }
       return report;
     });
+
+    console.log('[admin] pending reports 关联补全后：', pendingReports);
     renderAdminReports();
     return pendingReports;
   }
@@ -361,10 +545,12 @@
     reports.forEach(function (report) {
       if (report.task_id) taskIds.push(report.task_id);
       if (report.reporter_id) reporterIds.push(report.reporter_id);
+      // 已有嵌套对象时也收集，便于覆盖不完整字段
+      if (report.tasks && report.tasks.id) taskIds.push(report.tasks.id);
     });
 
-    var uniqueTaskIds = taskIds.filter(function (id, i) { return taskIds.indexOf(id) === i; });
-    var uniqueReporterIds = reporterIds.filter(function (id, i) { return reporterIds.indexOf(id) === i; });
+    var uniqueTaskIds = taskIds.filter(function (id, i) { return id && taskIds.indexOf(id) === i; });
+    var uniqueReporterIds = reporterIds.filter(function (id, i) { return id && reporterIds.indexOf(id) === i; });
 
     var taskMap = {};
     var userMap = {};
@@ -374,9 +560,10 @@
         .from('tasks')
         .select('id, title, status, publisher_id, reward_amount, reward_type, deposit_amount, max_participants, current_participants')
         .in('id', uniqueTaskIds);
+      console.log('[admin] reports 关联 tasks 结果：', tasksResult);
       if (!tasksResult.error && tasksResult.data) {
         tasksResult.data.forEach(function (task) {
-          taskMap[task.id] = task;
+          taskMap[String(task.id)] = task;
         });
       }
     }
@@ -386,18 +573,26 @@
         .from('users')
         .select('id, username, email, wallet_address')
         .in('id', uniqueReporterIds);
+      console.log('[admin] reports 关联 users 结果：', usersResult);
       if (!usersResult.error && usersResult.data) {
         usersResult.data.forEach(function (user) {
-          userMap[user.id] = user;
+          userMap[String(user.id)] = user;
         });
+      } else if (usersResult && usersResult.error) {
+        console.warn('[admin] 关联 users 失败（可能 RLS）。举报人将显示为 ID 片段。', usersResult.error);
       }
     }
 
     reports.forEach(function (report) {
-      report.tasks = taskMap[report.task_id] || report.tasks || null;
-      report.users = userMap[report.reporter_id] || report.users || null;
-      report._taskTitle = report.tasks && report.tasks.title;
-      report._reporterName = displayUserLabel(report.users);
+      var taskKey = report.task_id != null ? String(report.task_id) : '';
+      var userKey = report.reporter_id != null ? String(report.reporter_id) : '';
+      var embeddedTask = report.tasks && !Array.isArray(report.tasks) ? report.tasks : null;
+      var embeddedUser = report.users && !Array.isArray(report.users) ? report.users : null;
+
+      report.tasks = taskMap[taskKey] || embeddedTask || null;
+      report.users = userMap[userKey] || embeddedUser || null;
+      report._taskTitle = (report.tasks && report.tasks.title) || report._taskTitle || null;
+      report._reporterName = displayUserLabel(report.users) || report._reporterName || null;
     });
   }
 
