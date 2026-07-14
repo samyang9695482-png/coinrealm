@@ -3667,15 +3667,15 @@ async function submitTaskProofSubmission(options) {
     var taskType = '';
     var isSimpleAuto = false;
 
-    if (!taskRecord && window.supabase) {
+    if (window.supabase && (!taskRecord || taskRecord.publisher_id == null)) {
         var taskResult = await window.supabase
             .from('tasks')
-            .select('id, title, type, task_type, category, platform, verification_type, reward_amount, reward_type, max_participants, current_participants')
+            .select('id, title, type, task_type, category, platform, verification_type, reward_amount, reward_type, max_participants, current_participants, publisher_id')
             .eq('id', taskId)
             .maybeSingle();
 
         if (!taskResult.error && taskResult.data) {
-            taskRecord = taskResult.data;
+            taskRecord = Object.assign({}, taskRecord || {}, taskResult.data);
         }
     }
 
@@ -3766,8 +3766,23 @@ async function submitTaskProofSubmission(options) {
             userId: userId,
             status: submissionStatus,
             path: path,
-            submissionId: submission.id
+            submissionId: submission.id,
+            publisherId: taskRecord && taskRecord.publisher_id ? taskRecord.publisher_id : null
         });
+    }
+
+    // 普通任务提交成功 → 明确通知发布者「待审核」（不阻塞）
+    if (!isSimpleAuto && submissionStatus === 'submitted') {
+        try {
+            if (typeof window.coinrealmNotifyPendingReview === 'function') {
+                window.coinrealmNotifyPendingReview({
+                    taskId: taskId,
+                    publisherId: taskRecord && taskRecord.publisher_id ? taskRecord.publisher_id : null
+                });
+            }
+        } catch (pendingNotifErr) {
+            console.warn('待审核通知调用失败：', pendingNotifErr);
+        }
     }
 
     return {
@@ -10991,14 +11006,20 @@ window.addEventListener('hashchange', function () {
   }
 
   function createNotification(payload) {
-    if (!window.supabase || !payload || !payload.user_id) return;
+    if (!window.supabase || !payload || !payload.user_id) {
+      console.warn('通知写入跳过：缺少 supabase 或 user_id', payload);
+      return Promise.resolve({ data: null, error: { message: 'missing_params' } });
+    }
 
     var type = payload.type || 'info';
     var meta = NOTIF_META[type] || {};
     var title = payload.title || meta.title || '系统通知';
     var link = payload.link || meta.link || 'home';
     var key = [type, payload.user_id, payload.related_id || '', title].join('|');
-    if (!dedupeKey(key)) return;
+    if (!dedupeKey(key)) {
+      console.log('通知写入跳过（去重）：', key);
+      return Promise.resolve({ data: null, error: null, deduped: true });
+    }
 
     var row = {
       user_id: payload.user_id,
@@ -11009,40 +11030,93 @@ window.addEventListener('hashchange', function () {
       is_read: false
     };
 
-    // 不 await，不阻塞主流程
-    Promise.resolve(
-      window.supabase.from('notifications').insert(row)
-    ).then(function (result) {
-      if (result && result.error) {
-        if (isNotifTableMissing(result.error)) {
-          if (!tableMissingNotified) {
-            tableMissingNotified = true;
-            console.warn(
-              '[notifications] 表不存在，请先创建：\n' +
-              'CREATE TABLE IF NOT EXISTS notifications (\n' +
-              '  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n' +
-              '  user_id UUID REFERENCES users(id),\n' +
-              '  type TEXT NOT NULL,\n' +
-              '  title TEXT NOT NULL,\n' +
-              '  link TEXT,\n' +
-              '  related_id UUID,\n' +
-              '  is_read BOOLEAN DEFAULT false,\n' +
-              '  created_at TIMESTAMPTZ DEFAULT NOW()\n' +
-              ');'
-            );
+    // 不阻塞主流程；显式 await 构建器，确保请求真正发出
+    return (async function () {
+      try {
+        var result = await window.supabase.from('notifications').insert(row);
+        console.log('通知写入结果：', { data: result.data, error: result.error, row: row });
+
+        if (result.error) {
+          console.error('通知写入失败完整错误：', result.error);
+          if (isNotifTableMissing(result.error)) {
+            if (!tableMissingNotified) {
+              tableMissingNotified = true;
+              console.warn(
+                '[notifications] 表不存在，请先创建：\n' +
+                'CREATE TABLE IF NOT EXISTS notifications (\n' +
+                '  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n' +
+                '  user_id UUID REFERENCES users(id),\n' +
+                '  type TEXT NOT NULL,\n' +
+                '  title TEXT NOT NULL,\n' +
+                '  link TEXT,\n' +
+                '  related_id UUID,\n' +
+                '  is_read BOOLEAN DEFAULT false,\n' +
+                '  created_at TIMESTAMPTZ DEFAULT NOW()\n' +
+                ');'
+              );
+            }
+          } else {
+            var errMsg = String(result.error.message || '').toLowerCase();
+            if (errMsg.indexOf('row-level security') !== -1 || errMsg.indexOf('rls') !== -1 || result.error.code === '42501') {
+              console.warn(
+                '[notifications] 很可能被 RLS 拦截：当前登录用户无法给其他用户写入通知。\n' +
+                '请在 Supabase SQL 执行：\n' +
+                'CREATE POLICY "notifications_insert_authenticated" ON notifications\n' +
+                '  FOR INSERT TO authenticated WITH CHECK (true);\n' +
+                'CREATE POLICY "notifications_select_own" ON notifications\n' +
+                '  FOR SELECT TO authenticated USING (auth.uid() = user_id);\n' +
+                'CREATE POLICY "notifications_update_own" ON notifications\n' +
+                '  FOR UPDATE TO authenticated USING (auth.uid() = user_id);'
+              );
+            }
           }
-          return;
+          return result;
         }
-        console.warn('[notifications] 写入失败：', result.error);
-        return;
+
+        refreshNotificationsQuiet();
+        return result;
+      } catch (err) {
+        console.error('通知写入异常完整错误：', err);
+        return { data: null, error: err };
       }
-      refreshNotificationsQuiet();
-    }).catch(function (err) {
-      console.warn('[notifications] 写入异常：', err);
-    });
+    })();
   }
 
   window.coinrealmCreateNotification = createNotification;
+
+  async function resolvePublisherId(taskId, knownPublisherId) {
+    if (knownPublisherId) return knownPublisherId;
+    return fetchTaskPublisherId(taskId);
+  }
+
+  /** 提交凭证成功后：通知发布者待审核 */
+  function notifyPendingReview(options) {
+    options = options || {};
+    var taskId = options.taskId;
+    var knownPublisherId = options.publisherId || null;
+
+    return resolvePublisherId(taskId, knownPublisherId).then(function (publisherId) {
+      console.log('通知写入-待审核：', { publisherId: publisherId, taskId: taskId });
+
+      if (!publisherId) {
+        console.warn('通知写入-待审核失败：未找到 publisherId', { taskId: taskId });
+        return { data: null, error: { message: 'publisher_not_found' } };
+      }
+
+      return createNotification({
+        user_id: publisherId,
+        type: 'pending_review',
+        title: NOTIF_META.pending_review.title,
+        link: 'review',
+        related_id: taskId
+      });
+    }).catch(function (err) {
+      console.error('通知写入-待审核异常：', err);
+      return { data: null, error: err };
+    });
+  }
+
+  window.coinrealmNotifyPendingReview = notifyPendingReview;
 
   async function getAdminUserIds() {
     if (adminIdsCache && adminIdsCache.length) return adminIdsCache;
@@ -11094,18 +11168,11 @@ window.addEventListener('hashchange', function () {
     var status = String(payload.status || '').toLowerCase();
     var taskId = payload.taskId;
     var workerId = payload.userId;
+    var publisherId = payload.publisherId || null;
 
     if (status === 'submitted') {
-      Promise.resolve(fetchTaskPublisherId(taskId)).then(function (publisherId) {
-        if (!publisherId) return;
-        createNotification({
-          user_id: publisherId,
-          type: 'pending_review',
-          title: NOTIF_META.pending_review.title,
-          link: 'review',
-          related_id: taskId
-        });
-      });
+      // 走专用方法，保证日志与写入路径统一（submitTaskProof 也会再调一次，去重会挡掉重复）
+      notifyPendingReview({ taskId: taskId, publisherId: publisherId });
       return;
     }
 
