@@ -237,7 +237,10 @@ body.mobile-app.sub-page .mobile-tab-bar {
   padding: 24px;
 }
 
-.mobile-login-screen.hidden { display: none !important; }
+.mobile-login-screen.hidden {
+  display: none !important;
+  pointer-events: none !important;
+}
 
 .mobile-login-inner { width: 100%; max-width: 320px; text-align: center; }
 
