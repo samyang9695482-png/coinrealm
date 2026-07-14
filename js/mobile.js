@@ -202,12 +202,16 @@
     var moreBtn = bar.querySelector('.mobile-filter-more-btn');
     if (moreBtn) {
       moreBtn.classList.toggle('active', !isPrimary);
+      var nextMoreText;
       if (!isPrimary && type && type !== 'all') {
-        moreBtn.textContent = getMobileFilterLabel(type) + ' ▼';
+        nextMoreText = getMobileFilterLabel(type) + ' ▼';
       } else if (!isPrimary && type === 'all') {
-        moreBtn.textContent = (window.currentLang === 'en' ? 'All' : '全部') + ' ▼';
+        nextMoreText = (window.currentLang === 'en' ? 'All' : '全部') + ' ▼';
       } else {
-        moreBtn.textContent = (window.currentLang === 'en' ? 'More' : '更多') + ' ▼';
+        nextMoreText = (window.currentLang === 'en' ? 'More' : '更多') + ' ▼';
+      }
+      if (moreBtn.textContent !== nextMoreText) {
+        moreBtn.textContent = nextMoreText;
       }
     }
     bar.querySelectorAll('.mobile-filter-dropdown-item').forEach(function (item) {
@@ -224,11 +228,8 @@
     var host = document.getElementById('filter-tags');
     if (!host) return;
 
-    var existing = host.querySelector('.mobile-filter-bar');
-    if (existing) {
-      syncMobileFilterChips(getActiveDesktopFilterType());
-      return;
-    }
+    // 已创建则直接返回，避免 MutationObserver 因改文案再次进入造成死循环卡死
+    if (host.querySelector('.mobile-filter-bar')) return;
 
     var bar = document.createElement('div');
     bar.className = 'mobile-filter-bar';
@@ -294,6 +295,7 @@
     var bar = document.querySelector('.mobile-filter-bar');
     if (!bar) {
       setupMobileFilterTags();
+      syncMobileFilterChips(getActiveDesktopFilterType());
       return;
     }
     var map = {
@@ -303,12 +305,26 @@
     };
     bar.querySelectorAll('.mobile-filter-chip[data-type]').forEach(function (chip) {
       var type = chip.getAttribute('data-type');
-      if (map[type]) chip.textContent = map[type];
+      if (map[type] && chip.textContent !== map[type]) chip.textContent = map[type];
     });
     bar.querySelectorAll('.mobile-filter-dropdown-item').forEach(function (item) {
-      item.textContent = getMobileFilterLabel(item.getAttribute('data-type'));
+      var label = getMobileFilterLabel(item.getAttribute('data-type'));
+      if (item.textContent !== label) item.textContent = label;
     });
     syncMobileFilterChips(getActiveDesktopFilterType());
+  }
+
+  var homeEnhanceBusy = false;
+
+  function runHomeEnhancements() {
+    if (homeEnhanceBusy) return;
+    homeEnhanceBusy = true;
+    try {
+      setupMobileFilterTags();
+      enhanceOfficialRecommendCards();
+    } finally {
+      setTimeout(function () { homeEnhanceBusy = false; }, 0);
+    }
   }
 
   function observeHomeCardEnhancements() {
@@ -316,13 +332,48 @@
     var target = document.getElementById('app-content');
     if (!target) return;
     if (cardEnhanceObserver) cardEnhanceObserver.disconnect();
-    cardEnhanceObserver = new MutationObserver(function () {
-      enhanceOfficialRecommendCards();
-      setupMobileFilterTags();
+
+    cardEnhanceObserver = new MutationObserver(function (mutations) {
+      if (homeEnhanceBusy) return;
+
+      var needsWork = false;
+      for (var i = 0; i < mutations.length; i++) {
+        var nodes = mutations[i].addedNodes;
+        if (!nodes || !nodes.length) continue;
+        for (var j = 0; j < nodes.length; j++) {
+          var node = nodes[j];
+          if (!node || node.nodeType !== 1) continue;
+          // 忽略我们自己注入的节点，切断反馈循环
+          if (node.classList && (
+            node.classList.contains('mobile-filter-bar') ||
+            node.classList.contains('mobile-official-claim-btn')
+          )) {
+            continue;
+          }
+          if (
+            node.id === 'filter-tags' ||
+            node.id === 'official-recommend-grid' ||
+            node.id === 'home-page' ||
+            (node.classList && node.classList.contains('official-recommend-card')) ||
+            (node.querySelector && (
+              node.querySelector('#filter-tags') ||
+              node.querySelector('#official-recommend-grid') ||
+              node.querySelector('.official-recommend-card')
+            ))
+          ) {
+            needsWork = true;
+            break;
+          }
+        }
+        if (needsWork) break;
+      }
+
+      if (needsWork) runHomeEnhancements();
     });
+
     cardEnhanceObserver.observe(target, { childList: true, subtree: true });
-    enhanceOfficialRecommendCards();
-    setupMobileFilterTags();
+    runHomeEnhancements();
+    syncMobileFilterChips(getActiveDesktopFilterType());
   }
 
   function refreshCurrentPageContent() {
