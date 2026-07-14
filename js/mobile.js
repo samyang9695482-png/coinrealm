@@ -660,6 +660,9 @@
         origRefresh();
         syncLoginScreen();
         syncLoginButtonLabels();
+        if (typeof window.coinrealmRefreshNotifications === 'function') {
+          window.coinrealmRefreshNotifications();
+        }
       };
     }
 
@@ -668,6 +671,12 @@
     setupMobileFilterTags();
     enhanceOfficialRecommendCards();
     enhanceSimpleTaskCards();
+
+    if (typeof window.coinrealmInitNotifications === 'function') {
+      window.coinrealmInitNotifications();
+    } else if (typeof window.coinrealmRefreshNotifications === 'function') {
+      window.coinrealmRefreshNotifications();
+    }
 
     console.log('[mobile] 手机版壳层已初始化，当前语言:', window.currentLang);
   }

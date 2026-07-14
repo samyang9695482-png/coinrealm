@@ -108,6 +108,39 @@ body.mobile-app .navbar {
 .mobile-back-btn { left: 4px; }
 .mobile-lang-btn { right: 4px; font-size: 13px; font-weight: 600; color: var(--m-accent); }
 
+/* 通知铃铛：语言切换左侧 */
+.mobile-notif-wrap {
+  position: absolute;
+  top: 50%;
+  right: 48px;
+  transform: translateY(-50%);
+  margin: 0;
+  z-index: 2;
+}
+
+.mobile-notif-btn {
+  position: relative;
+  top: auto;
+  transform: none;
+  min-width: 40px;
+  min-height: 40px;
+  font-size: 18px;
+}
+
+.mobile-notif-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  left: auto;
+  width: min(320px, calc(100vw - 24px));
+  z-index: 250;
+}
+
+body.mobile-app .cr-notif-badge {
+  top: 4px;
+  right: 4px;
+}
+
 .mobile-scroll {
   flex: 1;
   width: 100%;

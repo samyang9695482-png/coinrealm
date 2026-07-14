@@ -49,6 +49,16 @@
   <header id="mobile-header" class="mobile-header">
     <button type="button" id="mobile-back-btn" class="mobile-header-btn mobile-back-btn hidden" aria-label="返回">←</button>
     <h1 id="mobile-page-title" class="mobile-header-title">任务中心</h1>
+    <div id="cr-notif-wrap-mobile" class="cr-notif-wrap mobile-notif-wrap">
+      <button type="button" class="cr-notif-btn mobile-header-btn mobile-notif-btn" id="cr-notif-btn-mobile" aria-label="通知">🔔<span class="cr-notif-badge" id="cr-notif-badge-mobile">0</span></button>
+      <div class="cr-notif-dropdown mobile-notif-dropdown" id="cr-notif-dropdown-mobile" role="menu">
+        <div class="cr-notif-dropdown-header">
+          <span>通知</span>
+          <button type="button" class="cr-notif-mark-all" id="cr-notif-mark-all-mobile">全部已读</button>
+        </div>
+        <div class="cr-notif-list" id="cr-notif-list-mobile"></div>
+      </div>
+    </div>
     <button type="button" id="mobile-lang-btn" class="mobile-header-btn mobile-lang-btn" aria-label="切换语言" data-i18n="langToggle">EN</button>
   </header>
 

@@ -2824,6 +2824,15 @@ function notifySubmissionStatusChanged(payload) {
     } catch (notifyErr) {
         console.warn('派发提交状态变更事件失败', notifyErr);
     }
+
+    // 系统铃铛通知（不阻塞）
+    try {
+        if (typeof window.coinrealmHandleSubmissionStatusNotification === 'function') {
+            window.coinrealmHandleSubmissionStatusNotification(payload);
+        }
+    } catch (inboxErr) {
+        console.warn('写入系统通知失败', inboxErr);
+    }
 }
 
 window.coinrealmNotifySubmissionStatusChanged = notifySubmissionStatusChanged;
@@ -5606,6 +5615,14 @@ window.addEventListener('hashchange', function () {
         window.coinrealmShowRewardCelebration(amount, {
           description: pfT('pf_withdraw_success_celebration', { amount: formatNumber(amount) }),
           autoCloseMs: 4000
+        });
+      }
+
+      if (typeof window.coinrealmNotifyWithdrawSuccess === 'function') {
+        window.coinrealmNotifyWithdrawSuccess({
+          amount: amount,
+          userId: userId || (user && user.id),
+          txHash: result.tx_hash || result.txHash || null
         });
       }
     } catch (err) {
@@ -9302,6 +9319,11 @@ window.addEventListener('hashchange', function () {
     });
   }
 
+  window.coinrealmReloadAdminTasks = async function () {
+    await loadAllTasks();
+    renderTaskList();
+  };
+
   function renderTaskList() {
     var listEl = document.getElementById('ad-task-list');
     if (!listEl) return;
@@ -9469,6 +9491,12 @@ window.addEventListener('hashchange', function () {
     closeCancelModal();
     await loadAllTasks();
     renderTaskList();
+    if (typeof window.coinrealmRefreshAdminReports === 'function') {
+      await window.coinrealmRefreshAdminReports();
+    }
+    if (typeof window.coinrealmNotifyTaskCancelled === 'function') {
+      window.coinrealmNotifyTaskCancelled(taskId);
+    }
   }
 
   async function loadAdminUsers() {
@@ -9733,6 +9761,9 @@ window.addEventListener('hashchange', function () {
     } else if (adminTab === 'tasks') {
       await loadAllTasks();
       renderTaskList();
+      if (typeof window.coinrealmRefreshAdminReports === 'function') {
+        await window.coinrealmRefreshAdminReports();
+      }
     } else if (adminTab === 'users') {
       await loadAdminUsers();
       renderUsersList();
@@ -10910,4 +10941,761 @@ window.addEventListener('hashchange', function () {
   if (langToggleBtn) {
     langToggleBtn.addEventListener('click', scheduleDividendsFeatureGate);
   }
+})();
+
+/* ==================== 系统通知（铃铛） ==================== */
+(function () {
+  'use strict';
+
+  var NOTIF_POLL_MS = 45000;
+  var DEFAULT_ADMIN_EMAIL = (typeof ADMIN_FOUNDER_EMAIL === 'string' && ADMIN_FOUNDER_EMAIL)
+    ? ADMIN_FOUNDER_EMAIL
+    : 'samyang9695482@gmail.com';
+
+  var notifCache = [];
+  var unreadCount = 0;
+  var pollTimer = null;
+  var tableMissingNotified = false;
+  var recentDedupe = {};
+  var adminIdsCache = null;
+  var uiReady = false;
+
+  var NOTIF_META = {
+    pending_review: { title: '你的任务有新的提交待审核', link: 'review', adminTab: null },
+    review_approved: { title: '你的任务审核通过了！', link: 'my-tasks', adminTab: null },
+    review_rejected: { title: '你的任务被驳回了', link: 'my-tasks', adminTab: null },
+    task_reported: { title: '有任务被举报', link: 'admin', adminTab: 'tasks' },
+    report_result: { title: '你举报的任务处理结果已出', link: 'my-tasks', adminTab: null },
+    task_cancelled: { title: '你的任务被管理员下架', link: 'publish-management', adminTab: null },
+    withdraw_record: { title: '新的提币记录', link: 'admin', adminTab: 'withdraw' }
+  };
+
+  function isNotifTableMissing(error) {
+    if (!error) return false;
+    var msg = String(error.message || error.details || error.hint || '').toLowerCase();
+    var code = String(error.code || '');
+    return code === '42P01' || code === 'PGRST205' ||
+      (msg.indexOf('notification') !== -1 && (
+        msg.indexOf('does not exist') !== -1 ||
+        msg.indexOf('schema cache') !== -1 ||
+        msg.indexOf('could not find') !== -1
+      ));
+  }
+
+  function dedupeKey(key) {
+    if (!key) return true;
+    var now = Date.now();
+    if (recentDedupe[key] && now - recentDedupe[key] < 8000) return false;
+    recentDedupe[key] = now;
+    return true;
+  }
+
+  function createNotification(payload) {
+    if (!window.supabase || !payload || !payload.user_id) return;
+
+    var type = payload.type || 'info';
+    var meta = NOTIF_META[type] || {};
+    var title = payload.title || meta.title || '系统通知';
+    var link = payload.link || meta.link || 'home';
+    var key = [type, payload.user_id, payload.related_id || '', title].join('|');
+    if (!dedupeKey(key)) return;
+
+    var row = {
+      user_id: payload.user_id,
+      type: type,
+      title: title,
+      link: link,
+      related_id: payload.related_id || null,
+      is_read: false
+    };
+
+    // 不 await，不阻塞主流程
+    Promise.resolve(
+      window.supabase.from('notifications').insert(row)
+    ).then(function (result) {
+      if (result && result.error) {
+        if (isNotifTableMissing(result.error)) {
+          if (!tableMissingNotified) {
+            tableMissingNotified = true;
+            console.warn(
+              '[notifications] 表不存在，请先创建：\n' +
+              'CREATE TABLE IF NOT EXISTS notifications (\n' +
+              '  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n' +
+              '  user_id UUID REFERENCES users(id),\n' +
+              '  type TEXT NOT NULL,\n' +
+              '  title TEXT NOT NULL,\n' +
+              '  link TEXT,\n' +
+              '  related_id UUID,\n' +
+              '  is_read BOOLEAN DEFAULT false,\n' +
+              '  created_at TIMESTAMPTZ DEFAULT NOW()\n' +
+              ');'
+            );
+          }
+          return;
+        }
+        console.warn('[notifications] 写入失败：', result.error);
+        return;
+      }
+      refreshNotificationsQuiet();
+    }).catch(function (err) {
+      console.warn('[notifications] 写入异常：', err);
+    });
+  }
+
+  window.coinrealmCreateNotification = createNotification;
+
+  async function getAdminUserIds() {
+    if (adminIdsCache && adminIdsCache.length) return adminIdsCache;
+    if (!window.supabase) return [];
+    try {
+      var result = await window.supabase
+        .from('users')
+        .select('id, email')
+        .eq('email', DEFAULT_ADMIN_EMAIL);
+      if (result.error) {
+        console.warn('[notifications] 查询管理员失败：', result.error);
+        return [];
+      }
+      adminIdsCache = (result.data || []).map(function (u) { return u.id; }).filter(Boolean);
+      return adminIdsCache;
+    } catch (err) {
+      console.warn('[notifications] 查询管理员异常：', err);
+      return [];
+    }
+  }
+
+  async function notifyAdmins(type, extra) {
+    var ids = await getAdminUserIds();
+    var meta = NOTIF_META[type] || {};
+    ids.forEach(function (id) {
+      createNotification({
+        user_id: id,
+        type: type,
+        title: (extra && extra.title) || meta.title,
+        link: meta.link,
+        related_id: extra && extra.related_id
+      });
+    });
+  }
+
+  async function fetchTaskPublisherId(taskId) {
+    if (!window.supabase || !taskId) return null;
+    var result = await window.supabase
+      .from('tasks')
+      .select('id, publisher_id')
+      .eq('id', taskId)
+      .maybeSingle();
+    if (result.error || !result.data) return null;
+    return result.data.publisher_id || null;
+  }
+
+  function handleSubmissionStatusNotification(payload) {
+    payload = payload || {};
+    var status = String(payload.status || '').toLowerCase();
+    var taskId = payload.taskId;
+    var workerId = payload.userId;
+
+    if (status === 'submitted') {
+      Promise.resolve(fetchTaskPublisherId(taskId)).then(function (publisherId) {
+        if (!publisherId) return;
+        createNotification({
+          user_id: publisherId,
+          type: 'pending_review',
+          title: NOTIF_META.pending_review.title,
+          link: 'review',
+          related_id: taskId
+        });
+      });
+      return;
+    }
+
+    if (status === 'approved' && workerId) {
+      createNotification({
+        user_id: workerId,
+        type: 'review_approved',
+        title: NOTIF_META.review_approved.title,
+        link: 'my-tasks',
+        related_id: taskId
+      });
+      return;
+    }
+
+    if (status === 'rejected' && workerId) {
+      createNotification({
+        user_id: workerId,
+        type: 'review_rejected',
+        title: NOTIF_META.review_rejected.title,
+        link: 'my-tasks',
+        related_id: taskId
+      });
+    }
+  }
+
+  window.coinrealmHandleSubmissionStatusNotification = handleSubmissionStatusNotification;
+
+  function notifyTaskCancelled(taskId) {
+    if (!taskId) return;
+    Promise.resolve(fetchTaskPublisherId(taskId)).then(function (publisherId) {
+      if (!publisherId) return;
+      createNotification({
+        user_id: publisherId,
+        type: 'task_cancelled',
+        title: NOTIF_META.task_cancelled.title,
+        link: 'publish-management',
+        related_id: taskId
+      });
+    });
+  }
+
+  window.coinrealmNotifyTaskCancelled = notifyTaskCancelled;
+
+  function notifyWithdrawSuccess(info) {
+    info = info || {};
+    notifyAdmins('withdraw_record', {
+      related_id: info.userId || null,
+      title: NOTIF_META.withdraw_record.title
+    });
+  }
+
+  window.coinrealmNotifyWithdrawSuccess = notifyWithdrawSuccess;
+
+  function unwrapMutationResult(builder, onSuccess) {
+    if (!builder || typeof builder.then !== 'function') return builder;
+    var originalThen = builder.then.bind(builder);
+    builder.then = function (onFulfilled, onRejected) {
+      return originalThen(function (result) {
+        try {
+          if (result && !result.error) onSuccess(result);
+        } catch (hookErr) {
+          console.warn('[notifications] hook 执行失败：', hookErr);
+        }
+        return onFulfilled ? onFulfilled(result) : result;
+      }, onRejected);
+    };
+    return builder;
+  }
+
+  function wrapFilterChain(chain, table, method, values, state) {
+    if (!chain || typeof chain !== 'object') return chain;
+
+    var proxyHandlers = {
+      get: function (target, prop) {
+        if (prop === 'then') {
+          return function (onFulfilled, onRejected) {
+            return target.then(function (result) {
+              try {
+                if (result && !result.error) {
+                  onDbMutationSuccess(table, method, values, state, result);
+                }
+              } catch (hookErr) {
+                console.warn('[notifications] mutation hook 失败：', hookErr);
+              }
+              return onFulfilled ? onFulfilled(result) : result;
+            }, onRejected);
+          };
+        }
+
+        var value = target[prop];
+        if (typeof value !== 'function') return value;
+
+        return function () {
+          var args = Array.prototype.slice.call(arguments);
+          if (prop === 'eq' && args[0] === 'id') {
+            state.id = args[1];
+          }
+          if (prop === 'eq' && args[0] === 'task_id') {
+            state.task_id = args[1];
+          }
+          var next = value.apply(target, args);
+          if (next && typeof next === 'object') {
+            return wrapFilterChain(next, table, method, values, state);
+          }
+          return next;
+        };
+      }
+    };
+
+    try {
+      return new Proxy(chain, proxyHandlers);
+    } catch (_e) {
+      return unwrapMutationResult(chain, function (result) {
+        onDbMutationSuccess(table, method, values, state, result);
+      });
+    }
+  }
+
+  function onDbMutationSuccess(table, method, values, state, result) {
+    var rows = Array.isArray(values) ? values : [values];
+    var first = rows[0] || {};
+    var dataRows = (result && result.data) ? (Array.isArray(result.data) ? result.data : [result.data]) : [];
+    var data0 = dataRows[0] || {};
+
+    if (table === 'reports' && method === 'insert') {
+      var taskId = first.task_id || data0.task_id;
+      notifyAdmins('task_reported', { related_id: taskId });
+      return;
+    }
+
+    if (table === 'reports' && method === 'update') {
+      var status = String(first.status || data0.status || '').toLowerCase();
+      if (status !== 'approved' && status !== 'rejected') return;
+
+      var reportId = state.id || data0.id;
+      var reporterId = first.reporter_id || data0.reporter_id;
+      var reportTaskId = first.task_id || data0.task_id || state.task_id;
+
+      function notifyReporter(rid, tid) {
+        if (!rid) return;
+        createNotification({
+          user_id: rid,
+          type: 'report_result',
+          title: NOTIF_META.report_result.title,
+          link: 'my-tasks',
+          related_id: tid || reportId
+        });
+      }
+
+      if (reporterId) {
+        notifyReporter(reporterId, reportTaskId);
+      } else if (reportId && window.supabase) {
+        window.supabase
+          .from('reports')
+          .select('id, reporter_id, task_id')
+          .eq('id', reportId)
+          .maybeSingle()
+          .then(function (r) {
+            if (r.error || !r.data) return;
+            notifyReporter(r.data.reporter_id, r.data.task_id);
+            if (status === 'approved' && r.data.task_id) {
+              notifyTaskCancelled(r.data.task_id);
+            }
+          });
+        return;
+      }
+
+      if (status === 'approved' && reportTaskId) {
+        notifyTaskCancelled(reportTaskId);
+      }
+      return;
+    }
+
+    if (table === 'submissions' && method === 'update') {
+      var subStatus = String(first.status || data0.status || '').toLowerCase();
+      var submissionId = state.id || data0.id;
+      var workerId = first.user_id || data0.user_id;
+      var subTaskId = first.task_id || data0.task_id || state.task_id;
+
+      function emitFromSubmission(row) {
+        if (!row) return;
+        handleSubmissionStatusNotification({
+          status: row.status,
+          taskId: row.task_id,
+          userId: row.user_id,
+          submissionId: row.id,
+          path: 'db-hook'
+        });
+      }
+
+      if ((subStatus === 'rejected' || subStatus === 'approved' || subStatus === 'submitted') && workerId && subTaskId) {
+        // approved/submitted 通常已由 notifySubmissionStatusChanged 触发，rejected 常靠这里兜底
+        if (subStatus === 'rejected') {
+          emitFromSubmission({
+            status: subStatus,
+            task_id: subTaskId,
+            user_id: workerId,
+            id: submissionId
+          });
+        }
+        return;
+      }
+
+      if (subStatus === 'rejected' && submissionId && window.supabase) {
+        window.supabase
+          .from('submissions')
+          .select('id, task_id, user_id, status')
+          .eq('id', submissionId)
+          .maybeSingle()
+          .then(function (r) {
+            if (r.error || !r.data) return;
+            emitFromSubmission(r.data);
+          });
+      }
+      return;
+    }
+
+    if (table === 'tasks' && method === 'update') {
+      var taskStatus = String(first.status || data0.status || '').toLowerCase();
+      if (taskStatus !== 'cancelled') return;
+      var cancelledTaskId = state.id || data0.id;
+      if (cancelledTaskId) notifyTaskCancelled(cancelledTaskId);
+    }
+  }
+
+  function installSupabaseNotificationHooks() {
+    if (!window.supabase || window.supabase.__crNotifPatched) return;
+    var client = window.supabase;
+    var originalFrom = client.from.bind(client);
+
+    client.from = function (table) {
+      var builder = originalFrom(table);
+      if (table === 'notifications') return builder;
+      if (table !== 'reports' && table !== 'submissions' && table !== 'tasks') return builder;
+
+      ['insert', 'update'].forEach(function (method) {
+        if (typeof builder[method] !== 'function') return;
+        var original = builder[method].bind(builder);
+        builder[method] = function (values) {
+          var state = {};
+          var next = original(values);
+          return wrapFilterChain(next, table, method, values, state);
+        };
+      });
+
+      return builder;
+    };
+
+    client.__crNotifPatched = true;
+  }
+
+  function ensureNotifStyles() {
+    if (document.getElementById('coinrealm-notif-styles')) return;
+    var style = document.createElement('style');
+    style.id = 'coinrealm-notif-styles';
+    style.textContent = [
+      '.cr-notif-wrap { position: relative; display: inline-flex; align-items: center; margin-right: 8px; }',
+      '.cr-notif-btn {',
+      '  position: relative; min-width: 40px; min-height: 40px; border: none; background: transparent;',
+      '  cursor: pointer; font-size: 18px; line-height: 1; border-radius: 8px; color: #334155;',
+      '}',
+      '.cr-notif-btn:hover { background: rgba(99,102,241,0.08); }',
+      '.cr-notif-badge {',
+      '  position: absolute; top: 2px; right: 2px; min-width: 16px; height: 16px; padding: 0 4px;',
+      '  border-radius: 999px; background: #ef4444; color: #fff; font-size: 10px; font-weight: 700;',
+      '  display: none; align-items: center; justify-content: center; line-height: 1;',
+      '}',
+      '.cr-notif-badge.is-on { display: inline-flex; }',
+      '.cr-notif-dropdown {',
+      '  position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: min(320px, 92vw);',
+      '  max-height: 420px; overflow: hidden; display: none; flex-direction: column;',
+      '  background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;',
+      '  box-shadow: 0 12px 32px rgba(15,23,42,0.16); z-index: 1200;',
+      '}',
+      '.cr-notif-dropdown.is-open { display: flex; }',
+      '.cr-notif-dropdown-header {',
+      '  display: flex; align-items: center; justify-content: space-between; gap: 8px;',
+      '  padding: 12px 14px; border-bottom: 1px solid #e2e8f0; font-weight: 700; font-size: 14px;',
+      '}',
+      '.cr-notif-mark-all {',
+      '  border: none; background: transparent; color: #6366f1; font-size: 12px; cursor: pointer; padding: 0;',
+      '}',
+      '.cr-notif-list { overflow-y: auto; max-height: 360px; }',
+      '.cr-notif-item {',
+      '  display: block; width: 100%; text-align: left; border: none; border-bottom: 1px solid #f1f5f9;',
+      '  background: #fff; padding: 12px 14px; cursor: pointer;',
+      '}',
+      '.cr-notif-item.unread { background: #eff6ff; }',
+      '.cr-notif-item:hover { background: #f8fafc; }',
+      '.cr-notif-item.unread:hover { background: #dbeafe; }',
+      '.cr-notif-item-title { font-size: 13px; color: #1e293b; font-weight: 600; margin: 0 0 4px; }',
+      '.cr-notif-item-time { font-size: 11px; color: #94a3b8; margin: 0; }',
+      '.cr-notif-empty { padding: 24px 14px; text-align: center; color: #94a3b8; font-size: 13px; }'
+    ].join('\n');
+    document.head.appendChild(style);
+  }
+
+  function ensureDesktopNotifUi() {
+    var actions = document.querySelector('.navbar-actions');
+    var langBtn = document.getElementById('lang-toggle');
+    if (!actions || !langBtn) return null;
+    if (document.getElementById('cr-notif-wrap-desktop')) {
+      return document.getElementById('cr-notif-wrap-desktop');
+    }
+
+    var wrap = document.createElement('div');
+    wrap.id = 'cr-notif-wrap-desktop';
+    wrap.className = 'cr-notif-wrap';
+    wrap.innerHTML =
+      '<button type="button" class="cr-notif-btn" id="cr-notif-btn-desktop" aria-label="通知">🔔' +
+        '<span class="cr-notif-badge" id="cr-notif-badge-desktop">0</span>' +
+      '</button>' +
+      '<div class="cr-notif-dropdown" id="cr-notif-dropdown-desktop" role="menu">' +
+        '<div class="cr-notif-dropdown-header">' +
+          '<span>通知</span>' +
+          '<button type="button" class="cr-notif-mark-all" id="cr-notif-mark-all-desktop">全部已读</button>' +
+        '</div>' +
+        '<div class="cr-notif-list" id="cr-notif-list-desktop"></div>' +
+      '</div>';
+
+    actions.insertBefore(wrap, langBtn);
+    return wrap;
+  }
+
+  function ensureMobileNotifUi() {
+    var header = document.getElementById('mobile-header');
+    var langBtn = document.getElementById('mobile-lang-btn');
+    if (!header) return null;
+
+    var existing = document.getElementById('cr-notif-wrap-mobile');
+    if (existing) return existing;
+
+    var wrap = document.createElement('div');
+    wrap.id = 'cr-notif-wrap-mobile';
+    wrap.className = 'cr-notif-wrap mobile-notif-wrap';
+    wrap.innerHTML =
+      '<button type="button" class="cr-notif-btn mobile-header-btn mobile-notif-btn" id="cr-notif-btn-mobile" aria-label="通知">🔔' +
+        '<span class="cr-notif-badge" id="cr-notif-badge-mobile">0</span>' +
+      '</button>' +
+      '<div class="cr-notif-dropdown mobile-notif-dropdown" id="cr-notif-dropdown-mobile" role="menu">' +
+        '<div class="cr-notif-dropdown-header">' +
+          '<span>通知</span>' +
+          '<button type="button" class="cr-notif-mark-all" id="cr-notif-mark-all-mobile">全部已读</button>' +
+        '</div>' +
+        '<div class="cr-notif-list" id="cr-notif-list-mobile"></div>' +
+      '</div>';
+
+    if (langBtn && langBtn.parentNode === header) {
+      header.insertBefore(wrap, langBtn);
+    } else {
+      header.appendChild(wrap);
+    }
+    return wrap;
+  }
+
+  function formatNotifTime(value) {
+    if (!value) return '';
+    var d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value).slice(0, 16);
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    var hh = String(d.getHours()).padStart(2, '0');
+    var mm = String(d.getMinutes()).padStart(2, '0');
+    return m + '-' + day + ' ' + hh + ':' + mm;
+  }
+
+  function updateBadges() {
+    ['desktop', 'mobile'].forEach(function (suffix) {
+      var badge = document.getElementById('cr-notif-badge-' + suffix);
+      if (!badge) return;
+      if (unreadCount > 0) {
+        badge.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
+        badge.classList.add('is-on');
+      } else {
+        badge.textContent = '0';
+        badge.classList.remove('is-on');
+      }
+    });
+  }
+
+  function renderNotifLists() {
+    ['desktop', 'mobile'].forEach(function (suffix) {
+      var list = document.getElementById('cr-notif-list-' + suffix);
+      if (!list) return;
+
+      if (!notifCache.length) {
+        list.innerHTML = '<div class="cr-notif-empty">暂无通知</div>';
+        return;
+      }
+
+      list.innerHTML = notifCache.map(function (item) {
+        var unreadClass = item.is_read ? '' : ' unread';
+        return (
+          '<button type="button" class="cr-notif-item' + unreadClass + '" data-notif-id="' + String(item.id || '') + '">' +
+            '<p class="cr-notif-item-title">' + escapeHtml(item.title || '系统通知') + '</p>' +
+            '<p class="cr-notif-item-time">' + escapeHtml(formatNotifTime(item.created_at)) + '</p>' +
+          '</button>'
+        );
+      }).join('');
+    });
+  }
+
+  async function loadNotifications() {
+    if (!window.supabase) return;
+    var userId = typeof getCurrentUserId === 'function' ? await getCurrentUserId() : null;
+    if (!userId) {
+      notifCache = [];
+      unreadCount = 0;
+      updateBadges();
+      renderNotifLists();
+      return;
+    }
+
+    var result = await window.supabase
+      .from('notifications')
+      .select('id, user_id, type, title, link, related_id, is_read, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (result.error) {
+      if (isNotifTableMissing(result.error)) {
+        if (!tableMissingNotified) {
+          tableMissingNotified = true;
+          console.warn('[notifications] 读取失败：表可能不存在', result.error);
+        }
+      } else {
+        console.warn('[notifications] 加载失败：', result.error);
+      }
+      return;
+    }
+
+    notifCache = result.data || [];
+    unreadCount = notifCache.filter(function (n) { return !n.is_read; }).length;
+    updateBadges();
+    renderNotifLists();
+  }
+
+  function refreshNotificationsQuiet() {
+    loadNotifications().catch(function (err) {
+      console.warn('[notifications] 刷新失败：', err);
+    });
+  }
+
+  async function markNotificationRead(id) {
+    if (!window.supabase || !id) return;
+    await window.supabase.from('notifications').update({ is_read: true }).eq('id', id);
+    notifCache = notifCache.map(function (n) {
+      if (String(n.id) === String(id)) n.is_read = true;
+      return n;
+    });
+    unreadCount = notifCache.filter(function (n) { return !n.is_read; }).length;
+    updateBadges();
+    renderNotifLists();
+  }
+
+  async function markAllNotificationsRead() {
+    if (!window.supabase) return;
+    var userId = typeof getCurrentUserId === 'function' ? await getCurrentUserId() : null;
+    if (!userId) return;
+    await window.supabase.from('notifications').update({ is_read: true }).eq('user_id', userId).eq('is_read', false);
+    notifCache = notifCache.map(function (n) {
+      n.is_read = true;
+      return n;
+    });
+    unreadCount = 0;
+    updateBadges();
+    renderNotifLists();
+  }
+
+  function findNotifById(id) {
+    for (var i = 0; i < notifCache.length; i++) {
+      if (String(notifCache[i].id) === String(id)) return notifCache[i];
+    }
+    return null;
+  }
+
+  function navigateFromNotification(item) {
+    if (!item) return;
+    var type = item.type;
+    var meta = NOTIF_META[type] || {};
+    var link = item.link || meta.link || 'home';
+    var adminTab = meta.adminTab;
+
+    if (type === 'pending_review' && item.related_id) {
+      window.location.hash = 'review?taskId=' + encodeURIComponent(item.related_id);
+      return;
+    }
+
+    window.location.hash = link;
+    if (adminTab) {
+      setTimeout(function () {
+        var btn = document.querySelector('#admin-page .admin-tab[data-admin-tab="' + adminTab + '"]');
+        if (btn) btn.click();
+      }, 150);
+    }
+  }
+
+  function closeAllDropdowns() {
+    document.querySelectorAll('.cr-notif-dropdown').forEach(function (el) {
+      el.classList.remove('is-open');
+    });
+  }
+
+  function toggleDropdown(suffix) {
+    var dropdown = document.getElementById('cr-notif-dropdown-' + suffix);
+    if (!dropdown) return;
+    var willOpen = !dropdown.classList.contains('is-open');
+    closeAllDropdowns();
+    if (willOpen) {
+      dropdown.classList.add('is-open');
+      loadNotifications();
+    }
+  }
+
+  function bindNotifUiEvents() {
+    if (uiReady) return;
+    uiReady = true;
+
+    document.addEventListener('click', function (e) {
+      var desktopBtn = e.target.closest('#cr-notif-btn-desktop');
+      var mobileBtn = e.target.closest('#cr-notif-btn-mobile');
+      if (desktopBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleDropdown('desktop');
+        return;
+      }
+      if (mobileBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleDropdown('mobile');
+        return;
+      }
+
+      var markAll = e.target.closest('.cr-notif-mark-all');
+      if (markAll) {
+        e.preventDefault();
+        e.stopPropagation();
+        markAllNotificationsRead();
+        return;
+      }
+
+      var itemBtn = e.target.closest('.cr-notif-item');
+      if (itemBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        var id = itemBtn.getAttribute('data-notif-id');
+        var item = findNotifById(id);
+        closeAllDropdowns();
+        Promise.resolve(markNotificationRead(id)).then(function () {
+          navigateFromNotification(item);
+        });
+        return;
+      }
+
+      if (!e.target.closest('.cr-notif-wrap')) {
+        closeAllDropdowns();
+      }
+    });
+  }
+
+  function startPolling() {
+    if (pollTimer) return;
+    pollTimer = setInterval(refreshNotificationsQuiet, NOTIF_POLL_MS);
+  }
+
+  function initNotificationsUi() {
+    ensureNotifStyles();
+    ensureDesktopNotifUi();
+    ensureMobileNotifUi();
+    bindNotifUiEvents();
+    installSupabaseNotificationHooks();
+    refreshNotificationsQuiet();
+    startPolling();
+  }
+
+  window.coinrealmInitNotifications = initNotificationsUi;
+  window.coinrealmRefreshNotifications = refreshNotificationsQuiet;
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () {
+      setTimeout(initNotificationsUi, 200);
+    });
+  } else {
+    setTimeout(initNotificationsUi, 200);
+  }
+
+  window.addEventListener('hashchange', function () {
+    ensureDesktopNotifUi();
+    ensureMobileNotifUi();
+  });
 })();
