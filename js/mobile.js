@@ -114,6 +114,9 @@
   }
 
   function enhanceOfficialRecommendCards() {
+    var section = document.getElementById('official-recommend-section');
+    if (section) section.classList.add('mobile-official-section');
+
     var grid = document.getElementById('official-recommend-grid');
     if (!grid) return;
 
@@ -121,6 +124,7 @@
     for (var i = 0; i < cards.length; i++) {
       if (i >= 4) break;
       var card = cards[i];
+      card.classList.add('mobile-official-card');
       if (card.querySelector('.mobile-official-claim-btn')) continue;
 
       var btn = document.createElement('button');
@@ -141,6 +145,17 @@
       });
       btn.setAttribute('data-task-id', card.getAttribute('data-task-id') || '');
       card.appendChild(btn);
+    }
+  }
+
+  /** 简单任务：保证闪电图标与一键领取分列两侧，不重叠 */
+  function enhanceSimpleTaskCards() {
+    var grid = document.getElementById('st-task-grid');
+    if (!grid) return;
+    grid.classList.add('mobile-simple-task-grid');
+    var cards = grid.querySelectorAll('.simple-task-card');
+    for (var i = 0; i < cards.length; i++) {
+      cards[i].classList.add('mobile-simple-task-card');
     }
   }
 
@@ -322,6 +337,7 @@
     try {
       setupMobileFilterTags();
       enhanceOfficialRecommendCards();
+      enhanceSimpleTaskCards();
     } finally {
       setTimeout(function () { homeEnhanceBusy = false; }, 0);
     }
@@ -354,11 +370,17 @@
             node.id === 'filter-tags' ||
             node.id === 'official-recommend-grid' ||
             node.id === 'home-page' ||
-            (node.classList && node.classList.contains('official-recommend-card')) ||
+            node.id === 'st-task-grid' ||
+            (node.classList && (
+              node.classList.contains('official-recommend-card') ||
+              node.classList.contains('simple-task-card')
+            )) ||
             (node.querySelector && (
               node.querySelector('#filter-tags') ||
               node.querySelector('#official-recommend-grid') ||
-              node.querySelector('.official-recommend-card')
+              node.querySelector('.official-recommend-card') ||
+              node.querySelector('#st-task-grid') ||
+              node.querySelector('.simple-task-card')
             ))
           ) {
             needsWork = true;
@@ -547,6 +569,10 @@
         enhanceOfficialRecommendCards();
       }, 50);
     }
+    if (route === 'simple-tasks') {
+      setTimeout(enhanceSimpleTaskCards, 50);
+      setTimeout(enhanceSimpleTaskCards, 300);
+    }
     if (route === 'create-task') {
       setActiveTab('create-task');
     }
@@ -622,6 +648,7 @@
     syncLoginScreen();
     setupMobileFilterTags();
     enhanceOfficialRecommendCards();
+    enhanceSimpleTaskCards();
 
     console.log('[mobile] 手机版壳层已初始化，当前语言:', window.currentLang);
   }
