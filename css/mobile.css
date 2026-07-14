@@ -121,8 +121,8 @@ body.mobile-app .navbar {
 }
 
 body.mobile-app.sub-page .mobile-scroll {
-  margin-bottom: var(--m-safe-bottom);
-  height: calc(100vh - var(--m-header-h) - var(--m-safe-bottom));
+  margin-bottom: calc(var(--m-tab-h) + var(--m-safe-bottom));
+  height: calc(100vh - var(--m-header-h) - var(--m-tab-h) - var(--m-safe-bottom));
 }
 
 .mobile-app-content {
@@ -171,7 +171,7 @@ body.mobile-app.sub-page .mobile-scroll {
   z-index: 200;
 }
 
-body.mobile-app.sub-page .mobile-tab-bar { display: none; }
+body.mobile-app.sub-page .mobile-tab-bar { display: flex !important; }
 
 .mobile-tab {
   flex: 1;
@@ -220,8 +220,13 @@ body.mobile-app.sub-page .mobile-tab-bar { display: none; }
 
 .mobile-login-screen {
   position: fixed;
-  inset: 0;
-  z-index: 500;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: var(--m-max-w);
+  bottom: calc(var(--m-tab-h) + var(--m-safe-bottom));
+  z-index: 180;
   background: var(--m-bg);
   display: flex;
   align-items: center;
@@ -359,13 +364,57 @@ body.mobile-app .task-card-media {
 }
 
 body.mobile-app .card-top {
+  display: flex !important;
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+body.mobile-app .card-top .author-info,
+body.mobile-app .card-top .publisher-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  gap: 0;
+}
+
+body.mobile-app .card-top .meta-text,
+body.mobile-app .card-top .username,
+body.mobile-app .card-top .level-badge,
+body.mobile-app .card-top .badge-official,
+body.mobile-app .card-top .badge-promo,
+body.mobile-app .card-top .badge-simple-fast,
+body.mobile-app .card-top [class*="badge"] {
   display: none !important;
+}
+
+body.mobile-app .card-top .css-avatar,
+body.mobile-app .card-top .cr-avatar-img,
+body.mobile-app .card-top .cr-avatar-letter,
+body.mobile-app .task-card .css-avatar,
+body.mobile-app .task-card .cr-avatar-img,
+body.mobile-app .task-card .cr-avatar-letter {
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  min-height: 24px !important;
+  font-size: 11px !important;
+  border-radius: 50% !important;
 }
 
 body.mobile-app .task-card-body {
   width: 100%;
   display: grid;
-  grid-template-columns: 52px minmax(0, 1fr) auto;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
   grid-template-rows: auto auto auto;
   column-gap: 10px;
   row-gap: 2px;
@@ -380,17 +429,17 @@ body.mobile-app .meta-tags {
 
 body.mobile-app .type-label {
   grid-column: 1;
-  grid-row: 1 / span 3;
+  grid-row: 3;
   justify-self: center;
   align-self: center;
-  max-width: 52px;
+  max-width: 40px;
   text-align: center;
   white-space: normal;
   word-break: break-all;
-  font-size: 11px;
-  line-height: 1.25;
-  padding: 4px 6px;
-  border-radius: 6px;
+  font-size: 10px;
+  line-height: 1.2;
+  padding: 2px 4px;
+  border-radius: 4px;
 }
 
 body.mobile-app .task-card-title {
@@ -588,7 +637,18 @@ body.mobile-app .profile-menu-item {
 
 body.mobile-app .profile-menu-status-bound { color: var(--m-reward) !important; }
 
-body.mobile-app .task-detail-header { display: none; }
+body.mobile-app.sub-page .mobile-app-content {
+  padding-bottom: 88px;
+}
+
+body.mobile-app #task-detail-page,
+body.mobile-app #submit-task-page {
+  padding-bottom: 72px;
+}
+
+body.mobile-app .td-twitter-modal {
+  z-index: 400;
+}
 body.mobile-app .task-detail-card,
 body.mobile-app .publisher-info-card {
   background: var(--m-card);
@@ -607,7 +667,7 @@ body.mobile-app #td-reward-amount {
 body.mobile-app .task-detail-action-bar,
 body.mobile-app .submit-task-action-bar {
   position: fixed;
-  bottom: var(--m-safe-bottom);
+  bottom: calc(var(--m-tab-h) + var(--m-safe-bottom));
   left: 50%;
   transform: translateX(-50%);
   width: 100%;
@@ -686,4 +746,212 @@ body.mobile-app #withdraw-confirm-btn {
   color: #fff !important;
   min-height: 44px;
   border-radius: 10px;
+}
+
+/* ========== 官方推荐：横向长条 ========== */
+body.mobile-app #official-recommend-section {
+  margin-bottom: var(--m-gap);
+}
+
+body.mobile-app .official-recommend-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+body.mobile-app #official-view-all-btn {
+  display: none !important;
+}
+
+body.mobile-app #official-recommend-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: visible;
+  padding: 0;
+}
+
+body.mobile-app .official-recommend-card:nth-child(n + 5) {
+  display: none !important;
+}
+
+body.mobile-app .official-recommend-card {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  row-gap: 2px;
+  align-items: center;
+  width: 100%;
+  min-height: 86px;
+  flex: none;
+  scroll-snap-align: unset;
+  border-radius: 8px;
+  background: var(--m-card);
+  box-shadow: var(--m-shadow);
+  padding: 10px 12px;
+  box-sizing: border-box;
+}
+
+body.mobile-app .official-card-media {
+  display: none !important;
+}
+
+body.mobile-app .official-card-body {
+  display: contents;
+}
+
+body.mobile-app .official-card-top {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  margin: 0;
+  padding: 0;
+}
+
+body.mobile-app .official-card-author,
+body.mobile-app .official-card-username,
+body.mobile-app .official-card-level,
+body.mobile-app .official-card-type,
+body.mobile-app .official-card-desc,
+body.mobile-app .official-card-slots {
+  display: none !important;
+}
+
+body.mobile-app .official-card-avatar,
+body.mobile-app .official-card-top .css-avatar,
+body.mobile-app .official-card-top .cr-avatar-img,
+body.mobile-app .official-card-top .cr-avatar-letter {
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  min-height: 24px !important;
+  font-size: 11px !important;
+  border-radius: 50% !important;
+}
+
+body.mobile-app .official-card-title {
+  grid-column: 2;
+  grid-row: 1;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--m-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+body.mobile-app .official-card-reward {
+  grid-column: 2;
+  grid-row: 2;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--m-reward) !important;
+  white-space: nowrap;
+}
+
+body.mobile-app .mobile-official-claim-btn {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  align-self: center;
+  justify-self: end;
+  min-width: 64px;
+  min-height: 36px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  background: #6366f1;
+  color: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* ========== 简单任务页：横向长条 ========== */
+body.mobile-app .simple-tasks-banner { display: none; }
+
+body.mobile-app .simple-tasks-grid,
+body.mobile-app #st-task-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+body.mobile-app .simple-task-card {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  row-gap: 2px;
+  align-items: center;
+  width: 100%;
+  min-height: 86px;
+  border-radius: 8px;
+  background: var(--m-card);
+  box-shadow: var(--m-shadow);
+  padding: 10px 12px;
+  box-sizing: border-box;
+}
+
+body.mobile-app .simple-task-card-badge {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--m-accent-soft);
+  color: var(--m-accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  justify-self: center;
+}
+
+body.mobile-app .simple-task-card-title {
+  grid-column: 2;
+  grid-row: 1;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.mobile-app .simple-task-card-reward {
+  grid-column: 2;
+  grid-row: 2;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--m-reward) !important;
+}
+
+body.mobile-app .simple-task-card-meta {
+  display: none !important;
+}
+
+body.mobile-app .simple-task-claim-btn {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  align-self: center;
+  min-width: 64px;
+  min-height: 36px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
 }
