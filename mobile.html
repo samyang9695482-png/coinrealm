@@ -9,33 +9,14 @@
   <meta name="apple-mobile-web-app-title" content="CoinRealm">
   <meta name="mobile-web-app-capable" content="yes">
   <title>CoinRealm</title>
-  <link rel="manifest" href="/manifest.json">
-  <link rel="icon" href="/icons/icon-192.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="/icons/icon-192.svg">
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.__coinrealmPwaSwRegistered = true;
-      window.addEventListener('load', function () {
-        navigator.serviceWorker.register('/sw.js', { scope: '/' })
-          .then(function (registration) {
-            console.log('[pwa] Service Worker 注册成功:', registration.scope);
-          })
-          .catch(function (err) {
-            console.warn('[pwa] Service Worker 注册失败:', err);
-          });
-      });
-    }
-  </script>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%236366f1' width='100' height='100' rx='20'/%3E%3Ctext x='50' y='62' text-anchor='middle' fill='white' font-size='48' font-family='Arial' font-weight='bold'%3EC%3C/text%3E%3C/svg%3E">
   <script>
     (function () {
-      var path = location.pathname || '';
-      if (/mobile\.html$/i.test(path)) return;
-      if (/[?&]mobile=1(?:&|$)/.test(location.search)) return;
       var ua = navigator.userAgent || '';
-      var isDesktop = !/Mobi|Android|iPhone|iPad|iPod/i.test(ua)
-        && !(window.matchMedia && window.matchMedia('(max-width: 768px)').matches);
-      if (isDesktop) {
-        location.replace('index.html' + location.search + location.hash);
+      var isDesktop = !/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua) && window.innerWidth > 768;
+      if (isDesktop && !/[?&]mobile=1/.test(window.location.search) && window.location.hash.indexOf('mobile=1') === -1) {
+        window.location.replace('index.html' + window.location.hash + window.location.search);
       }
     })();
   </script>
@@ -106,95 +87,42 @@
   </nav>
 
   <script>
-    (function () {
-      var MOBILE_SCRIPTS = [
-        'js/i18n.js',
-        'auth.js',
-        'js/pages/leaderboard.js',
-        'js/pages/dividends.js',
-        'js/pages/invite.js',
-        'js/pages/admin.js',
-        'js/pages/home.js',
-        'js/pages/publisher.js',
-        'js/pages/task-detail.js',
-        'js/pages/create-task.js',
-        'js/pages/submit-task.js',
-        'js/pages/review.js',
-        'js/pages/profile.js',
-        'js/pages/my-tasks.js',
-        'app.js?v=20260702',
-        'js/mobile.js'
-      ];
-
-      function showBootstrapError(message) {
-        var mount = document.getElementById('app-content');
-        if (!mount) return;
-        mount.innerHTML =
-          '<div class="mobile-error-state">' +
-            '<p>页面加载失败，请刷新重试</p>' +
-            '<p style="font-size:12px;color:#94a3b8;margin-top:8px;">' + (message || '') + '</p>' +
-          '</div>';
-      }
-
-      function loadScript(src) {
-        return new Promise(function (resolve, reject) {
-          var s = document.createElement('script');
-          s.src = src;
-          s.async = false;
-          s.onload = function () { resolve(); };
-          s.onerror = function () { reject(new Error('脚本加载失败: ' + src)); };
-          document.body.appendChild(s);
-        });
-      }
-
-      function loadScriptsSequential(list) {
-        return list.reduce(function (chain, src) {
-          return chain.then(function () { return loadScript(src); });
-        }, Promise.resolve());
-      }
-
-      function bootstrapAppContent() {
-        return fetch('index.html', { credentials: 'same-origin' })
-          .then(function (res) {
-            if (!res.ok) throw new Error('index.html HTTP ' + res.status);
-            return res.text();
-          })
-          .then(function (html) {
-            var doc = new DOMParser().parseFromString(html, 'text/html');
-            var src = doc.getElementById('app-content');
-            var mount = document.getElementById('app-content');
-            if (!src || !mount) throw new Error('未找到 #app-content');
+    (function bootstrapAppContent() {
+      var mount = document.getElementById('app-content');
+      if (!mount) return;
+      try {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', 'index.html', false);
+        xhr.send(null);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          var parser = new DOMParser();
+          var doc = parser.parseFromString(xhr.responseText, 'text/html');
+          var src = doc.getElementById('app-content');
+          if (src) {
             mount.innerHTML = src.innerHTML;
-            if (!document.getElementById('home-page')) {
-              throw new Error('页面内容不完整');
-            }
-          });
-      }
-
-      function startMobileApp() {
-        bootstrapAppContent()
-          .catch(function (err) {
-            console.error('[mobile] 加载 index.html 内容失败:', err);
-            showBootstrapError(err && err.message ? err.message : String(err));
-            throw err;
-          })
-          .then(function () {
-            return loadScriptsSequential(MOBILE_SCRIPTS);
-          })
-          .catch(function (err) {
-            console.error('[mobile] 初始化失败:', err);
-            if (!document.getElementById('home-page')) {
-              showBootstrapError(err && err.message ? err.message : '初始化失败');
-            }
-          });
-      }
-
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', startMobileApp);
-      } else {
-        startMobileApp();
+          }
+        }
+      } catch (err) {
+        console.error('[mobile] 加载 index.html 内容失败:', err);
+        mount.innerHTML = '<div class="mobile-error-state"><p>页面加载失败，请刷新重试</p></div>';
       }
     })();
   </script>
+  <script src="js/i18n.js"></script>
+  <script src="auth.js"></script>
+  <script src="js/pages/leaderboard.js"></script>
+  <script src="js/pages/dividends.js"></script>
+  <script src="js/pages/invite.js"></script>
+  <script src="js/pages/admin.js"></script>
+  <script src="js/pages/home.js"></script>
+  <script src="js/pages/publisher.js"></script>
+  <script src="js/pages/task-detail.js"></script>
+  <script src="js/pages/create-task.js"></script>
+  <script src="js/pages/submit-task.js"></script>
+  <script src="js/pages/review.js"></script>
+  <script src="js/pages/profile.js"></script>
+  <script src="js/pages/my-tasks.js"></script>
+  <script src="app.js?v=20260702"></script>
+  <script src="js/mobile.js"></script>
 </body>
 </html>
