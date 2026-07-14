@@ -849,14 +849,23 @@ body.mobile-app #withdraw-confirm-btn {
 }
 
 /* ========== 官方推荐：横向长条 ========== */
-body.mobile-app #official-recommend-section {
+body.mobile-app #official-recommend-section,
+body.mobile-app .official-recommend-section,
+body.mobile-app .official-recommend-section.mobile-official-section {
   margin-bottom: var(--m-gap);
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 0;
+  background: #ffffff !important;
+  background-image: none !important;
+  box-shadow: none !important;
 }
 
 body.mobile-app .official-recommend-title {
   font-size: 15px;
   font-weight: 600;
   margin: 0 0 8px;
+  color: var(--m-text);
 }
 
 body.mobile-app #official-view-all-btn {
@@ -869,13 +878,15 @@ body.mobile-app #official-recommend-grid {
   gap: 8px;
   overflow: visible;
   padding: 0;
+  grid-template-columns: none;
 }
 
 body.mobile-app .official-recommend-card:nth-child(n + 5) {
   display: none !important;
 }
 
-body.mobile-app .official-recommend-card {
+body.mobile-app .official-recommend-card,
+body.mobile-app .official-recommend-card.mobile-official-card {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr) auto;
   grid-template-rows: auto auto;
@@ -887,10 +898,13 @@ body.mobile-app .official-recommend-card {
   flex: none;
   scroll-snap-align: unset;
   border-radius: 8px;
-  background: var(--m-card);
+  background: #ffffff !important;
   box-shadow: var(--m-shadow);
-  padding: 10px 12px;
+  padding: 10px 12px 10px 14px;
   box-sizing: border-box;
+  border: 1px solid var(--m-border) !important;
+  border-left: 3px solid #6366f1 !important;
+  position: relative;
 }
 
 body.mobile-app .official-card-media {
@@ -987,11 +1001,13 @@ body.mobile-app #st-task-grid {
   gap: 8px;
 }
 
-body.mobile-app .simple-task-card {
+body.mobile-app.mobile-ui-v2 .simple-task-card,
+body.mobile-app #st-task-grid.mobile-simple-task-grid .simple-task-card,
+body.mobile-app .simple-task-card.mobile-simple-task-card {
   display: grid;
   grid-template-columns: 36px minmax(0, 1fr) auto;
   grid-template-rows: auto auto;
-  column-gap: 10px;
+  column-gap: 16px;
   row-gap: 2px;
   align-items: center;
   width: 100%;
@@ -1001,13 +1017,22 @@ body.mobile-app .simple-task-card {
   box-shadow: var(--m-shadow);
   padding: 10px 12px;
   box-sizing: border-box;
+  position: relative;
 }
 
-body.mobile-app .simple-task-card-badge {
+/* 覆盖桌面 absolute 右上角，避免与一键领取重叠 */
+body.mobile-app .simple-task-card-badge,
+body.mobile-app #st-task-grid .simple-task-card-badge {
+  position: static !important;
+  top: auto !important;
+  right: auto !important;
+  left: auto !important;
+  bottom: auto !important;
   grid-column: 1;
   grid-row: 1 / span 2;
   width: 28px;
   height: 28px;
+  margin: 0;
   border-radius: 50%;
   background: var(--m-accent-soft);
   color: var(--m-accent);
@@ -1016,17 +1041,22 @@ body.mobile-app .simple-task-card-badge {
   justify-content: center;
   font-size: 14px;
   justify-self: center;
+  z-index: 0;
+  pointer-events: none;
 }
 
-body.mobile-app .simple-task-card-title {
+body.mobile-app .simple-task-card-title,
+body.mobile-app #st-task-grid .simple-task-card-title {
   grid-column: 2;
   grid-row: 1;
-  margin: 0;
+  margin: 0 !important;
+  padding: 0 !important;
   font-size: 14px;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
 body.mobile-app .simple-task-card-reward {
@@ -1042,16 +1072,26 @@ body.mobile-app .simple-task-card-meta {
   display: none !important;
 }
 
-body.mobile-app .simple-task-claim-btn {
+body.mobile-app .simple-task-claim-btn,
+body.mobile-app #st-task-grid .simple-task-claim-btn {
+  position: static !important;
+  top: auto !important;
+  right: auto !important;
   grid-column: 3;
   grid-row: 1 / span 2;
   align-self: center;
+  justify-self: end;
+  width: auto !important;
+  max-width: none;
   min-width: 64px;
   min-height: 36px;
   height: 36px;
-  padding: 0 12px;
+  margin: 0 !important;
+  padding: 0 12px !important;
   border-radius: 8px;
   font-size: 13px;
+  z-index: 1;
   font-weight: 600;
   white-space: nowrap;
+  flex-shrink: 0;
 }
