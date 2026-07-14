@@ -596,6 +596,193 @@
     });
   }
 
+  var DEFAULT_REPORT_REWARD = 50;
+  var cachedReportReward = null;
+  var reportRewardUiBound = false;
+
+  async function fetchReportRewardAmount() {
+    if (cachedReportReward != null && Number.isFinite(cachedReportReward)) {
+      return cachedReportReward;
+    }
+
+    var amount = DEFAULT_REPORT_REWARD;
+    if (!window.supabase) {
+      cachedReportReward = amount;
+      return amount;
+    }
+
+    try {
+      var result = await window.supabase
+        .from('settings')
+        .select('key, value')
+        .eq('key', 'report_reward')
+        .maybeSingle();
+
+      console.log('[admin] report_reward 设置查询：', result);
+
+      if (!result.error && result.data && result.data.value != null && result.data.value !== '') {
+        var num = Number(result.data.value);
+        if (Number.isFinite(num) && num >= 0) {
+          amount = num;
+        }
+      }
+    } catch (err) {
+      console.warn('[admin] 读取 report_reward 失败，使用默认值', DEFAULT_REPORT_REWARD, err);
+    }
+
+    cachedReportReward = amount;
+    return amount;
+  }
+
+  function invalidateReportRewardCache() {
+    cachedReportReward = null;
+  }
+
+  async function rewardReporterForApprovedReport(report, rewardAmount) {
+    if (!window.supabase || !report || !report.reporter_id) {
+      return { ok: false, error: new Error('missing reporter_id') };
+    }
+
+    var amount = Number(rewardAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return { ok: true, amount: 0, skipped: true };
+    }
+
+    var reporterId = report.reporter_id;
+    var userResult = await window.supabase
+      .from('users')
+      .select('id, crlm_balance, username')
+      .eq('id', reporterId)
+      .single();
+
+    if (userResult.error || !userResult.data) {
+      return { ok: false, error: userResult.error || new Error('reporter not found') };
+    }
+
+    var currentBalance = parseFloat(userResult.data.crlm_balance) || 0;
+    var balanceResult = await window.supabase
+      .from('users')
+      .update({ crlm_balance: currentBalance + amount })
+      .eq('id', reporterId);
+
+    if (balanceResult.error) {
+      return { ok: false, error: balanceResult.error };
+    }
+
+    var description = '用户举报属实，获得 ' + amount + ' CRLM 奖励';
+    var broadcastPayload = {
+      user_id: reporterId,
+      event_type: 'report_approved',
+      description: description,
+      reward_amount: amount
+    };
+
+    if (typeof writeBroadcast === 'function') {
+      writeBroadcast(broadcastPayload);
+    } else {
+      var broadcastResult = await window.supabase.from('broadcasts').insert(broadcastPayload);
+      if (broadcastResult.error) {
+        console.warn('[admin] 举报奖励广播写入失败：', broadcastResult.error);
+      }
+    }
+
+    return {
+      ok: true,
+      amount: amount,
+      reporterId: reporterId,
+      username: userResult.data.username || null
+    };
+  }
+
+  function ensureReportRewardSettingsUi() {
+    var invitePanel = document.getElementById('admin-panel-invite');
+    var withdrawPanel = document.getElementById('admin-panel-withdraw');
+    var host = invitePanel || withdrawPanel || document.getElementById('admin-panel-tasks');
+    if (!host) return null;
+
+    var wrap = document.getElementById('ad-report-reward-settings');
+    if (!wrap) {
+      wrap = document.createElement('div');
+      wrap.id = 'ad-report-reward-settings';
+      wrap.className = 'admin-form';
+      wrap.style.marginTop = '20px';
+      wrap.style.paddingTop = '16px';
+      wrap.style.borderTop = '1px solid #eee';
+      wrap.innerHTML =
+        '<h3 class="admin-section-title" style="font-size:15px;margin:0 0 12px;">举报奖励设置</h3>' +
+        '<label class="admin-label" for="ad-report-reward">举报属实奖励金额（CRLM）</label>' +
+        '<input type="number" id="ad-report-reward" class="admin-input" min="0" step="1" value="' + DEFAULT_REPORT_REWARD + '">' +
+        '<p style="margin:8px 0 12px;font-size:12px;color:#888;">处理举报属实时，将自动发放给举报人。默认 50。</p>' +
+        '<button type="button" id="ad-report-reward-save-btn" class="admin-primary-btn">保存举报奖励</button>';
+
+      if (invitePanel) {
+        var inviteForm = document.getElementById('ad-invite-form');
+        if (inviteForm && inviteForm.parentNode) {
+          inviteForm.parentNode.insertBefore(wrap, inviteForm.nextSibling);
+        } else {
+          invitePanel.appendChild(wrap);
+        }
+      } else if (withdrawPanel) {
+        withdrawPanel.appendChild(wrap);
+      } else {
+        host.appendChild(wrap);
+      }
+    }
+
+    if (!reportRewardUiBound) {
+      reportRewardUiBound = true;
+      var saveBtn = document.getElementById('ad-report-reward-save-btn');
+      if (saveBtn) {
+        saveBtn.addEventListener('click', saveReportRewardSetting);
+      }
+
+      document.querySelectorAll('#admin-page .admin-tab').forEach(function (btn) {
+        if (btn.dataset.reportRewardTabBound) return;
+        btn.dataset.reportRewardTabBound = '1';
+        btn.addEventListener('click', function () {
+          setTimeout(function () {
+            ensureReportRewardSettingsUi();
+            loadReportRewardSettingIntoUi();
+          }, 50);
+        });
+      });
+    }
+
+    return wrap;
+  }
+
+  async function loadReportRewardSettingIntoUi() {
+    ensureReportRewardSettingsUi();
+    var input = document.getElementById('ad-report-reward');
+    if (!input) return;
+    var amount = await fetchReportRewardAmount();
+    input.value = String(amount);
+  }
+
+  async function saveReportRewardSetting() {
+    if (!window.supabase) return;
+
+    var input = document.getElementById('ad-report-reward');
+    var amount = Number(input && input.value);
+    if (!Number.isFinite(amount) || amount < 0) {
+      alert('请输入有效的举报奖励金额（≥ 0）');
+      return;
+    }
+
+    var result = await window.supabase
+      .from('settings')
+      .upsert([{ key: 'report_reward', value: String(amount) }], { onConflict: 'key' });
+
+    if (result.error) {
+      alert('保存举报奖励失败：' + result.error.message);
+      return;
+    }
+
+    invalidateReportRewardCache();
+    cachedReportReward = amount;
+    alert('举报奖励已保存：' + amount + ' CRLM');
+  }
+
   async function handleReportDecision(reportId, decision) {
     if (!reportId || !window.supabase) return;
     if (decision !== 'approved' && decision !== 'rejected') return;
@@ -613,9 +800,10 @@
       return;
     }
 
+    var rewardAmount = await fetchReportRewardAmount();
     var confirmText = decision === 'approved'
-      ? '确认该举报属实？将下架任务并退还发布者押金。'
-      : '确认该举报不属实？';
+      ? '确认该举报属实？将下架任务、退还发布者押金，并向举报人发放 ' + rewardAmount + ' CRLM 奖励。'
+      : '确认该举报不属实？（不发放奖励）';
     if (!window.confirm(confirmText)) return;
 
     try {
@@ -634,6 +822,7 @@
           task = taskResult.data;
         }
 
+        // 1) 下架任务
         if (task && task.status !== 'cancelled') {
           var cancelResult = await window.supabase
             .from('tasks')
@@ -648,32 +837,78 @@
             return;
           }
 
+          // 2) 退还发布者押金
           var refundResult = await refundPublisherDeposit(task);
           if (!refundResult.ok) {
             alert('任务已下架，但退还押金失败：' + (refundResult.error && refundResult.error.message ? refundResult.error.message : '未知错误'));
           }
         }
-      }
 
-      var updatePayload = {
-        status: decision,
-        reviewed_at: new Date().toISOString()
-      };
-      var updateResult = await window.supabase
-        .from('reports')
-        .update(updatePayload)
-        .eq('id', reportId);
+        // 3) 更新举报状态为 approved
+        var approveUpdate = await window.supabase
+          .from('reports')
+          .update({
+            status: 'approved',
+            reviewed_at: new Date().toISOString()
+          })
+          .eq('id', reportId);
 
-      if (updateResult.error) {
-        if (isReportsTableMissingError(updateResult.error)) {
-          notifyReportsTableMissing(updateResult.error);
-        } else {
-          alert('更新举报状态失败：' + updateResult.error.message);
+        if (approveUpdate.error) {
+          if (isReportsTableMissingError(approveUpdate.error)) {
+            notifyReportsTableMissing(approveUpdate.error);
+          } else {
+            alert('更新举报状态失败：' + approveUpdate.error.message);
+          }
+          return;
         }
-        return;
+
+        // 4) 给举报人发放奖励 + 写广播
+        var reporterId = report.reporter_id;
+        if (!reporterId) {
+          var freshReport = await window.supabase
+            .from('reports')
+            .select('id, reporter_id')
+            .eq('id', reportId)
+            .maybeSingle();
+          if (!freshReport.error && freshReport.data) {
+            reporterId = freshReport.data.reporter_id;
+            report.reporter_id = reporterId;
+          }
+        }
+
+        var rewardResult = await rewardReporterForApprovedReport(report, rewardAmount);
+        if (!rewardResult.ok) {
+          alert(
+            '举报已通过，但发放举报奖励失败：' +
+            (rewardResult.error && rewardResult.error.message ? rewardResult.error.message : '未知错误')
+          );
+        } else if (rewardResult.skipped) {
+          alert('已处理：举报属实，任务已下架（奖励金额为 0，未发放）');
+        } else {
+          alert('已处理：举报属实，任务已下架，已向举报人发放 ' + rewardResult.amount + ' CRLM');
+        }
+      } else {
+        // 不属实：仅更新状态，不给奖励
+        var rejectUpdate = await window.supabase
+          .from('reports')
+          .update({
+            status: 'rejected',
+            reviewed_at: new Date().toISOString()
+          })
+          .eq('id', reportId);
+
+        if (rejectUpdate.error) {
+          if (isReportsTableMissingError(rejectUpdate.error)) {
+            notifyReportsTableMissing(rejectUpdate.error);
+          } else {
+            alert('更新举报状态失败：' + rejectUpdate.error.message);
+          }
+          return;
+        }
+
+        alert('已处理：举报不属实');
       }
 
-      alert(decision === 'approved' ? '已处理：举报属实，任务已下架' : '已处理：举报不属实');
       await loadPendingReports();
 
       if (typeof window.coinrealmReloadAdminTasks === 'function') {
@@ -687,10 +922,28 @@
 
   async function refreshAdminReports() {
     ensureAdminReportsUi();
+    ensureReportRewardSettingsUi();
+    await loadReportRewardSettingIntoUi();
     await loadPendingReports();
   }
 
   window.coinrealmLoadAdminUsers = fetchAllAdminUsers;
   window.coinrealmRefreshAdminReports = refreshAdminReports;
   window.coinrealmEnsureAdminReportsUi = ensureAdminReportsUi;
+  window.coinrealmFetchReportReward = fetchReportRewardAmount;
+
+  // 页面加载后尝试挂载设置项（邀请设置页）
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () {
+      setTimeout(function () {
+        ensureReportRewardSettingsUi();
+        loadReportRewardSettingIntoUi();
+      }, 400);
+    });
+  } else {
+    setTimeout(function () {
+      ensureReportRewardSettingsUi();
+      loadReportRewardSettingIntoUi();
+    }, 400);
+  }
 })();
