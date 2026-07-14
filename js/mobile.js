@@ -5,7 +5,7 @@
 (function () {
   'use strict';
 
-  var TAB_ROUTES = ['home', 'my-tasks', 'create-task', 'invite', 'profile'];
+  var TAB_ROUTES = ['home', 'simple-tasks', 'create-task', 'invite', 'profile'];
 
   var SUB_ROUTES = [
     'task-detail',
@@ -18,10 +18,21 @@
     'dividends',
     'admin',
     'broadcast-history',
-    'simple-tasks'
+    'my-tasks'
   ];
 
+  var SUB_TAB_HINT = {
+    'task-detail': 'home',
+    'submit-task': 'home',
+    'my-tasks': 'profile',
+    'publish-management': 'profile',
+    review: 'profile',
+    publisher: 'home',
+    'broadcast-history': 'home'
+  };
+
   var mobileInitialized = false;
+  var cardEnhanceObserver = null;
 
   function getRouteBase() {
     var hash = window.location.hash.replace(/^#/, '') || 'home';
@@ -37,6 +48,9 @@
   }
 
   function getPageTitle(route) {
+    if (route === 'simple-tasks') {
+      return window.currentLang === 'en' ? 'Simple Tasks' : '简单任务';
+    }
     if (!window.translations || !window.currentLang) return 'CoinRealm';
     var pages = window.translations[window.currentLang].pages;
     if (pages && pages[route] && pages[route].title) {
@@ -52,6 +66,10 @@
       var route = el.getAttribute('data-mobile-page');
       if (route) el.textContent = getPageTitle(route);
     });
+    var simpleLabel = document.getElementById('mobile-tab-simple-label');
+    if (simpleLabel) {
+      simpleLabel.textContent = window.currentLang === 'en' ? 'Simple' : '简单任务';
+    }
   }
 
   function applyMobileLoginSubtitle() {
@@ -94,15 +112,59 @@
     syncLoginButtonLabels();
   }
 
+  function enhanceOfficialRecommendCards() {
+    var grid = document.getElementById('official-recommend-grid');
+    if (!grid) return;
+
+    var cards = grid.querySelectorAll('.official-recommend-card');
+    for (var i = 0; i < cards.length; i++) {
+      if (i >= 4) break;
+      var card = cards[i];
+      if (card.querySelector('.mobile-official-claim-btn')) continue;
+
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'claim-btn mobile-official-claim-btn';
+      btn.textContent = window.currentLang === 'en' ? 'Claim' : '领取';
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var taskId = this.getAttribute('data-task-id') ||
+          (this.closest('.official-recommend-card') && this.closest('.official-recommend-card').getAttribute('data-task-id'));
+        if (!taskId) return;
+        if (typeof navigateToTaskDetail === 'function') {
+          navigateToTaskDetail(taskId);
+        } else {
+          window.location.hash = 'task-detail?id=' + encodeURIComponent(taskId);
+        }
+      });
+      btn.setAttribute('data-task-id', card.getAttribute('data-task-id') || '');
+      card.appendChild(btn);
+    }
+  }
+
+  function observeHomeCardEnhancements() {
+    if (typeof MutationObserver === 'undefined') return;
+    var target = document.getElementById('official-recommend-grid') || document.getElementById('app-content');
+    if (!target) return;
+    if (cardEnhanceObserver) cardEnhanceObserver.disconnect();
+    cardEnhanceObserver = new MutationObserver(function () {
+      enhanceOfficialRecommendCards();
+    });
+    cardEnhanceObserver.observe(target, { childList: true, subtree: true });
+    enhanceOfficialRecommendCards();
+  }
+
   function refreshCurrentPageContent() {
     var route = getRouteBase();
 
     if (route === 'home' && typeof applyFiltersAndSort === 'function') {
       applyFiltersAndSort();
+      setTimeout(enhanceOfficialRecommendCards, 0);
       return;
     }
 
-    if (typeof window.coinrealmApplyRoute === 'function') {
+    if (typeof window.coinrealmApplyRoute === 'function' && route !== 'simple-tasks') {
       window.coinrealmApplyRoute(route);
     }
   }
@@ -128,6 +190,7 @@
     syncLoginButtonLabels();
     updateHeader(getRouteBase());
     refreshCurrentPageContent();
+    enhanceOfficialRecommendCards();
   }
 
   function syncLoginScreen() {
@@ -179,22 +242,28 @@
 
     if (!titleEl || !backBtn) return;
 
+    // 所有页面都显示底部 Tab
+    if (tabBar) tabBar.style.display = '';
+
+    titleEl.textContent = getPageTitle(route);
+
     if (isTabRoute(route)) {
       body.classList.remove('sub-page');
-      titleEl.textContent = getPageTitle(route);
       backBtn.classList.add('hidden');
-      if (tabBar) tabBar.style.display = '';
       setActiveTab(route);
       return;
     }
 
     body.classList.add('sub-page');
-    titleEl.textContent = SUB_ROUTES.indexOf(route) >= 0 ? getPageTitle(route) : 'CoinRealm';
     backBtn.classList.remove('hidden');
-    if (tabBar) tabBar.style.display = 'none';
+    setActiveTab(SUB_TAB_HINT[route] || '');
   }
 
   function navigateTo(route) {
+    if (route === 'simple-tasks') {
+      window.location.hash = 'simple-tasks';
+      return;
+    }
     if (typeof window.coinrealmNavigateToRoute === 'function') {
       window.coinrealmNavigateToRoute(route);
       return;
@@ -208,7 +277,7 @@
       window.history.length > 1 ? window.history.back() : navigateTo('home');
       return;
     }
-    if (route === 'review' || route === 'publish-management') {
+    if (route === 'review' || route === 'publish-management' || route === 'my-tasks') {
       navigateTo('profile');
       return;
     }
@@ -251,6 +320,9 @@
     var route = getRouteBase();
     updateHeader(route);
     syncLoginScreen();
+    if (route === 'home') {
+      setTimeout(enhanceOfficialRecommendCards, 50);
+    }
   }
 
   function registerServiceWorker() {
@@ -296,6 +368,7 @@
     bindTabBar();
     bindHeader();
     observeAuthChanges();
+    observeHomeCardEnhancements();
     registerServiceWorker();
 
     applyMobileShellI18n();
@@ -313,6 +386,7 @@
 
     handleRouteChange();
     syncLoginScreen();
+    enhanceOfficialRecommendCards();
 
     console.log('[mobile] 手机版壳层已初始化，当前语言:', window.currentLang);
   }
