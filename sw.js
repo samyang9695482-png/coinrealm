@@ -1,38 +1,41 @@
 /**
- * CoinRealm Service Worker — 离线缓存静态资源
+ * CoinRealm Service Worker — 离线缓存 + PWA 支持
  */
-var CACHE_NAME = 'coinrealm-mobile-v1';
+var CACHE_NAME = 'coinrealm-mobile-v2';
 var PRECACHE_URLS = [
-  './',
-  './index.html',
-  './mobile.html',
-  './manifest.json',
-  './style.css',
-  './css/mobile.css',
-  './auth.js',
-  './app.js',
-  './js/mobile.js',
-  './js/i18n.js',
-  './js/pages/home.js',
-  './js/pages/task-detail.js',
-  './js/pages/create-task.js',
-  './js/pages/submit-task.js',
-  './js/pages/profile.js',
-  './js/pages/my-tasks.js',
-  './js/pages/invite.js',
-  './js/pages/review.js',
-  './js/pages/publisher.js',
-  './js/pages/leaderboard.js',
-  './js/pages/dividends.js',
-  './js/pages/admin.js'
+  '/mobile.html',
+  '/index.html',
+  '/manifest.json',
+  '/icons/icon-192.svg',
+  '/icons/icon-512.svg',
+  '/style.css',
+  '/css/mobile.css',
+  '/auth.js',
+  '/app.js',
+  '/js/mobile.js',
+  '/js/i18n.js',
+  '/js/pages/home.js',
+  '/js/pages/task-detail.js',
+  '/js/pages/create-task.js',
+  '/js/pages/submit-task.js',
+  '/js/pages/profile.js',
+  '/js/pages/my-tasks.js',
+  '/js/pages/invite.js',
+  '/js/pages/review.js',
+  '/js/pages/publisher.js',
+  '/js/pages/leaderboard.js',
+  '/js/pages/dividends.js',
+  '/js/pages/admin.js'
 ];
 
 self.addEventListener('install', function (event) {
   event.waitUntil(
     caches.open(CACHE_NAME).then(function (cache) {
-      return cache.addAll(PRECACHE_URLS).catch(function (err) {
-        console.warn('[sw] 预缓存部分资源失败:', err);
-      });
+      return Promise.allSettled(
+        PRECACHE_URLS.map(function (url) {
+          return cache.add(url);
+        })
+      );
     }).then(function () {
       return self.skipWaiting();
     })
@@ -73,7 +76,7 @@ self.addEventListener('fetch', function (event) {
         return response;
       }).catch(function () {
         if (request.mode === 'navigate') {
-          return caches.match('./mobile.html');
+          return caches.match('/mobile.html');
         }
       });
     })

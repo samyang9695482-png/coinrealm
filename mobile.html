@@ -147,6 +147,47 @@
       }
     })();
   </script>
+  <script>
+    (function () {
+      if (!('serviceWorker' in navigator)) return;
+      navigator.serviceWorker.register('/sw.js').catch(function (err) {
+        console.warn('[pwa] service worker 注册失败:', err);
+      });
+    })();
+  </script>
+  <script>
+    (function () {
+      var banner = document.createElement('div');
+      banner.id = 'coinrealm-install-banner';
+      banner.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:9999;background:#6366f1;color:#fff;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 -2px 10px rgba(0,0,0,.15);font-size:14px;';
+      banner.innerHTML = '<span>📱 将 CoinRealm 添加到桌面，体验更好！</span><div style="display:flex;align-items:center;gap:8px;"><button type="button" id="coinrealm-install-accept" style="background:#fff;color:#6366f1;border:none;border-radius:999px;padding:7px 12px;font-weight:700;cursor:pointer;">立即安装</button><button type="button" id="coinrealm-install-close" style="background:transparent;border:none;color:#fff;cursor:pointer;font-size:16px;">×</button></div>';
+      var installPrompt = null;
+      var dismissedUntil = parseInt(localStorage.getItem('coinrealm-install-dismiss-until') || '0', 10);
+      var now = Date.now();
+      var isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+      if (isStandalone || /android/i.test(navigator.userAgent) === false || now < dismissedUntil) {
+        return;
+      }
+      document.body.appendChild(banner);
+      var closeBtn = document.getElementById('coinrealm-install-close');
+      var acceptBtn = document.getElementById('coinrealm-install-accept');
+      function dismissBanner() {
+        localStorage.setItem('coinrealm-install-dismiss-until', String(Date.now() + 7 * 24 * 60 * 60 * 1000));
+        banner.remove();
+      }
+      closeBtn.addEventListener('click', dismissBanner);
+      acceptBtn.addEventListener('click', function () {
+        if (installPrompt) {
+          installPrompt.prompt();
+        }
+        dismissBanner();
+      });
+      window.addEventListener('beforeinstallprompt', function (event) {
+        event.preventDefault();
+        installPrompt = event;
+      });
+    })();
+  </script>
   <script src="js/i18n.js"></script>
   <script src="auth.js"></script>
   <script src="js/pages/leaderboard.js"></script>

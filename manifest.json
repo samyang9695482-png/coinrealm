@@ -18,5 +18,13 @@
       "type": "image/png"
     }
   ],
+  "screenshots": [
+    {
+      "src": "/img/crlm-logo.png",
+      "sizes": "2048x2048",
+      "type": "image/png",
+      "form_factor": "wide"
+    }
+  ],
   "prefer_related_applications": false
 }
