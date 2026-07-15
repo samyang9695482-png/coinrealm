@@ -578,6 +578,9 @@
     var route = getRouteBase();
     updateHeader(route);
     syncLoginScreen();
+    if (typeof window.coinrealmRefreshNotifications === 'function') {
+      window.coinrealmRefreshNotifications();
+    }
     if (route === 'home') {
       setTimeout(function () {
         setupMobileFilterTags();
