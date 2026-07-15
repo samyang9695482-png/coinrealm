@@ -153,6 +153,15 @@
     return window.matchMedia('(max-width: 768px)').matches;
   }
 
+  function getGoogleOAuthRedirectTo() {
+    var ua = navigator.userAgent || '';
+    var isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
+    if (isMobile) {
+      return 'https://coinrealm.pages.dev/mobile.html';
+    }
+    return 'https://coinrealm.pages.dev';
+  }
+
   function resolveSupabaseClient() {
     if (window.supabase && window.supabase.auth) {
       return window.supabase;
@@ -982,7 +991,12 @@
     var signinBtn = document.getElementById('google-signin-btn');
     if (signinBtn) {
       signinBtn.addEventListener('click', function () {
-        window.supabase.auth.signInWithOAuth({ provider: 'google' });
+        window.supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: getGoogleOAuthRedirectTo()
+          }
+        });
       });
     }
 
