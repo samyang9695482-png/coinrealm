@@ -11034,7 +11034,7 @@ window.addEventListener('hashchange', function () {
     return (async function () {
       try {
         var result = await window.supabase.from('notifications').insert(row);
-        console.log('通知写入结果：', { data: result.data, error: result.error, row: row });
+        console.log('通知写入结果：', { data: result.data, error: result.error });
 
         if (result.error) {
           console.error('通知写入失败完整错误：', result.error);
@@ -11156,9 +11156,9 @@ window.addEventListener('hashchange', function () {
     if (!window.supabase || !taskId) return null;
     var result = await window.supabase
       .from('tasks')
-      .select('id, publisher_id')
+      .select('publisher_id')
       .eq('id', taskId)
-      .maybeSingle();
+      .single();
     if (result.error || !result.data) return null;
     return result.data.publisher_id || null;
   }

@@ -381,6 +381,17 @@
       reward_amount: taskReward
     });
 
+    if (typeof window.coinrealmNotifyPendingReview === 'function') {
+      try {
+        await window.coinrealmNotifyPendingReview({
+          taskId: taskId,
+          publisherId: null
+        });
+      } catch (pendingNotifErr) {
+        console.warn('待审核通知调用失败：', pendingNotifErr);
+      }
+    }
+
     if (typeof window.coinrealmNotifySubmissionStatusChanged === 'function') {
       window.coinrealmNotifySubmissionStatusChanged({
         taskId: taskId,
@@ -946,6 +957,18 @@
 
           currentSubmissionRecord = submitResult.submission;
           submitState = submitResult.isSimpleAuto ? 'completed' : 'waiting';
+          if (!submitResult.isSimpleAuto && submitResult.submissionStatus === 'submitted') {
+            try {
+              if (typeof window.coinrealmNotifyPendingReview === 'function') {
+                await window.coinrealmNotifyPendingReview({
+                  taskId: activeSubmitContext.taskId,
+                  publisherId: null
+                });
+              }
+            } catch (pendingNotifErr) {
+              console.warn('待审核通知调用失败：', pendingNotifErr);
+            }
+          }
           uploadedFiles = [];
           renderFileList();
           updatePageStateUI();

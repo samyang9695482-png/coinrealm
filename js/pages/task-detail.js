@@ -1020,6 +1020,11 @@
 
       if (allDone) {
         var priorStatus = currentSubmissionRecord ? currentSubmissionRecord.status : 'pending';
+        var isSimpleAutoTask = false;
+
+        if (currentTaskRecord && typeof window.coinrealmIsSimpleAutoApprovalTask === 'function') {
+          isSimpleAutoTask = window.coinrealmIsSimpleAutoApprovalTask(currentTaskRecord);
+        }
 
         if (currentSubmissionRecord && currentSubmissionRecord.id) {
           var existingUrls = currentSubmissionRecord.screenshot_urls;
@@ -1029,16 +1034,44 @@
           if (!Array.isArray(existingUrls)) existingUrls = [];
           if (screenshotUrl) existingUrls.push(screenshotUrl);
 
+          var submissionUpdatePayload = {
+            screenshot_urls: existingUrls,
+            submitted_at: new Date().toISOString()
+          };
+
+          if (!isSimpleAutoTask) {
+            submissionUpdatePayload.status = 'submitted';
+            submissionUpdatePayload.reviewed_at = null;
+            submissionUpdatePayload.review_comment = null;
+          }
+
           await window.supabase
             .from('submissions')
-            .update({
-              screenshot_urls: existingUrls,
-              submitted_at: new Date().toISOString()
-            })
+            .update(submissionUpdatePayload)
             .eq('id', currentSubmissionRecord.id);
         }
 
-        await finalizeSimplePlatformTaskSubmission();
+        if (!isSimpleAutoTask) {
+          try {
+            if (typeof window.coinrealmNotifyPendingReview === 'function') {
+              await window.coinrealmNotifyPendingReview({
+                taskId: currentTaskRecord && currentTaskRecord.id ? currentTaskRecord.id : null,
+                publisherId: currentTaskRecord && currentTaskRecord.publisher_id ? currentTaskRecord.publisher_id : null
+              });
+            }
+          } catch (pendingNotifErr) {
+            console.warn('待审核通知调用失败：', pendingNotifErr);
+          }
+        }
+
+        if (isSimpleAutoTask && typeof window.coinrealmFinalizeSimpleTaskSubmission === 'function') {
+          await window.coinrealmFinalizeSimpleTaskSubmission(currentTaskRecord, currentUserId, {
+            priorStatus: priorStatus,
+            submissionId: currentSubmissionRecord && currentSubmissionRecord.id,
+            creditRewardClient: true,
+            path: 'task-detail-screenshot-verify'
+          });
+        }
 
         verifyPanelSuccess = true;
         markTaskDetailCompleted(currentTaskRecord.id, currentUserId);
