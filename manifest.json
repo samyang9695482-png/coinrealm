@@ -14,7 +14,7 @@
   "icons": [
     {
       "src": "/img/crlm-logo.png",
-      "sizes": "512x512",
+      "sizes": "2048x2048",
       "type": "image/png"
     }
   ],
