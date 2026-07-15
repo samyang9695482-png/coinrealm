@@ -2,6 +2,7 @@
   "name": "CoinRealm",
   "short_name": "CoinRealm",
   "description": "Web3 任务与空投平台",
+  "id": "/mobile.html",
   "start_url": "/mobile.html",
   "scope": "/",
   "display": "standalone",
