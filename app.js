@@ -11586,27 +11586,45 @@ window.addEventListener('hashchange', function () {
       return;
     }
 
-    var result = await window.supabase
+    var unreadResult = await window.supabase
       .from('notifications')
-      .select('id, user_id, type, title, link, related_id, is_read, created_at')
+      .select('id')
       .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(50);
+      .eq('is_read', false);
 
-    if (result.error) {
-      if (isNotifTableMissing(result.error)) {
+    if (unreadResult.error) {
+      if (isNotifTableMissing(unreadResult.error)) {
         if (!tableMissingNotified) {
           tableMissingNotified = true;
-          console.warn('[notifications] 读取失败：表可能不存在', result.error);
+          console.warn('[notifications] 读取失败：表可能不存在', unreadResult.error);
         }
       } else {
-        console.warn('[notifications] 加载失败：', result.error);
+        console.warn('[notifications] 加载失败：', unreadResult.error);
       }
       return;
     }
 
-    notifCache = result.data || [];
-    unreadCount = notifCache.filter(function (n) { return !n.is_read; }).length;
+    var listResult = await window.supabase
+      .from('notifications')
+      .select('id, user_id, type, title, link, related_id, is_read, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    if (listResult.error) {
+      if (isNotifTableMissing(listResult.error)) {
+        if (!tableMissingNotified) {
+          tableMissingNotified = true;
+          console.warn('[notifications] 读取失败：表可能不存在', listResult.error);
+        }
+      } else {
+        console.warn('[notifications] 加载失败：', listResult.error);
+      }
+      return;
+    }
+
+    notifCache = listResult.data || [];
+    unreadCount = (unreadResult.data || []).length;
     updateBadges();
     renderNotifLists();
   }
