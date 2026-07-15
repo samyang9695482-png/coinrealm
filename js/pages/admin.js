@@ -104,6 +104,12 @@
       '.ad-report-desc {',
       '  margin: 4px 0 0; color: #666; font-size: 13px; white-space: pre-wrap;',
       '}',
+      '.ad-report-task-desc {',
+      '  margin: 6px 0 0; color: #666; font-size: 13px; line-height: 1.5; white-space: pre-wrap;',
+      '}',
+      '.ad-report-task-meta {',
+      '  margin: 4px 0 0; color: #666; font-size: 12px; line-height: 1.5;',
+      '}',
       '.ad-report-approve-btn {',
       '  background: #e74c3c !important; color: #fff !important; border-color: #e74c3c !important;',
       '}',
@@ -323,6 +329,8 @@
 
     listEl.innerHTML = pendingReports.map(function (report) {
       var taskTitle = '';
+      var taskDescription = '';
+      var publisherName = '未知';
       var reporterName = '未知';
       var desc = report.description ? String(report.description) : '';
 
@@ -332,6 +340,24 @@
         taskTitle = report._taskTitle;
       } else {
         taskTitle = '任务 ' + String(report.task_id || '').slice(0, 8);
+      }
+
+      if (report.tasks && report.tasks.description) {
+        taskDescription = String(report.tasks.description).replace(/\s+/g, ' ').trim();
+      } else if (report._taskDescription) {
+        taskDescription = String(report._taskDescription).replace(/\s+/g, ' ').trim();
+      }
+
+      if (taskDescription.length > 100) {
+        taskDescription = taskDescription.slice(0, 100) + '…';
+      }
+
+      if (report._publisherName) {
+        publisherName = report._publisherName;
+      } else if (report.tasks && report.tasks.publisher_username) {
+        publisherName = report.tasks.publisher_username;
+      } else if (report.tasks && report.tasks.publisher_id) {
+        publisherName = String(report.tasks.publisher_id).slice(0, 8);
       }
 
       if (report.users && report.users.username) {
@@ -345,7 +371,9 @@
       return (
         '<div class="admin-row" data-report-id="' + escapeHtml(report.id) + '">' +
           '<div class="admin-row-main">' +
-            '<p class="admin-row-title">' + escapeHtml(taskTitle) + '</p>' +
+            '<p class="admin-row-title"><strong>' + escapeHtml(taskTitle) + '</strong></p>' +
+            (taskDescription ? '<p class="ad-report-task-desc">' + escapeHtml(taskDescription) + '</p>' : '') +
+            '<p class="ad-report-task-meta">发布者：' + escapeHtml(publisherName) + '</p>' +
             '<p class="admin-row-meta">' +
               '举报人：' + escapeHtml(reporterName) +
               ' · 原因：' + escapeHtml(report.reason || '—') +
@@ -388,7 +416,7 @@
     // 主查询（与控制台调试语句一致）
     var result = await window.supabase
       .from('reports')
-      .select('id, reason, description, status, created_at, task_id, reporter_id, tasks(title), users!reporter_id(username)')
+      .select('id, reason, description, status, created_at, task_id, reporter_id, tasks(title, description, publisher_id), users!reporter_id(username)')
       .eq('status', 'pending')
       .order('created_at', { ascending: false });
 
@@ -519,11 +547,38 @@
       var userKey = report.reporter_id != null ? String(report.reporter_id) : '';
       var embeddedTask = report.tasks && !Array.isArray(report.tasks) ? report.tasks : null;
       var embeddedUser = report.users && !Array.isArray(report.users) ? report.users : null;
+      var task = taskMap[taskKey] || embeddedTask || null;
+      var reporter = userMap[userKey] || embeddedUser || null;
+      var publisher = null;
 
-      report.tasks = taskMap[taskKey] || embeddedTask || null;
-      report.users = userMap[userKey] || embeddedUser || null;
-      report._taskTitle = (report.tasks && report.tasks.title) || report._taskTitle || null;
-      report._reporterName = displayUserLabel(report.users) || report._reporterName || null;
+      report.tasks = task;
+      report.users = reporter;
+      report._taskTitle = (task && task.title) || report._taskTitle || null;
+      report._taskDescription = (task && task.description) || report._taskDescription || null;
+      report._reporterName = displayUserLabel(reporter) || report._reporterName || null;
+
+      if (task && task.publisher_id && (!task.publisher_username || task.publisher_username === '')) {
+        (async function () {
+          try {
+            var publisherResult = await window.supabase
+              .from('users')
+              .select('username')
+              .eq('id', task.publisher_id)
+              .single();
+
+            if (!publisherResult.error && publisherResult.data) {
+              publisher = publisherResult.data;
+              report._publisherName = publisher.username || null;
+            }
+          } catch (publisherErr) {
+            console.warn('[admin] 查询任务发布者失败：', publisherErr);
+          }
+
+          console.log('[admin] 举报详情：', { report: report, task: task, reporter: reporter, publisher: publisher });
+        })();
+      } else {
+        console.log('[admin] 举报详情：', { report: report, task: task, reporter: reporter, publisher: publisher });
+      }
     });
   }
 
