@@ -317,19 +317,31 @@
 
     if (!count) {
       listEl.innerHTML = '<p class="admin-empty">暂无待处理举报</p>';
-      console.log('[admin] 举报列表渲染完成：0 条');
+      console.log('[admin] 举报列表渲染：', 0);
       return;
     }
 
     listEl.innerHTML = pendingReports.map(function (report) {
-      var taskTitle = (report.tasks && report.tasks.title) || report._taskTitle || ('任务 ' + String(report.task_id || '').slice(0, 8));
-      var reporterUser = report.users;
-      if (reporterUser && Array.isArray(reporterUser)) reporterUser = reporterUser[0] || null;
-      var reporterName = report._reporterName ||
-        (reporterUser && reporterUser.username) ||
-        displayUserLabel(reporterUser) ||
-        String(report.reporter_id || '').slice(0, 8);
+      var taskTitle = '';
+      var reporterName = '未知';
       var desc = report.description ? String(report.description) : '';
+
+      if (report.tasks && report.tasks.title) {
+        taskTitle = report.tasks.title;
+      } else if (report._taskTitle) {
+        taskTitle = report._taskTitle;
+      } else {
+        taskTitle = '任务 ' + String(report.task_id || '').slice(0, 8);
+      }
+
+      if (report.users && report.users.username) {
+        reporterName = report.users.username;
+      } else if (report._reporterName) {
+        reporterName = report._reporterName;
+      } else if (report.reporter_id) {
+        reporterName = String(report.reporter_id).slice(0, 8);
+      }
+
       return (
         '<div class="admin-row" data-report-id="' + escapeHtml(report.id) + '">' +
           '<div class="admin-row-main">' +
@@ -349,7 +361,7 @@
       );
     }).join('');
 
-    console.log('[admin] 举报列表渲染完成：', count, '条，DOM 长度=', listEl.innerHTML.length);
+    console.log('[admin] 举报列表渲染：', pendingReports.length);
   }
 
   function normalizeReportStatus(status) {
@@ -376,7 +388,7 @@
     // 主查询（与控制台调试语句一致）
     var result = await window.supabase
       .from('reports')
-      .select('*, tasks(title), users!reporter_id(username)')
+      .select('id, reason, description, status, created_at, task_id, reporter_id, tasks(title), users!reporter_id(username)')
       .eq('status', 'pending')
       .order('created_at', { ascending: false });
 
