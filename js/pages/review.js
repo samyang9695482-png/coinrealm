@@ -245,6 +245,7 @@
     var statusLabel = getStatusLabel(submission);
     var displayName = getSubmissionDisplayName(submission);
     var screenshotHtml = renderScreenshotBlock(submission);
+    var submissionStatus = String(submission.status || '').toLowerCase();
 
     console.log('提交列表-用户名数据：', {
       userId: submission.user_id,
@@ -252,14 +253,24 @@
       raw: submission
     });
 
-    if (submission.status === 'approved') {
+    if (submissionStatus === 'approved') {
       summaryHtml = '<span class="rv-status-approved">' + escapeHtml(statusLabel) + '</span>';
-    } else if (submission.status === 'rejected') {
+      actionsHtml =
+        '<div class="rv-actions">' +
+          '<button type="button" class="rv-btn-approve rv-btn-disabled" disabled>' + rvT('rv_btn_approve') + '</button>' +
+          '<button type="button" class="rv-btn-reject rv-btn-disabled" disabled>' + rvT('rv_btn_reject') + '</button>' +
+        '</div>';
+    } else if (submissionStatus === 'rejected') {
       summaryHtml =
         '<span class="rv-status-rejected">' + escapeHtml(statusLabel) + '</span>' +
         (submission.review_comment
           ? '<p class="rv-submit-summary">' + escapeHtml(truncateText(submission.review_comment, 50)) + '</p>'
           : '');
+      actionsHtml =
+        '<div class="rv-actions">' +
+          '<button type="button" class="rv-btn-approve rv-btn-disabled" disabled>' + rvT('rv_btn_approve') + '</button>' +
+          '<button type="button" class="rv-btn-reject rv-btn-disabled" disabled>' + rvT('rv_status_rejected') + '</button>' +
+        '</div>';
     } else {
       summaryHtml =
         '<p class="rv-submit-summary">' + escapeHtml(getSummaryText(submission)) + '</p>' +
@@ -847,6 +858,18 @@
       return false;
     }
 
+    currentSubmissions = currentSubmissions.map(function (item) {
+      if (String(item.id) === String(submissionId)) {
+        return Object.assign({}, item, {
+          status: 'rejected',
+          review_comment: reason,
+          reviewed_at: new Date().toISOString()
+        });
+      }
+      return item;
+    });
+
+    renderSubmissionList();
     return true;
   }
 
@@ -873,23 +896,32 @@
     emptyEl.classList.add('hidden');
     listEl.innerHTML = submissions.map(renderSubmissionItem).join('');
 
-    listEl.querySelectorAll('.rv-btn-approve').forEach(function (btn) {
-      btn.addEventListener('click', async function () {
-        var id = btn.getAttribute('data-id');
-        btn.disabled = true;
-        var ok = await approveSubmission(id);
-        if (!ok) {
-          btn.disabled = false;
-        }
-      });
-    });
+    listEl.onclick = function (event) {
+      var target = event.target;
+      if (!target) return;
 
-    listEl.querySelectorAll('.rv-btn-reject').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        pendingRejectId = btn.getAttribute('data-id');
+      var button = target.closest('.rv-btn-approve, .rv-btn-reject');
+      if (!button) return;
+
+      if (button.classList.contains('rv-btn-approve')) {
+        var approveId = button.getAttribute('data-id');
+        if (!approveId) return;
+        button.disabled = true;
+        approveSubmission(approveId).then(function (ok) {
+          if (!ok) {
+            button.disabled = false;
+          }
+        });
+        return;
+      }
+
+      if (button.classList.contains('rv-btn-reject')) {
+        var rejectId = button.getAttribute('data-id');
+        if (!rejectId) return;
+        pendingRejectId = rejectId;
         openRejectModal();
-      });
-    });
+      }
+    };
 
     listEl.querySelectorAll('.rv-screenshot-toggle').forEach(function (btn) {
       btn.addEventListener('click', function () {
@@ -904,7 +936,12 @@
   function openRejectModal() {
     var modal = document.getElementById('rv-reject-modal');
     var textarea = document.getElementById('rv-reject-reason');
-    if (textarea) textarea.value = '';
+    if (textarea) {
+      textarea.value = '';
+      setTimeout(function () {
+        textarea.focus();
+      }, 0);
+    }
     if (modal) modal.classList.remove('hidden');
   }
 

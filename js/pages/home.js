@@ -647,6 +647,7 @@ function fetchTasks() {
     window.supabase
         .from('tasks')
         .select('*')
+        .in('status', ['active', 'paused'])
         .order('created_at', { ascending: false })
         .then(function (result) {
             if (seq !== fetchTasksSeq) return;
@@ -656,7 +657,7 @@ function fetchTasks() {
                 .from('tasks')
                 .select('*')
                 .eq('is_official', true)
-                .eq('status', 'active')
+                .in('status', ['active', 'paused'])
                 .order('created_at', { ascending: false })
                 .limit(4);
 
@@ -666,11 +667,23 @@ function fetchTasks() {
                     console.warn('加载官方推荐任务失败:', officialResult.error);
                 }
 
-                return enrichTasksWithPublishers(officialData).then(function (enrichedOfficial) {
+                var visibleOfficialData = (officialData || []).filter(function (task) {
+                    return typeof window.coinrealmIsVisibleHomeTaskStatus === 'function'
+                        ? window.coinrealmIsVisibleHomeTaskStatus(task.status)
+                        : true;
+                });
+
+                return enrichTasksWithPublishers(visibleOfficialData).then(function (enrichedOfficial) {
                     homeOfficialTasks = enrichedOfficial || [];
                     renderOfficialRecommendSection();
 
-                    if (result.error || !result.data || result.data.length === 0) {
+                    var visibleTasks = (result.data || []).filter(function (task) {
+                        return typeof window.coinrealmIsVisibleHomeTaskStatus === 'function'
+                            ? window.coinrealmIsVisibleHomeTaskStatus(task.status)
+                            : true;
+                    });
+
+                    if (result.error || visibleTasks.length === 0) {
                         allTasks = [];
                         if (taskGrid) taskGrid.classList.add('hidden');
                         if (emptyState) emptyState.classList.remove('hidden');
@@ -678,7 +691,7 @@ function fetchTasks() {
                         return null;
                     }
 
-                    return enrichTasksWithPublishers(result.data);
+                    return enrichTasksWithPublishers(visibleTasks);
                 });
             });
         })

@@ -207,6 +207,12 @@ function switchLanguage(lang) {
   }
 
 })();
+function isVisibleHomeTaskStatus(status) {
+    var normalized = String(status || '').trim().toLowerCase();
+    return normalized === 'active' || normalized === 'paused';
+}
+window.coinrealmIsVisibleHomeTaskStatus = isVisibleHomeTaskStatus;
+
 async function getCurrentUserId() {
     if (window.supabase) {
         var sessionResult = await window.supabase.auth.getSession();
