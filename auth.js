@@ -153,13 +153,47 @@
     return window.matchMedia('(max-width: 768px)').matches;
   }
 
-  function getGoogleOAuthRedirectTo() {
-    var ua = navigator.userAgent || '';
-    var isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
-    if (isMobile) {
-      return 'https://coinrealm.pages.dev/mobile.html';
+  function normalizeGoogleRedirectUrl(url) {
+    if (typeof url !== 'string') {
+      return 'https://coinrealm.pages.dev/index.html';
     }
-    return 'https://coinrealm.pages.dev';
+
+    var trimmed = url.trim();
+    if (!trimmed) {
+      return 'https://coinrealm.pages.dev/index.html';
+    }
+
+    if (/^https:\/\//i.test(trimmed)) {
+      return trimmed;
+    }
+
+    if (/^http:\/\//i.test(trimmed)) {
+      return trimmed.replace(/^http:\/\//i, 'https://');
+    }
+
+    if (trimmed.charAt(0) === '/') {
+      return 'https://coinrealm.pages.dev' + trimmed;
+    }
+
+    return 'https://' + trimmed;
+  }
+
+  function getGoogleOAuthRedirectTo() {
+    try {
+      var ua = (window.navigator && window.navigator.userAgent) || '';
+      var isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
+      var path = isMobile ? '/mobile.html' : '/index.html';
+      var origin = (window.location && window.location.origin) || 'https://coinrealm.pages.dev';
+      if (!/^https?:\/\//i.test(origin)) {
+        origin = 'https://coinrealm.pages.dev';
+      }
+      if (origin.indexOf('http://') === 0) {
+        origin = origin.replace(/^http:\/\//i, 'https://');
+      }
+      return normalizeGoogleRedirectUrl(origin + path);
+    } catch (error) {
+      return 'https://coinrealm.pages.dev/index.html';
+    }
   }
 
   function resolveSupabaseClient() {
@@ -991,12 +1025,19 @@
     var signinBtn = document.getElementById('google-signin-btn');
     if (signinBtn) {
       signinBtn.addEventListener('click', function () {
-        window.supabase.auth.signInWithOAuth({
-          provider: 'google',
-          options: {
-            redirectTo: getGoogleOAuthRedirectTo()
+        try {
+          var redirectTo = getGoogleOAuthRedirectTo();
+          if (window.supabase && window.supabase.auth && typeof window.supabase.auth.signInWithOAuth === 'function') {
+            window.supabase.auth.signInWithOAuth({
+              provider: 'google',
+              options: {
+                redirectTo: redirectTo
+              }
+            });
           }
-        });
+        } catch (error) {
+          console.error('Google OAuth 启动失败:', error);
+        }
       });
     }
 
