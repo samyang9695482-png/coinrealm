@@ -353,6 +353,16 @@
       .then(function (result) {
         if (result.error) throw result.error;
         return result.data.id;
+      })
+      .then(function (userId) {
+        if (userId && typeof window.coinrealmProcessInvite === 'function') {
+          return window.coinrealmProcessInvite(userId).catch(function (inviteErr) {
+            console.warn('Google 登录邀请处理失败', inviteErr);
+          }).then(function () {
+            return userId;
+          });
+        }
+        return userId;
       });
   }
 
@@ -411,6 +421,16 @@
         if (result.error) throw result.error;
         console.log('钱包用户同步成功：', result.data);
         return result.data.id;
+      })
+      .then(function (userId) {
+        if (userId && typeof window.coinrealmProcessInvite === 'function') {
+          return window.coinrealmProcessInvite(userId).catch(function (inviteErr) {
+            console.warn('钱包登录邀请处理失败', inviteErr);
+          }).then(function () {
+            return userId;
+          });
+        }
+        return userId;
       });
   }
 

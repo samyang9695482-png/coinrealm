@@ -240,6 +240,19 @@
     });
   };
 
+  window.coinrealmRefreshInvitePageData = function () {
+    inviteDataLoaded = false;
+    inviteDataLoading = false;
+    inviteData = null;
+    loadInvitePageData().then(function () {
+      renderOverview();
+      renderLeaderboard();
+      renderMiningRecords();
+      renderInviteRecordsList();
+      applyInviteI18n();
+    });
+  };
+
   function formatNumber(num) {
     return String(num).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   }

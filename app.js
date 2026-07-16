@@ -917,12 +917,41 @@ window.invalidateAdsConfigCache = invalidateAdsConfigCache;
     var params = new URLSearchParams(window.location.search);
     var ref = params.get('ref');
     if (ref) {
-      localStorage.setItem('coinrealm_invite_ref', String(ref).trim());
+      var inviterId = String(ref).trim();
+      localStorage.setItem('inviter_id', inviterId);
+      localStorage.setItem('coinrealm_invite_ref', inviterId);
     }
   } catch (captureErr) {
     console.warn('捕获邀请 ref 失败:', captureErr);
   }
 })();
+
+function getStoredInviterId() {
+  try {
+    var inviterId = localStorage.getItem('inviter_id');
+    if (inviterId) return String(inviterId).trim();
+  } catch (storageErr) {
+    console.warn('读取邀请人 ID 失败:', storageErr);
+  }
+
+  try {
+    var fallback = localStorage.getItem('coinrealm_invite_ref');
+    if (fallback) return String(fallback).trim();
+  } catch (fallbackErr) {
+    console.warn('读取历史邀请 ref 失败:', fallbackErr);
+  }
+
+  return '';
+}
+
+function clearStoredInviterId() {
+  try {
+    localStorage.removeItem('inviter_id');
+    localStorage.removeItem('coinrealm_invite_ref');
+  } catch (storageErr) {
+    console.warn('清理邀请缓存失败:', storageErr);
+  }
+}
 
 async function findInviterByRef(ref) {
   if (!ref || !window.supabase) return null;
@@ -961,53 +990,148 @@ async function findInviterByRef(ref) {
 async function grantInviteReward(inviter, inviteeId, level, amount) {
   if (!inviter || !inviteeId || amount <= 0 || !window.supabase) return false;
 
-  var insertResult = await window.supabase.from('invites').insert({
-    inviter_id: inviter.id,
-    invitee_id: inviteeId,
-    level: level,
-    reward_amount: amount
-  });
+  try {
+    var insertResult = await window.supabase.from('invites').insert({
+      inviter_id: inviter.id,
+      invitee_id: inviteeId,
+      level: level,
+      reward_amount: amount,
+      created_at: new Date().toISOString()
+    });
 
-  if (insertResult.error) {
-    console.warn('插入邀请记录失败:', insertResult.error);
+    if (insertResult.error) {
+      var errMsg = String(insertResult.error.message || insertResult.error.details || '').toLowerCase();
+      if (errMsg.indexOf('column') !== -1 && errMsg.indexOf('does not exist') !== -1) {
+        console.warn('邀请表字段缺失，请先执行 SQL：ALTER TABLE invites ADD COLUMN IF NOT EXISTS reward_amount NUMERIC DEFAULT 0; ALTER TABLE invites ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();');
+      } else {
+        console.warn('插入邀请记录失败:', insertResult.error);
+      }
+      return false;
+    }
+
+    var newBalance = (Number(inviter.crlm_balance) || 0) + amount;
+    var patchPayload = { crlm_balance: newBalance };
+
+    if (level === 1) {
+      patchPayload.invite_count = (Number(inviter.invite_count) || 0) + 1;
+    }
+
+    var updateResult = await window.supabase
+      .from('users')
+      .update(patchPayload)
+      .eq('id', inviter.id);
+
+    if (updateResult.error) {
+      console.warn('更新邀请人奖励失败:', updateResult.error);
+      return false;
+    }
+
+    inviter.crlm_balance = newBalance;
+    if (level === 1) {
+      inviter.invite_count = patchPayload.invite_count;
+    }
+
+    return true;
+  } catch (grantErr) {
+    console.warn('发放邀请奖励失败:', grantErr);
     return false;
   }
-
-  var newBalance = (Number(inviter.crlm_balance) || 0) + amount;
-  var patchPayload = { crlm_balance: newBalance };
-
-  if (level === 1) {
-    patchPayload.invite_count = (Number(inviter.invite_count) || 0) + 1;
-  }
-
-  var updateResult = await window.supabase
-    .from('users')
-    .update(patchPayload)
-    .eq('id', inviter.id);
-
-  if (updateResult.error) {
-    console.warn('更新邀请人奖励失败:', updateResult.error);
-    return false;
-  }
-
-  inviter.crlm_balance = newBalance;
-  if (level === 1) {
-    inviter.invite_count = patchPayload.invite_count;
-  }
-
-  return true;
 }
 
-async function processInviteRewardsForUser(inviteeId, inviter) {
-  if (!inviteeId || !inviter || inviter.id === inviteeId || !window.supabase) return;
+function buildInviteNotificationPayload(userId, title, link, relatedId) {
+  return {
+    user_id: userId,
+    type: 'info',
+    title: title,
+    link: link,
+    related_id: relatedId || null
+  };
+}
 
-  var settings = await fetchInviteSettings();
-  var level1Reward = Number(settings.invite_level1_reward) || INVITE_SETTINGS_DEFAULTS.invite_level1_reward;
-  var level2Reward = Number(settings.invite_level2_reward) || INVITE_SETTINGS_DEFAULTS.invite_level2_reward;
+async function writeInviteNotification(userId, title, link, relatedId) {
+  if (!userId || !window.supabase) return;
+  try {
+    if (typeof window.coinrealmCreateNotification === 'function') {
+      await window.coinrealmCreateNotification(buildInviteNotificationPayload(userId, title, link, relatedId));
+      return;
+    }
+    await window.supabase.from('notifications').insert(buildInviteNotificationPayload(userId, title, link, relatedId));
+  } catch (notifErr) {
+    console.warn('写入邀请通知失败:', notifErr);
+  }
+}
 
-  await grantInviteReward(inviter, inviteeId, 1, level1Reward);
+function writeInviteBroadcast(userId, description, rewardAmount) {
+  if (!userId || !window.supabase) return;
+  try {
+    if (typeof writeBroadcast === 'function') {
+      writeBroadcast({
+        user_id: userId,
+        event_type: 'invite_reward',
+        description: description,
+        reward_amount: rewardAmount
+      });
+      return;
+    }
+    window.supabase.from('broadcasts').insert({
+      user_id: userId,
+      event_type: 'invite_reward',
+      description: description,
+      reward_amount: rewardAmount
+    });
+  } catch (broadcastErr) {
+    console.warn('写入邀请广播失败:', broadcastErr);
+  }
+}
+
+async function processInvite(newUserId) {
+  if (!newUserId || !window.supabase) return false;
+
+  var inviterId = getStoredInviterId();
+  if (!inviterId) return false;
+
+  if (String(inviterId) === String(newUserId)) {
+    clearStoredInviterId();
+    return false;
+  }
 
   try {
+    var existingResult = await window.supabase
+      .from('invites')
+      .select('id')
+      .eq('invitee_id', newUserId)
+      .limit(1);
+
+    if (!existingResult.error && existingResult.data && existingResult.data.length) {
+      clearStoredInviterId();
+      return false;
+    }
+
+    var settings = await fetchInviteSettings();
+    var level1Reward = Number(settings.invite_level1_reward) || INVITE_SETTINGS_DEFAULTS.invite_level1_reward;
+    var level2Reward = Number(settings.invite_level2_reward) || INVITE_SETTINGS_DEFAULTS.invite_level2_reward;
+
+    var inviterResult = await window.supabase
+      .from('users')
+      .select('id, crlm_balance, invite_count, username')
+      .eq('id', inviterId)
+      .maybeSingle();
+
+    if (inviterResult.error || !inviterResult.data) {
+      clearStoredInviterId();
+      return false;
+    }
+
+    var inviter = inviterResult.data;
+    var level1Done = await grantInviteReward(inviter, newUserId, 1, level1Reward);
+    if (!level1Done) {
+      clearStoredInviterId();
+      return false;
+    }
+
+    await writeInviteNotification(inviter.id, '你成功邀请了一位新用户，获得一级邀请奖励', 'invite', newUserId);
+    writeInviteBroadcast(inviter.id, '你成功邀请了一位新用户，获得一级邀请奖励', level1Reward);
+
     var parentResult = await window.supabase
       .from('invites')
       .select('inviter_id')
@@ -1018,26 +1142,44 @@ async function processInviteRewardsForUser(inviteeId, inviter) {
       .maybeSingle();
 
     if (!parentResult.error && parentResult.data && parentResult.data.inviter_id) {
-      var grandResult = await window.supabase
-        .from('users')
-        .select('id, crlm_balance, invite_count')
-        .eq('id', parentResult.data.inviter_id)
-        .maybeSingle();
+      var parentInviterId = parentResult.data.inviter_id;
+      if (parentInviterId && String(parentInviterId) !== String(newUserId)) {
+        var parentUserResult = await window.supabase
+          .from('users')
+          .select('id, crlm_balance, invite_count, username')
+          .eq('id', parentInviterId)
+          .maybeSingle();
 
-      if (!grandResult.error && grandResult.data && grandResult.data.id !== inviteeId) {
-        await grantInviteReward(grandResult.data, inviteeId, 2, level2Reward);
+        if (!parentUserResult.error && parentUserResult.data) {
+          var parentInviter = parentUserResult.data;
+          var level2Done = await grantInviteReward(parentInviter, newUserId, 2, level2Reward);
+          if (level2Done) {
+            await writeInviteNotification(parentInviter.id, '你成功邀请的一位好友进一步扩展了邀请网络，获得二级邀请奖励', 'invite', newUserId);
+            writeInviteBroadcast(parentInviter.id, '你的二级邀请关系产生了奖励', level2Reward);
+          }
+        }
       }
     }
-  } catch (level2Err) {
-    console.warn('处理二级邀请奖励失败:', level2Err);
+
+    clearStoredInviterId();
+    if (typeof window.coinrealmRefreshInvitePageData === 'function') {
+      window.coinrealmRefreshInvitePageData();
+    }
+    return true;
+  } catch (inviteErr) {
+    console.warn('处理邀请关系失败:', inviteErr);
+    clearStoredInviterId();
+    return false;
   }
 }
+
+window.coinrealmProcessInvite = processInvite;
 
 async function processPendingInviteRegistration() {
   if (!window.supabase) return;
 
-  var ref = localStorage.getItem('coinrealm_invite_ref');
-  if (!ref) return;
+  var inviterId = getStoredInviterId();
+  if (!inviterId) return;
 
   var userId = await getCurrentUserId();
   if (!userId) return;
@@ -1050,18 +1192,18 @@ async function processPendingInviteRegistration() {
       .limit(1);
 
     if (!existingResult.error && existingResult.data && existingResult.data.length) {
-      localStorage.removeItem('coinrealm_invite_ref');
+      clearStoredInviterId();
       return;
     }
 
-    var inviter = await findInviterByRef(ref);
+    var inviter = await findInviterByRef(inviterId);
     if (!inviter || inviter.id === userId) {
-      localStorage.removeItem('coinrealm_invite_ref');
+      clearStoredInviterId();
       return;
     }
 
-    await processInviteRewardsForUser(userId, inviter);
-    localStorage.removeItem('coinrealm_invite_ref');
+    await processInvite(userId);
+    clearStoredInviterId();
   } catch (pendingErr) {
     console.warn('处理待处理邀请失败:', pendingErr);
   }
