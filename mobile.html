@@ -189,6 +189,41 @@
     })();
   </script>
   <script src="js/i18n.js"></script>
+  <script>
+    (function () {
+      var hash = window.location.hash || '';
+      if (hash.indexOf('access_token') === -1 && hash.indexOf('refresh_token') === -1) {
+        return;
+      }
+      if (!window.supabase || !window.supabase.auth || typeof window.supabase.auth.setSession !== 'function') {
+        return;
+      }
+      var params = {};
+      hash.replace(/^#/, '').split('&').forEach(function (pair) {
+        var index = pair.indexOf('=');
+        if (index === -1) return;
+        var key = decodeURIComponent(pair.slice(0, index));
+        var value = decodeURIComponent(pair.slice(index + 1));
+        params[key] = value;
+      });
+      window.supabase.auth.setSession({
+        access_token: params.access_token || '',
+        refresh_token: params.refresh_token || ''
+      }).then(function () {
+        return window.supabase.auth.getSession();
+      }).catch(function (error) {
+        console.warn('[mobile] Supabase OAuth callback handling failed:', error);
+      }).finally(function () {
+        try {
+          if (window.history && window.history.replaceState) {
+            window.history.replaceState(window.history.state, document.title, window.location.pathname + window.location.search);
+          }
+        } catch (err) {
+          console.warn('[mobile] 清理 OAuth hash 失败:', err);
+        }
+      });
+    })();
+  </script>
   <script src="auth.js"></script>
   <script src="js/pages/leaderboard.js"></script>
   <script src="js/pages/dividends.js"></script>

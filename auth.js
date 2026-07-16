@@ -155,44 +155,107 @@
 
   function normalizeGoogleRedirectUrl(url) {
     if (typeof url !== 'string') {
-      return 'https://coinrealm.pages.dev/index.html';
+      return 'https://coinrealm.pages.dev';
     }
 
     var trimmed = url.trim();
     if (!trimmed) {
-      return 'https://coinrealm.pages.dev/index.html';
+      return 'https://coinrealm.pages.dev';
     }
 
     if (/^https:\/\//i.test(trimmed)) {
-      return trimmed;
+      return trimmed.replace(/\/$/, '');
     }
 
     if (/^http:\/\//i.test(trimmed)) {
-      return trimmed.replace(/^http:\/\//i, 'https://');
+      return trimmed.replace(/^http:\/\//i, 'https://').replace(/\/$/, '');
     }
 
     if (trimmed.charAt(0) === '/') {
       return 'https://coinrealm.pages.dev' + trimmed;
     }
 
-    return 'https://' + trimmed;
+    return 'https://' + trimmed.replace(/\/$/, '');
   }
 
   function getGoogleOAuthRedirectTo() {
     try {
-      var ua = (window.navigator && window.navigator.userAgent) || '';
-      var isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
-      var path = isMobile ? '/mobile.html' : '/index.html';
-      var origin = (window.location && window.location.origin) || 'https://coinrealm.pages.dev';
-      if (!/^https?:\/\//i.test(origin)) {
-        origin = 'https://coinrealm.pages.dev';
+      var pathname = (window.location && window.location.pathname) || '';
+      if (/\/mobile\.html$/i.test(pathname)) {
+        return 'https://coinrealm.pages.dev/mobile.html';
       }
-      if (origin.indexOf('http://') === 0) {
-        origin = origin.replace(/^http:\/\//i, 'https://');
-      }
-      return normalizeGoogleRedirectUrl(origin + path);
+      return 'https://coinrealm.pages.dev';
     } catch (error) {
-      return 'https://coinrealm.pages.dev/index.html';
+      return 'https://coinrealm.pages.dev';
+    }
+  }
+
+  function parseHashParams(hash) {
+    var params = {};
+    var raw = hash || '';
+    if (!raw) {
+      return params;
+    }
+
+    var stripped = raw.replace(/^#/, '');
+    if (!stripped) {
+      return params;
+    }
+
+    stripped.split('&').forEach(function (pair) {
+      var index = pair.indexOf('=');
+      if (index === -1) {
+        return;
+      }
+      var key = decodeURIComponent(pair.slice(0, index));
+      var value = decodeURIComponent(pair.slice(index + 1));
+      params[key] = value;
+    });
+
+    return params;
+  }
+
+  function clearAuthHash() {
+    try {
+      if (window.history && window.history.replaceState) {
+        var cleanUrl = window.location.pathname + window.location.search;
+        window.history.replaceState(window.history.state, document.title, cleanUrl);
+      }
+    } catch (error) {
+      // ignore cleanup errors
+    }
+  }
+
+  function handleSupabaseAuthCallback() {
+    try {
+      var hashParams = parseHashParams(window.location.hash);
+      var accessToken = hashParams.access_token || '';
+      var refreshToken = hashParams.refresh_token || '';
+      if (!accessToken && !refreshToken) {
+        return false;
+      }
+
+      if (!window.supabase || !window.supabase.auth || typeof window.supabase.auth.setSession !== 'function') {
+        clearAuthHash();
+        return false;
+      }
+
+      window.supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken
+      }).then(function () {
+        return window.supabase.auth.getSession();
+      }).catch(function (error) {
+        console.warn('Supabase OAuth callback handling failed:', error);
+      }).finally(function () {
+        clearAuthHash();
+      });
+
+      return true;
+    } catch (error) {
+      console.warn('Supabase OAuth callback handling crashed:', error);
+      clearAuthHash();
+      return false;
     }
   }
 
@@ -201,6 +264,14 @@
       return window.supabase;
     }
     return null;
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () {
+      handleSupabaseAuthCallback();
+    }, { once: true });
+  } else {
+    handleSupabaseAuthCallback();
   }
 
   function waitForSupabase(callback) {
