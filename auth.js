@@ -10,8 +10,6 @@
   var walletAddress = null;
   var documentClickBound = false;
   var hideTimer = null;
-  var testLoginModalReady = false;
-  var testLoginSubmitting = false;
   var WALLET_AUTH_WORKER_URL = 'https://coinrealm-wallet-auth.samyang9695482.workers.dev';
 
   // 在 app.js 执行前缓存 #app-content 完整 HTML，供菜单跳转时恢复真实页面
@@ -64,14 +62,6 @@
   var authText = {
     zh: {
       googleSignIn: 'Google 登录',
-      testSignIn: '测试登录',
-      testLoginTitle: '测试登录',
-      testEmailPlaceholder: '邮箱',
-      testPasswordPlaceholder: '密码',
-      testLoginSubmit: '登录',
-      testLoginCancel: '取消',
-      testLoginRequired: '请输入邮箱和密码',
-      testLoginFail: '登录失败：',
       connectWallet: '连接钱包',
       walletConnectFail: '钱包登录失败：',
       metamaskNotInstalled: '请安装 MetaMask 浏览器插件',
@@ -94,14 +84,6 @@
     },
     en: {
       googleSignIn: 'Sign in with Google',
-      testSignIn: 'Test Sign In',
-      testLoginTitle: 'Test Sign In',
-      testEmailPlaceholder: 'Email',
-      testPasswordPlaceholder: 'Password',
-      testLoginSubmit: 'Sign in',
-      testLoginCancel: 'Cancel',
-      testLoginRequired: 'Please enter email and password',
-      testLoginFail: 'Sign in failed: ',
       connectWallet: 'Connect Wallet',
       walletConnectFail: 'Wallet sign-in failed: ',
       metamaskNotInstalled: 'Please install the MetaMask browser extension',
@@ -939,178 +921,6 @@
     }
   }
 
-  // 临时测试：邮箱密码登录弹窗样式（仅 auth.js 内注入）
-  function ensureTestLoginStyles() {
-    if (document.getElementById('auth-test-login-styles')) return;
-
-    var style = document.createElement('style');
-    style.id = 'auth-test-login-styles';
-    style.textContent =
-      '.auth-area { gap: 8px; flex-wrap: wrap; }' +
-      '.auth-test-login-modal { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; }' +
-      '.auth-test-login-modal.hidden { display: none; }' +
-      '.auth-test-login-overlay { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.55); }' +
-      '.auth-test-login-card { position: relative; z-index: 1; width: min(320px, calc(100vw - 32px)); padding: 20px; border-radius: 12px; background: #1a1a1a; border: 1px solid #333; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35); }' +
-      '.auth-test-login-title { margin: 0 0 16px; font-size: 1rem; color: #fff; }' +
-      '.auth-test-login-input { width: 100%; box-sizing: border-box; margin-bottom: 10px; padding: 10px 12px; border: 1px solid #444; border-radius: 8px; background: #111; color: #fff; font: inherit; }' +
-      '.auth-test-login-error { margin: 0 0 10px; font-size: 0.8125rem; color: #ff7875; }' +
-      '.auth-test-login-error.hidden { display: none; }' +
-      '.auth-test-login-actions { display: flex; gap: 8px; justify-content: flex-end; }' +
-      '.auth-test-login-actions .btn { min-width: 72px; }';
-    document.head.appendChild(style);
-  }
-
-  function ensureTestLoginModal() {
-    ensureTestLoginStyles();
-
-    if (document.getElementById('auth-test-login-modal')) {
-      testLoginModalReady = true;
-      return;
-    }
-
-    var modal = document.createElement('div');
-    modal.id = 'auth-test-login-modal';
-    modal.className = 'auth-test-login-modal hidden';
-    modal.setAttribute('aria-hidden', 'true');
-    modal.innerHTML =
-      '<div class="auth-test-login-overlay"></div>' +
-      '<div class="auth-test-login-card" role="dialog" aria-modal="true" aria-labelledby="auth-test-login-title">' +
-        '<h3 id="auth-test-login-title" class="auth-test-login-title">' + t('testLoginTitle') + '</h3>' +
-        '<input type="email" id="auth-test-email" class="auth-test-login-input" autocomplete="username" placeholder="' + t('testEmailPlaceholder') + '">' +
-        '<input type="password" id="auth-test-password" class="auth-test-login-input" autocomplete="current-password" placeholder="' + t('testPasswordPlaceholder') + '">' +
-        '<p id="auth-test-error" class="auth-test-login-error hidden"></p>' +
-        '<div class="auth-test-login-actions">' +
-          '<button type="button" id="auth-test-cancel" class="btn btn-secondary">' + t('testLoginCancel') + '</button>' +
-          '<button type="button" id="auth-test-submit" class="btn btn-primary">' + t('testLoginSubmit') + '</button>' +
-        '</div>' +
-      '</div>';
-    document.body.appendChild(modal);
-    bindTestLoginModalEvents();
-    testLoginModalReady = true;
-  }
-
-  function updateTestLoginModalText() {
-    var modal = document.getElementById('auth-test-login-modal');
-    if (!modal) return;
-
-    var title = modal.querySelector('#auth-test-login-title');
-    var emailInput = modal.querySelector('#auth-test-email');
-    var passwordInput = modal.querySelector('#auth-test-password');
-    var cancelBtn = modal.querySelector('#auth-test-cancel');
-    var submitBtn = modal.querySelector('#auth-test-submit');
-
-    if (title) title.textContent = t('testLoginTitle');
-    if (emailInput) emailInput.placeholder = t('testEmailPlaceholder');
-    if (passwordInput) passwordInput.placeholder = t('testPasswordPlaceholder');
-    if (cancelBtn) cancelBtn.textContent = t('testLoginCancel');
-    if (submitBtn) submitBtn.textContent = t('testLoginSubmit');
-  }
-
-  function showTestLoginError(message) {
-    var errorEl = document.getElementById('auth-test-error');
-    if (!errorEl) return;
-    if (message) {
-      errorEl.textContent = message;
-      errorEl.classList.remove('hidden');
-      return;
-    }
-    errorEl.textContent = '';
-    errorEl.classList.add('hidden');
-  }
-
-  function showTestLoginModal() {
-    ensureTestLoginModal();
-    updateTestLoginModalText();
-
-    var modal = document.getElementById('auth-test-login-modal');
-    var emailInput = document.getElementById('auth-test-email');
-    var passwordInput = document.getElementById('auth-test-password');
-    var submitBtn = document.getElementById('auth-test-submit');
-
-    showTestLoginError('');
-    if (emailInput) emailInput.value = '';
-    if (passwordInput) passwordInput.value = '';
-    if (submitBtn) submitBtn.disabled = false;
-
-    if (modal) {
-      modal.classList.remove('hidden');
-      modal.setAttribute('aria-hidden', 'false');
-    }
-
-    if (emailInput) {
-      setTimeout(function () {
-        emailInput.focus();
-      }, 0);
-    }
-  }
-
-  function hideTestLoginModal() {
-    var modal = document.getElementById('auth-test-login-modal');
-    if (!modal) return;
-    modal.classList.add('hidden');
-    modal.setAttribute('aria-hidden', 'true');
-    showTestLoginError('');
-  }
-
-  function submitTestLogin() {
-    if (testLoginSubmitting || !window.supabase) return;
-
-    var emailInput = document.getElementById('auth-test-email');
-    var passwordInput = document.getElementById('auth-test-password');
-    var submitBtn = document.getElementById('auth-test-submit');
-    var email = emailInput ? emailInput.value.trim() : '';
-    var password = passwordInput ? passwordInput.value : '';
-
-    if (!email || !password) {
-      showTestLoginError(t('testLoginRequired'));
-      return;
-    }
-
-    testLoginSubmitting = true;
-    showTestLoginError('');
-    if (submitBtn) submitBtn.disabled = true;
-
-    window.supabase.auth.signInWithPassword({ email: email, password: password })
-      .then(function (result) {
-        if (result.error) throw result.error;
-        hideTestLoginModal();
-        updateUI(result.data && result.data.user ? result.data.user : null);
-      })
-      .catch(function (err) {
-        showTestLoginError(t('testLoginFail') + (err && err.message ? err.message : String(err)));
-      })
-      .finally(function () {
-        testLoginSubmitting = false;
-        if (submitBtn) submitBtn.disabled = false;
-      });
-  }
-
-  function bindTestLoginModalEvents() {
-    var modal = document.getElementById('auth-test-login-modal');
-    if (!modal || modal.getAttribute('data-bound') === '1') return;
-    modal.setAttribute('data-bound', '1');
-
-    var overlay = modal.querySelector('.auth-test-login-overlay');
-    var cancelBtn = document.getElementById('auth-test-cancel');
-    var submitBtn = document.getElementById('auth-test-submit');
-    var passwordInput = document.getElementById('auth-test-password');
-
-    if (overlay) {
-      overlay.addEventListener('click', hideTestLoginModal);
-    }
-    if (cancelBtn) {
-      cancelBtn.addEventListener('click', hideTestLoginModal);
-    }
-    if (submitBtn) {
-      submitBtn.addEventListener('click', submitTestLogin);
-    }
-    if (passwordInput) {
-      passwordInput.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') submitTestLogin();
-      });
-    }
-  }
-
   // 绑定未登录状态下的登录按钮事件
   function bindLoginEvents() {
     var signinBtn = document.getElementById('google-signin-btn');
@@ -1130,11 +940,6 @@
           console.error('Google OAuth 启动失败:', error);
         }
       });
-    }
-
-    var testSigninBtn = document.getElementById('test-signin-btn');
-    if (testSigninBtn) {
-      testSigninBtn.addEventListener('click', showTestLoginModal);
     }
 
     var connectBtn = document.getElementById('connect-wallet-btn');
@@ -1194,7 +999,6 @@
 
     area.innerHTML =
       '<button type="button" id="google-signin-btn" class="btn btn-primary">' + t('googleSignIn') + '</button>' +
-      '<button type="button" id="test-signin-btn" class="btn btn-secondary">' + t('testSignIn') + '</button>' +
       '<button type="button" id="connect-wallet-btn" class="btn btn-secondary">' + t('connectWallet') + '</button>';
     bindLoginEvents();
   }
@@ -1217,8 +1021,6 @@
 
   // 启动
   function init() {
-    ensureTestLoginModal();
-
     waitForSupabase(function (client) {
       if (!window.supabase) return;
 
@@ -1258,7 +1060,6 @@
   if (langBtn) {
     langBtn.addEventListener('click', function () {
       setTimeout(function () {
-        updateTestLoginModalText();
         renderAuthArea();
       }, 0);
     });
