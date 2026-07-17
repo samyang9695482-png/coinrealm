@@ -1096,7 +1096,8 @@ async function processInvite(newUserId) {
   console.log('邀请处理-检测到 inviter_id：', inviterId);
   
   if (!inviterId) {
-    console.log('邀请处理-processInvite 失败：没有找到 inviter_id');
+    console.log('无邀请人信息，跳过邀请');
+    clearStoredInviterId();
     return false;
   }
 
@@ -1191,6 +1192,7 @@ async function processPendingInviteRegistration() {
   
   if (!window.supabase) {
     console.log('邀请处理-processPendingInviteRegistration 失败：没有 supabase');
+    clearStoredInviterId();
     return;
   }
 
@@ -1198,7 +1200,8 @@ async function processPendingInviteRegistration() {
   console.log('邀请处理-processPendingInviteRegistration 检测到 inviter_id：', inviterId);
   
   if (!inviterId) {
-    console.log('邀请处理-processPendingInviteRegistry 失败：没有找到 inviter_id');
+    console.log('无邀请人信息，跳过邀请');
+    clearStoredInviterId();
     return;
   }
 
@@ -1207,6 +1210,7 @@ async function processPendingInviteRegistration() {
   
   if (!userId) {
     console.log('邀请处理-processPendingInviteRegistry 失败：没有找到当前用户ID');
+    clearStoredInviterId();
     return;
   }
 
@@ -1238,6 +1242,8 @@ async function processPendingInviteRegistration() {
     clearStoredInviterId();
   } catch (pendingErr) {
     console.warn('处理待处理邀请失败:', pendingErr);
+    // 无论成功或失败，都清除 localStorage 中的 inviter_id，避免重复处理
+    clearStoredInviterId();
   }
 }
 
