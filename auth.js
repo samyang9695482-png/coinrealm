@@ -1012,6 +1012,16 @@
         localStorage.removeItem('coinrealm_wallet');
       }
       scheduleUserSync();
+      
+      // 处理邀请逻辑
+      if (typeof window.coinrealmProcessPendingInvite === 'function') {
+        console.log('邀请处理-检测到用户登录，准备处理邀请');
+        window.coinrealmProcessPendingInvite().then(function() {
+          console.log('邀请处理-待处理邀请处理完成');
+        }).catch(function(err) {
+          console.warn('邀请处理-待处理邀请处理失败:', err);
+        });
+      }
     } else {
       walletAddress = null;
       sessionStorage.removeItem('coinrealm_user_id');

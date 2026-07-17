@@ -1085,12 +1085,23 @@ function writeInviteBroadcast(userId, description, rewardAmount) {
 }
 
 async function processInvite(newUserId) {
-  if (!newUserId || !window.supabase) return false;
+  console.log('邀请处理-processInvite 开始，用户ID:', newUserId);
+  
+  if (!newUserId || !window.supabase) {
+    console.log('邀请处理-processInvite 失败：缺少用户ID或supabase');
+    return false;
+  }
 
   var inviterId = getStoredInviterId();
-  if (!inviterId) return false;
+  console.log('邀请处理-检测到 inviter_id：', inviterId);
+  
+  if (!inviterId) {
+    console.log('邀请处理-processInvite 失败：没有找到 inviter_id');
+    return false;
+  }
 
   if (String(inviterId) === String(newUserId)) {
+    console.log('邀请处理-processInvite 失败：不能邀请自己');
     clearStoredInviterId();
     return false;
   }
@@ -1176,13 +1187,28 @@ async function processInvite(newUserId) {
 window.coinrealmProcessInvite = processInvite;
 
 async function processPendingInviteRegistration() {
-  if (!window.supabase) return;
+  console.log('邀请处理-processPendingInviteRegistration 开始');
+  
+  if (!window.supabase) {
+    console.log('邀请处理-processPendingInviteRegistration 失败：没有 supabase');
+    return;
+  }
 
   var inviterId = getStoredInviterId();
-  if (!inviterId) return;
+  console.log('邀请处理-processPendingInviteRegistration 检测到 inviter_id：', inviterId);
+  
+  if (!inviterId) {
+    console.log('邀请处理-processPendingInviteRegistry 失败：没有找到 inviter_id');
+    return;
+  }
 
   var userId = await getCurrentUserId();
-  if (!userId) return;
+  console.log('邀请处理-processPendingInviteRegistration 当前用户ID：', userId);
+  
+  if (!userId) {
+    console.log('邀请处理-processPendingInviteRegistry 失败：没有找到当前用户ID');
+    return;
+  }
 
   try {
     var existingResult = await window.supabase
@@ -1192,17 +1218,23 @@ async function processPendingInviteRegistration() {
       .limit(1);
 
     if (!existingResult.error && existingResult.data && existingResult.data.length) {
+      console.log('邀请处理-processPendingInviteRegistry：用户已经有邀请关系');
       clearStoredInviterId();
       return;
     }
 
     var inviter = await findInviterByRef(inviterId);
+    console.log('邀请处理-processPendingInviteRegistry 找到邀请者：', inviter);
+    
     if (!inviter || inviter.id === userId) {
+      console.log('邀请处理-processPendingInviteRegistry：邀请者无效或不能邀请自己');
       clearStoredInviterId();
       return;
     }
 
+    console.log('邀请处理-processPendingInviteRegistry 开始调用 processInvite');
     await processInvite(userId);
+    console.log('邀请处理-processPendingInviteRegistry processInvite 完成');
     clearStoredInviterId();
   } catch (pendingErr) {
     console.warn('处理待处理邀请失败:', pendingErr);
