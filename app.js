@@ -920,27 +920,56 @@ window.invalidateAdsConfigCache = invalidateAdsConfigCache;
       var inviterId = String(ref).trim();
       localStorage.setItem('inviter_id', inviterId);
       localStorage.setItem('coinrealm_invite_ref', inviterId);
+      console.log('app.js-捕获邀请 ref 参数：', inviterId);
+      console.log('app.js-已存入 localStorage inviter_id：', localStorage.getItem('inviter_id'));
+    } else {
+      console.log('app.js-URL 中未检测到 ref 参数');
     }
   } catch (captureErr) {
     console.warn('捕获邀请 ref 失败:', captureErr);
   }
 })();
 
+// 页面加载时检查 localStorage 中的邀请信息
+(function checkInviteInfoOnLoad() {
+  try {
+    var storedInviterId = localStorage.getItem('inviter_id');
+    var storedInviteRef = localStorage.getItem('coinrealm_invite_ref');
+    console.log('app.js-页面加载时检查邀请信息：');
+    console.log('  - localStorage.inviter_id：', storedInviterId);
+    console.log('  - localStorage.coinrealm_invite_ref：', storedInviteRef);
+    
+    // 检查 URL 中的 ref 参数
+    var urlParams = new URLSearchParams(window.location.search);
+    var urlRef = urlParams.get('ref');
+    console.log('  - URL 中的 ref 参数：', urlRef);
+  } catch (e) {
+    console.warn('检查邀请信息失败:', e);
+  }
+})();
+
 function getStoredInviterId() {
   try {
     var inviterId = localStorage.getItem('inviter_id');
-    if (inviterId) return String(inviterId).trim();
+    if (inviterId) {
+      console.log('app.js-从 localStorage 读取到 inviter_id：', inviterId);
+      return String(inviterId).trim();
+    }
   } catch (storageErr) {
     console.warn('读取邀请人 ID 失败:', storageErr);
   }
 
   try {
     var fallback = localStorage.getItem('coinrealm_invite_ref');
-    if (fallback) return String(fallback).trim();
+    if (fallback) {
+      console.log('app.js-从备用键读取到 coinrealm_invite_ref：', fallback);
+      return String(fallback).trim();
+    }
   } catch (fallbackErr) {
     console.warn('读取历史邀请 ref 失败:', fallbackErr);
   }
 
+  console.log('app.js-未在 localStorage 中找到任何邀请信息');
   return '';
 }
 

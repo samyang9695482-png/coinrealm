@@ -1,6 +1,23 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+  <!-- 立即捕获邀请链接 ref 参数，避免页面跳转时丢失 -->
+  <script>
+    (function () {
+      try {
+        var urlParams = new URLSearchParams(window.location.search);
+        var refParam = urlParams.get('ref');
+        if (refParam) {
+          localStorage.setItem('inviter_id', refParam);
+          localStorage.setItem('coinrealm_invite_ref', refParam);
+          console.log('页面加载-检测到 ref 参数：', refParam);
+          console.log('页面加载-已存入 localStorage：', localStorage.getItem('inviter_id'));
+        }
+      } catch (e) {
+        console.warn('捕获 ref 参数失败:', e);
+      }
+    })();
+  </script>
   <script>
     (function () {
       var path = location.pathname || '';
