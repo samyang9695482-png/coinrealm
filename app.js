@@ -3136,6 +3136,107 @@ function notifySubmissionStatusChanged(payload) {
 
 window.coinrealmNotifySubmissionStatusChanged = notifySubmissionStatusChanged;
 
+/** 任务发奖：最近一次余额成功入账（用于审核路径防重复，与邀请无关） */
+var lastTaskBalanceCreditMeta = null;
+
+/**
+ * 任务奖励入账：查询 tasks 安全字段后更新 users.crlm_balance
+ * 注意：此函数仅用于任务奖励，不处理邀请。
+ */
+async function creditTaskRewardToUser(userId, taskRef, options) {
+    options = options || {};
+    if (!window.supabase || !userId) {
+        console.error('任务发奖失败：缺少 supabase 或 userId');
+        return { ok: false, error: 'missing_params' };
+    }
+
+    var taskId = typeof taskRef === 'object' && taskRef ? taskRef.id : taskRef;
+    if (!taskId) {
+        console.error('任务发奖失败：缺少 taskId');
+        return { ok: false, error: 'missing_task_id' };
+    }
+
+    var taskInfoResult = await window.supabase
+        .from('tasks')
+        .select('id, title, reward_amount, reward_type, max_participants, publisher_id')
+        .eq('id', taskId)
+        .maybeSingle();
+
+    if (taskInfoResult.error) {
+        console.error('任务发奖-查询 tasks 失败（完整错误）：', taskInfoResult.error);
+        return { ok: false, error: taskInfoResult.error };
+    }
+
+    var taskData = taskInfoResult.data || {};
+    console.log('任务发奖-查询结果：', taskData);
+
+    if (!taskData.id) {
+        console.error('任务发奖失败：tasks 无数据', { taskId: taskId });
+        return { ok: false, error: 'task_not_found' };
+    }
+
+    var task = Object.assign({}, typeof taskRef === 'object' && taskRef ? taskRef : {}, taskData);
+    var rewardAmount = typeof calculatePerParticipantReward === 'function'
+        ? calculatePerParticipantReward(task)
+        : (Number(task.reward_amount) || 0);
+
+    if (!(rewardAmount > 0)) {
+        console.warn('任务发奖-奖励金额为 0，跳过余额更新：', { taskId: taskId, userId: userId, taskData: taskData });
+        return { ok: false, error: 'zero_reward', rewardAmount: 0, taskData: taskData };
+    }
+
+    var userResult = await window.supabase
+        .from('users')
+        .select('crlm_balance, usdt_balance')
+        .eq('id', userId)
+        .maybeSingle();
+
+    if (userResult.error || !userResult.data) {
+        console.error('任务发奖-读取用户余额失败（完整错误）：', userResult.error || 'no user data', { userId: userId });
+        return { ok: false, error: userResult.error || 'user_not_found' };
+    }
+
+    var rewardType = String(task.reward_type || 'CRLM').toUpperCase();
+    var balanceField = rewardType === 'USDT' ? 'usdt_balance' : 'crlm_balance';
+    var currentBalance = Number(userResult.data[balanceField]) || 0;
+    var newBalance = currentBalance + rewardAmount;
+
+    console.log('任务发奖-准备更新余额：', userId, rewardAmount);
+
+    var patch = {};
+    patch[balanceField] = newBalance;
+
+    // 与空投一致：update 不带 .select()，避免 SELECT RLS 造成假失败
+    var updateResult = await window.supabase
+        .from('users')
+        .update(patch)
+        .eq('id', userId);
+
+    console.log('任务发奖-更新结果：', updateResult);
+
+    if (updateResult.error) {
+        console.error('任务发奖-更新余额失败（完整错误）：', updateResult.error);
+        return { ok: false, error: updateResult.error, rewardAmount: rewardAmount, taskData: taskData };
+    }
+
+    lastTaskBalanceCreditMeta = {
+        userId: String(userId),
+        rewardAmount: rewardAmount,
+        taskId: String(taskId),
+        at: Date.now()
+    };
+
+    return {
+        ok: true,
+        rewardAmount: rewardAmount,
+        newBalance: newBalance,
+        taskData: taskData,
+        title: taskData.title || task.title || ''
+    };
+}
+
+window.coinrealmCreditTaskRewardToUser = creditTaskRewardToUser;
+
 async function grantSimpleTaskRewards(task, userId, options) {
     options = options || {};
     if (!window.supabase || !task || !task.id || !userId) return false;
@@ -3154,107 +3255,73 @@ async function grantSimpleTaskRewards(task, userId, options) {
         return { alreadyRewarded: true };
     }
 
-    // 只查询确定存在的字段，避免 stake_amount / deposit_amount 等导致 400
-    var taskInfoResult = await window.supabase
-        .from('tasks')
-        .select('id, title, reward_amount, reward_type, max_participants, publisher_id, current_participants')
-        .eq('id', taskId)
-        .maybeSingle();
-
-    console.log('任务信息查询结果：', taskInfoResult.data || taskInfoResult);
-
-    if (taskInfoResult.error) {
-        console.error('任务信息查询失败（完整错误）：', taskInfoResult.error);
-        // 兜底：去掉可能不存在的 current_participants 再查一次
-        taskInfoResult = await window.supabase
+    var creditResult = { ok: true, rewardAmount: 0, title: task.title || '' };
+    if (options.creditRewardClient !== false) {
+        creditResult = await creditTaskRewardToUser(userId, task, {
+            path: options.path || 'grantSimpleTaskRewards'
+        });
+        if (!creditResult.ok && creditResult.error !== 'zero_reward') {
+            return false;
+        }
+        if (creditResult.taskData) {
+            if (creditResult.taskData.title) task.title = creditResult.taskData.title;
+            if (creditResult.taskData.reward_amount != null) task.reward_amount = creditResult.taskData.reward_amount;
+            if (creditResult.taskData.reward_type != null) task.reward_type = creditResult.taskData.reward_type;
+            if (creditResult.taskData.max_participants != null) task.max_participants = creditResult.taskData.max_participants;
+            if (creditResult.taskData.publisher_id != null) task.publisher_id = creditResult.taskData.publisher_id;
+        }
+    } else {
+        var infoOnly = await window.supabase
             .from('tasks')
             .select('id, title, reward_amount, reward_type, max_participants, publisher_id')
             .eq('id', taskId)
             .maybeSingle();
-        console.log('任务信息查询结果：', taskInfoResult.data || taskInfoResult);
-        if (taskInfoResult.error) {
-            console.error('任务信息二次查询仍失败：', taskInfoResult.error);
-            return false;
+        console.log('任务发奖-查询结果：', infoOnly.data || infoOnly);
+        if (infoOnly.error) {
+            console.error('任务发奖-查询 tasks 失败（完整错误）：', infoOnly.error);
+        } else if (infoOnly.data) {
+            Object.assign(task, infoOnly.data);
+            creditResult.rewardAmount = calculatePerParticipantReward(task);
+            creditResult.title = infoOnly.data.title || task.title || '';
         }
     }
-
-    var taskData = taskInfoResult.data || {};
-    console.log('任务信息查询结果：', taskData);
-
-    if (taskData.title) task.title = taskData.title;
-    if (taskData.reward_amount != null) task.reward_amount = taskData.reward_amount;
-    if (taskData.reward_type != null) task.reward_type = taskData.reward_type;
-    if (taskData.max_participants != null) task.max_participants = taskData.max_participants;
-    if (taskData.publisher_id != null) task.publisher_id = taskData.publisher_id;
-    if (taskData.current_participants != null) task.current_participants = taskData.current_participants;
 
     var shouldIncrementParticipants = options.incrementParticipants !== false
-        && priorStatus !== 'submitted'
-        && taskData.current_participants != null;
-
+        && priorStatus !== 'submitted';
     if (shouldIncrementParticipants) {
-        var current = Number(taskData.current_participants) || 0;
-        var bumpResult = await window.supabase
-            .from('tasks')
-            .update({ current_participants: current + 1 })
-            .eq('id', taskId);
-        if (bumpResult.error) {
-            console.warn('更新任务参与人数失败：', bumpResult.error);
-        } else {
-            task.current_participants = current + 1;
-        }
-    }
-
-    var rewardAmount = calculatePerParticipantReward(task);
-
-    if (options.creditRewardClient !== false) {
-        if (!(rewardAmount > 0)) {
-            console.warn('任务奖励金额为 0，跳过余额更新：', { taskId: taskId, userId: userId, task: task });
-        } else {
-            var userResult = await window.supabase
-                .from('users')
-                .select('crlm_balance, usdt_balance')
-                .eq('id', userId)
+        try {
+            var countResult = await window.supabase
+                .from('tasks')
+                .select('id, current_participants')
+                .eq('id', taskId)
                 .maybeSingle();
-
-            if (userResult.error || !userResult.data) {
-                console.error('读取用户余额失败：', userResult.error || 'no user data', { userId: userId });
-                return false;
+            if (!countResult.error && countResult.data && countResult.data.current_participants != null) {
+                var current = Number(countResult.data.current_participants) || 0;
+                var bumpResult = await window.supabase
+                    .from('tasks')
+                    .update({ current_participants: current + 1 })
+                    .eq('id', taskId);
+                if (bumpResult.error) {
+                    console.warn('更新任务参与人数失败：', bumpResult.error);
+                } else {
+                    task.current_participants = current + 1;
+                }
             }
-
-            var rewardType = String(task.reward_type || 'CRLM').toUpperCase();
-            var balanceField = rewardType === 'USDT' ? 'usdt_balance' : 'crlm_balance';
-            var currentBalance = Number(userResult.data[balanceField]) || 0;
-            var newBalance = currentBalance + rewardAmount;
-
-            console.log('准备更新余额：', userId, currentBalance, rewardAmount, newBalance);
-
-            var patch = {};
-            patch[balanceField] = newBalance;
-
-            var updateResult = await window.supabase
-                .from('users')
-                .update(patch)
-                .eq('id', userId)
-                .select(balanceField);
-
-            console.log('余额更新结果：', updateResult);
-
-            if (updateResult.error) {
-                console.error('余额更新失败（完整错误）：', updateResult.error);
-                return false;
-            }
-
-            console.log('简单任务自动审核发奖：', { taskId: taskId, userId: userId, rewardAmount: rewardAmount, newBalance: newBalance });
+        } catch (bumpErr) {
+            console.warn('更新任务参与人数异常：', bumpErr);
         }
     }
+
+    var rewardAmount = creditResult.rewardAmount != null
+        ? creditResult.rewardAmount
+        : calculatePerParticipantReward(task);
 
     await upgradeUserLevelOnTaskApproved(userId);
 
     writeBroadcast({
         user_id: userId,
         event_type: 'task_approved',
-        description: '完成了任务「' + buildTaskBroadcastTitle(task.title || '') + '」',
+        description: '完成了任务「' + buildTaskBroadcastTitle(task.title || creditResult.title || '') + '」',
         reward_amount: rewardAmount
     });
 
