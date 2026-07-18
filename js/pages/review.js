@@ -369,7 +369,7 @@
   async function findReviewableTaskIdAmongPublisherTasks() {
     if (!publisherTasks.length || !window.supabase) return null;
 
-    var statusFilter = ['submitted', 'pending', 'verifying'];
+    var statusFilter = ['submitted', 'pending'];
     var taskIds = publisherTasks.map(function (task) { return task.id; });
     var reviewableResult = await window.supabase
       .from('submissions')
@@ -477,7 +477,7 @@
   async function resolveSelectedTaskIdWithSubmissions() {
     if (!publisherTasks.length || !window.supabase) return selectedTaskId;
 
-    var statusFilter = ['submitted', 'pending', 'verifying'];
+    var statusFilter = ['submitted', 'pending'];
     var canonicalSelectedTaskId = resolveCanonicalTaskId(selectedTaskId);
 
     if (canonicalSelectedTaskId) {
@@ -520,7 +520,7 @@
       return;
     }
 
-    var statusFilter = ['submitted', 'pending', 'verifying'];
+    var statusFilter = ['submitted', 'pending'];
     var taskIds = publisherTasks.map(function (task) { return task.id; });
     var reviewableResult = await window.supabase
       .from('submissions')
@@ -553,7 +553,7 @@
 
     var taskId = resolveCanonicalTaskId(selectedTaskId);
     var hashTaskId = getReviewTaskIdFromHash();
-    var statusFilter = ['submitted', 'pending', 'verifying'];
+    var statusFilter = ['submitted', 'pending'];
 
     console.log('提交列表查询条件：', JSON.stringify({
       taskId: taskId,
@@ -859,13 +859,7 @@
         var currentBalance = Number(userResult.data[balanceField]) || 0;
         var patch = {};
         patch[balanceField] = currentBalance + rewardAmount;
-        var updateResult = await window.supabase.from('users').update(patch).eq('id', submission.user_id);
-        console.log('人工审核-余额更新结果：', updateResult);
-        if (updateResult.error) {
-          console.error('人工审核-余额更新失败：', updateResult.error);
-          alert('发奖失败：' + (updateResult.error.message || '更新余额失败'));
-          return false;
-        }
+        await window.supabase.from('users').update(patch).eq('id', submission.user_id);
         console.log('人工审核发奖成功：', {
           submissionId: submissionId,
           userId: submission.user_id,
@@ -964,71 +958,23 @@
       var button = target.closest('.rv-btn-approve, .rv-btn-reject');
       if (!button) return;
 
-      // 获取按钮所在的列表项和操作区域
-      var listItem = button.closest('.review-submission-item');
-      var actionsDiv = listItem ? listItem.querySelector('.rv-actions') : null;
-      var submissionId = button.getAttribute('data-id');
-      if (!submissionId) return;
-
       if (button.classList.contains('rv-btn-approve')) {
+        var approveId = button.getAttribute('data-id');
+        if (!approveId) return;
         button.disabled = true;
-
-        // 禁用并标记驳回按钮
-        var rejectBtn = button.parentElement.querySelector('.rv-btn-reject');
-        if (rejectBtn) {
-          rejectBtn.disabled = true;
-        }
-
-        // 在操作区域显示"已通过"
-        if (actionsDiv) {
-          actionsDiv.innerHTML = '<span class="rv-actions-completed" style="color:#999;font-size:14px;">已通过</span>';
-        }
-
-        approveSubmission(submissionId).then(function (ok) {
+        approveSubmission(approveId).then(function (ok) {
           if (!ok) {
-            // 如果失败，恢复按钮状态
-            if (actionsDiv) {
-              actionsDiv.innerHTML =
-                '<button type="button" class="rv-btn-approve" data-id="' + submissionId + '">' + rvT('rv_btn_approve') + '</button>' +
-                '<button type="button" class="rv-btn-reject" data-id="' + submissionId + '">' + rvT('rv_btn_reject') + '</button>';
-            }
+            button.disabled = false;
           }
         });
         return;
       }
 
       if (button.classList.contains('rv-btn-reject')) {
-        button.disabled = true;
-
-        // 禁用并标记通过按钮
-        var approveBtn = button.parentElement.querySelector('.rv-btn-approve');
-        if (approveBtn) {
-          approveBtn.disabled = true;
-        }
-
-        // 在操作区域显示"已驳回"
-        if (actionsDiv) {
-          actionsDiv.innerHTML = '<span class="rv-actions-completed" style="color:#999;font-size:14px;">已驳回</span>';
-        }
-
-        pendingRejectId = submissionId;
-
-        // 打开驳回弹窗
+        var rejectId = button.getAttribute('data-id');
+        if (!rejectId) return;
+        pendingRejectId = rejectId;
         openRejectModal();
-
-        // 如果弹窗关闭（取消或确认后），根据结果更新UI
-        // 注意：这里不做额外处理，因为 rejectSubmission 会调用 renderSubmissionList
-      }
-    };
-
-        // 临时保存成功回调
-        var originalConfirmHandler = document.getElementById('rv-reject-confirm').onclick;
-        document.getElementById('rv-reject-confirm').onclick = function() {
-          // 调用原始确认处理器
-          if (originalConfirmHandler) {
-            originalConfirmHandler();
-          }
-        };
       }
     };
 
@@ -1054,25 +1000,10 @@
     if (modal) modal.classList.remove('hidden');
   }
 
-  function closeRejectModal(isRejected) {
+  function closeRejectModal() {
     var modal = document.getElementById('rv-reject-modal');
-    var previousPendingId = pendingRejectId;
     pendingRejectId = null;
     if (modal) modal.classList.add('hidden');
-
-    // 如果驳回被取消（不是确认驳回成功），恢复按钮状态
-    if (!isRejected && previousPendingId) {
-      var listEl = document.getElementById('rv-submission-list');
-      if (listEl) {
-        var listItem = listEl.querySelector('.review-submission-item[data-id="' + previousPendingId + '"]');
-        var actionsDiv = listItem ? listItem.querySelector('.rv-actions') : null;
-        if (actionsDiv) {
-          actionsDiv.innerHTML =
-            '<button type="button" class="rv-btn-approve" data-id="' + previousPendingId + '">' + rvT('rv_btn_approve') + '</button>' +
-            '<button type="button" class="rv-btn-reject" data-id="' + previousPendingId + '">' + rvT('rv_btn_reject') + '</button>';
-        }
-      }
-    }
   }
 
   function applyReviewI18n() {
@@ -1106,7 +1037,7 @@
     if (taskSelect) {
       taskSelect.addEventListener('change', async function () {
         selectedTaskId = resolveCanonicalTaskId(taskSelect.value || null);
-        closeRejectModal(false);
+        closeRejectModal();
         await loadSubmissionsForSelectedTask();
         applyReviewI18n();
       });
@@ -1127,24 +1058,22 @@
         var ok = await rejectSubmission(pendingRejectId, reason);
         confirmBtn.disabled = false;
         if (ok) {
-          closeRejectModal(true);  // 传 true 表示驳回成功
+          closeRejectModal();
           await loadSubmissionsForSelectedTask();
-        } else {
-          closeRejectModal(false);  // 驳回失败，恢复按钮
         }
       });
     }
 
     var cancelBtn = document.getElementById('rv-reject-cancel');
     if (cancelBtn) {
-      cancelBtn.addEventListener('click', function() { closeRejectModal(false); });
+      cancelBtn.addEventListener('click', closeRejectModal);
     }
 
     var modal = document.getElementById('rv-reject-modal');
     if (modal) {
       var overlay = modal.querySelector('.review-modal-overlay');
       if (overlay) {
-        overlay.addEventListener('click', function() { closeRejectModal(false); });
+        overlay.addEventListener('click', closeRejectModal);
       }
     }
   }
@@ -1184,7 +1113,7 @@
         renderReviewPage();
       } else {
         reviewPage.classList.add('hidden');
-        closeRejectModal(false);
+        closeRejectModal();
       }
     }
   }
