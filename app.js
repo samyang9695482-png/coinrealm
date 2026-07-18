@@ -1030,6 +1030,14 @@ async function grantInviteReward(inviter, inviteeId, level, amount) {
 
     if (insertResult.error) {
       var errMsg = String(insertResult.error.message || insertResult.error.details || '').toLowerCase();
+      var errCode = insertResult.error.code || '';
+      
+      // 检查是否为409冲突错误（邀请记录已存在）
+      if (errCode === '23505' || errMsg.indexOf('duplicate') !== -1 || errMsg.indexOf('conflict') !== -1) {
+        console.log('邀请记录已存在（409冲突），说明邀请关系已建立，视为成功');
+        return true; // 409冲突表示邀请关系已存在，返回成功
+      }
+      
       if (errMsg.indexOf('column') !== -1 && errMsg.indexOf('does not exist') !== -1) {
         console.warn('邀请表字段缺失，请先执行 SQL：ALTER TABLE invites ADD COLUMN IF NOT EXISTS reward_amount NUMERIC DEFAULT 0; ALTER TABLE invites ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();');
       } else {
@@ -1144,8 +1152,9 @@ async function processInvite(newUserId) {
       .limit(1);
 
     if (!existingResult.error && existingResult.data && existingResult.data.length) {
-      clearStoredInviterId();
-      return false;
+      console.log('邀请处理-用户已经有邀请关系，返回成功但不清除 inviter_id');
+      // 用户已经有邀请关系，返回成功但不清除 localStorage
+      return true; // 用户已经有邀请关系，视为成功
     }
 
     var settings = await fetchInviteSettings();
@@ -1159,14 +1168,16 @@ async function processInvite(newUserId) {
       .maybeSingle();
 
     if (inviterResult.error || !inviterResult.data) {
-      clearStoredInviterId();
+      console.log('邀请处理-邀请者信息查询失败，保留 inviter_id 以便重试');
+      // 查询失败，保留 inviter_id 以便重试
       return false;
     }
 
     var inviter = inviterResult.data;
     var level1Done = await grantInviteReward(inviter, newUserId, 1, level1Reward);
     if (!level1Done) {
-      clearStoredInviterId();
+      console.log('邀请处理-一级奖励发放失败，保留 inviter_id 以便重试');
+      // 奖励发放失败，保留 inviter_id 以便重试
       return false;
     }
 
@@ -1202,14 +1213,16 @@ async function processInvite(newUserId) {
       }
     }
 
+    // 邀请处理成功，清除 localStorage 中的 inviter_id
+    console.log('邀请处理-成功完成，清除 localStorage 中的 inviter_id');
     clearStoredInviterId();
     if (typeof window.coinrealmRefreshInvitePageData === 'function') {
       window.coinrealmRefreshInvitePageData();
     }
     return true;
   } catch (inviteErr) {
-    console.warn('处理邀请关系失败:', inviteErr);
-    clearStoredInviterId();
+    console.warn('处理邀请关系失败，保留 inviter_id 以便重试:', inviteErr);
+    // 捕获异常，保留 inviter_id 以便重试，不清除
     return false;
   }
 }
