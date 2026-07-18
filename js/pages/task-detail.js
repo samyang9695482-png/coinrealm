@@ -1679,7 +1679,7 @@
       ? Number(levelResult.data.level)
       : 0;
 
-    if (userLevel < 1) {
+    if (userLevel < 0) {
       alert(tdT('td_btn_level'));
       return;
     }
