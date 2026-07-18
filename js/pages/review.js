@@ -784,12 +784,28 @@
 
     var taskResult = await window.supabase
       .from('tasks')
-      .select('title, reward_amount, reward_type, max_participants')
+      .select('id, title, reward_amount, reward_type, max_participants')
       .eq('id', submission.task_id)
       .maybeSingle();
 
-    var taskTitle = taskResult.data && taskResult.data.title ? taskResult.data.title : '任务';
-    var rewardAmount = calculatePerParticipantReward(taskResult.data || {});
+    console.log('审核通过-任务查询结果：', taskResult);
+
+    if (taskResult.error) {
+      console.error('审核通过-任务查询失败：', taskResult.error);
+      alert('任务信息查询失败：' + (taskResult.error.message || taskResult.error));
+      return false;
+    }
+
+    if (!taskResult.data) {
+      console.error('审核通过-任务不存在：', { taskId: submission.task_id });
+      alert('任务不存在，请检查任务ID');
+      return false;
+    }
+
+    var taskTitle = taskResult.data.title || '任务';
+    var rewardAmount = calculatePerParticipantReward(taskResult.data);
+
+    console.log('审核通过-任务奖励计算：', { taskId: submission.task_id, rewardAmount: rewardAmount });
 
     if (rewardAmount > 0 && window.supabase) {
       var userResult = await window.supabase
