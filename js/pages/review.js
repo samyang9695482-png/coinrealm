@@ -101,6 +101,7 @@
     if (!submission) return false;
     if (submission.status === 'submitted') return true;
     if (submission.status === 'pending') return true;
+    if (submission.status === 'verifying') return true;
     return false;
   }
 
@@ -158,6 +159,7 @@
     if (submission.status === 'submitted') return rvT('rv_status_submitted');
     if (submission.status === 'claimed') return rvT('rv_status_claimed');
     if (submission.status === 'pending') return rvT('rv_status_submitted');
+    if (submission.status === 'verifying') return rvT('rv_status_submitted');
     return submission.status || '-';
   }
 
@@ -369,7 +371,7 @@
   async function findReviewableTaskIdAmongPublisherTasks() {
     if (!publisherTasks.length || !window.supabase) return null;
 
-    var statusFilter = ['submitted', 'pending'];
+    var statusFilter = ['submitted', 'pending', 'verifying'];
     var taskIds = publisherTasks.map(function (task) { return task.id; });
     var reviewableResult = await window.supabase
       .from('submissions')
@@ -477,7 +479,7 @@
   async function resolveSelectedTaskIdWithSubmissions() {
     if (!publisherTasks.length || !window.supabase) return selectedTaskId;
 
-    var statusFilter = ['submitted', 'pending'];
+    var statusFilter = ['submitted', 'pending', 'verifying'];
     var canonicalSelectedTaskId = resolveCanonicalTaskId(selectedTaskId);
 
     if (canonicalSelectedTaskId) {
@@ -520,7 +522,7 @@
       return;
     }
 
-    var statusFilter = ['submitted', 'pending'];
+    var statusFilter = ['submitted', 'pending', 'verifying'];
     var taskIds = publisherTasks.map(function (task) { return task.id; });
     var reviewableResult = await window.supabase
       .from('submissions')
@@ -553,7 +555,7 @@
 
     var taskId = resolveCanonicalTaskId(selectedTaskId);
     var hashTaskId = getReviewTaskIdFromHash();
-    var statusFilter = ['submitted', 'pending'];
+    var statusFilter = ['submitted', 'pending', 'verifying'];
 
     console.log('提交列表查询条件：', JSON.stringify({
       taskId: taskId,
@@ -859,7 +861,13 @@
         var currentBalance = Number(userResult.data[balanceField]) || 0;
         var patch = {};
         patch[balanceField] = currentBalance + rewardAmount;
-        await window.supabase.from('users').update(patch).eq('id', submission.user_id);
+        var updateResult = await window.supabase.from('users').update(patch).eq('id', submission.user_id);
+        console.log('余额更新结果：', updateResult);
+        if (updateResult.error) {
+            console.error('余额更新失败：', updateResult.error);
+            alert('发奖失败，请重试');
+            return false;
+        }
         console.log('人工审核发奖成功：', {
           submissionId: submissionId,
           userId: submission.user_id,
