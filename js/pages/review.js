@@ -782,17 +782,56 @@
       return true;
     }
 
-    var taskResult = await window.supabase
-      .from('tasks')
-      .select('id, title, reward_amount, reward_type, max_participants')
-      .eq('id', submission.task_id)
-      .maybeSingle();
+    // 查询 tasks 表（包含降级处理）
+    var taskResult = null;
+    var taskQueryError = null;
+    
+    try {
+      // 尝试使用 maybeSingle()
+      taskResult = await window.supabase
+        .from('tasks')
+        .select('id, title, reward_amount, reward_type, max_participants')
+        .eq('id', submission.task_id)
+        .maybeSingle();
+    } catch (queryErr) {
+      taskQueryError = queryErr;
+      console.error('审核通过-任务查询异常：', queryErr);
+    }
+    
+    // 如果 maybeSingle() 失败或返回错误，尝试降级查询
+    if (taskQueryError || (taskResult && taskResult.error) || (!taskResult || !taskResult.data)) {
+      console.log('审核通过-任务查询需要降级处理', { 
+        queryError: taskQueryError, 
+        resultError: taskResult ? taskResult.error : null,
+        hasData: taskResult ? !!taskResult.data : false
+      });
+      
+      try {
+        // 降级：使用 limit(1) 代替 maybeSingle()
+        var fallbackResult = await window.supabase
+          .from('tasks')
+          .select('id, title, reward_amount, reward_type, max_participants')
+          .eq('id', submission.task_id)
+          .limit(1);
+        
+        if (fallbackResult && !fallbackResult.error && fallbackResult.data && fallbackResult.data.length > 0) {
+          taskResult = { data: fallbackResult.data[0], error: null };
+          console.log('审核通过-任务降级查询成功：', taskResult.data);
+        } else if (fallbackResult && fallbackResult.error) {
+          console.error('审核通过-任务降级查询仍然失败：', fallbackResult.error);
+          taskResult = { data: null, error: fallbackResult.error };
+        }
+      } catch (fallbackErr) {
+        console.error('审核通过-任务降级查询异常：', fallbackErr);
+      }
+    }
 
-    console.log('审核通过-任务查询结果：', taskResult);
+    console.log('审核通过-任务查询最终结果：', taskResult);
 
-    if (taskResult.error) {
-      console.error('审核通过-任务查询失败：', taskResult.error);
-      alert('任务信息查询失败：' + (taskResult.error.message || taskResult.error));
+    if (!taskResult || taskResult.error) {
+      var errMsg = taskResult && taskResult.error ? taskResult.error.message : (taskQueryError ? String(taskQueryError) : 'unknown');
+      console.error('审核通过-任务查询最终失败：', { error: taskResult ? taskResult.error : taskQueryError, taskId: submission.task_id });
+      alert('任务信息查询失败：' + errMsg);
       return false;
     }
 
