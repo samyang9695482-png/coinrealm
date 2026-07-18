@@ -1025,6 +1025,7 @@ async function grantInviteReward(inviter, inviteeId, level, amount) {
       invitee_id: inviteeId,
       level: level,
       reward_amount: amount,
+      is_activated: false, // 新增：邀请记录默认为未激活
       created_at: new Date().toISOString()
     });
 
@@ -1039,39 +1040,112 @@ async function grantInviteReward(inviter, inviteeId, level, amount) {
       }
       
       if (errMsg.indexOf('column') !== -1 && errMsg.indexOf('does not exist') !== -1) {
-        console.warn('邀请表字段缺失，请先执行 SQL：ALTER TABLE invites ADD COLUMN IF NOT EXISTS reward_amount NUMERIC DEFAULT 0; ALTER TABLE invites ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();');
+        console.warn('邀请表字段缺失，请先执行 SQL：ALTER TABLE invites ADD COLUMN IF NOT EXISTS reward_amount NUMERIC DEFAULT 0; ALTER TABLE invites ADD COLUMN IF NOT EXISTS is_activated BOOLEAN DEFAULT FALSE; ALTER TABLE invites ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();');
       } else {
         console.warn('插入邀请记录失败:', insertResult.error);
       }
       return false;
     }
 
-    var newBalance = (Number(inviter.crlm_balance) || 0) + amount;
-    var patchPayload = { crlm_balance: newBalance };
-
-    if (level === 1) {
-      patchPayload.invite_count = (Number(inviter.invite_count) || 0) + 1;
-    }
-
-    var updateResult = await window.supabase
-      .from('users')
-      .update(patchPayload)
-      .eq('id', inviter.id);
-
-    if (updateResult.error) {
-      console.warn('更新邀请人奖励失败:', updateResult.error);
-      return false;
-    }
-
-    inviter.crlm_balance = newBalance;
-    if (level === 1) {
-      inviter.invite_count = patchPayload.invite_count;
-    }
-
+    // 不立即发放奖励，不更新邀请人余额和邀请计数
+    // 等待被邀请人激活后再发放奖励
+    console.log('邀请记录创建成功，等待被邀请人激活（is_activated=false）');
     return true;
   } catch (grantErr) {
-    console.warn('发放邀请奖励失败:', grantErr);
+    console.warn('创建邀请记录失败:', grantErr);
     return false;
+  }
+}
+
+// 检查并激活邀请奖励
+async function checkAndActivateInvite(userId) {
+  if (!userId || !window.supabase) return;
+  
+  try {
+    console.log('检查邀请激活状态，用户ID:', userId);
+    
+    // 从 invites 表查询该用户作为被邀请人且未激活的记录
+    var result = await window.supabase
+      .from('invites')
+      .select('*')
+      .eq('invitee_id', userId)
+      .eq('is_activated', false);
+    
+    if (result.error || !result.data || !result.data.length) {
+      console.log('没有需要激活的邀请记录');
+      return;
+    }
+    
+    console.log('找到需要激活的邀请记录:', result.data.length);
+    
+    // 动态读取奖励配置
+    var settings = await fetchInviteSettings();
+    var level1Reward = Number(settings.invite_level1_reward) || INVITE_SETTINGS_DEFAULTS.invite_level1_reward;
+    var level2Reward = Number(settings.invite_level2_reward) || INVITE_SETTINGS_DEFAULTS.invite_level2_reward;
+    
+    for (var i = 0; i < result.data.length; i++) {
+      var invite = result.data[i];
+      var inviterId = invite.inviter_id;
+      var level = invite.level;
+      var rewardAmount = level === 1 ? level1Reward : level2Reward;
+      
+      console.log('激活邀请记录:', invite.id, '邀请人:', inviterId, '级别:', level, '奖励:', rewardAmount);
+      
+      // 获取邀请人信息
+      var inviterResult = await window.supabase
+        .from('users')
+        .select('id, crlm_balance, invite_count, username')
+        .eq('id', inviterId)
+        .maybeSingle();
+      
+      if (inviterResult.error || !inviterResult.data) {
+        console.warn('获取邀请人信息失败:', inviterResult.error);
+        continue;
+      }
+      
+      var inviter = inviterResult.data;
+      
+      // 更新邀请记录为已激活
+      var updateResult = await window.supabase
+        .from('invites')
+        .update({ is_activated: true })
+        .eq('id', invite.id);
+      
+      if (updateResult.error) {
+        console.warn('更新邀请记录为已激活失败:', updateResult.error);
+        continue;
+      }
+      
+      // 发放奖励
+      var newBalance = (Number(inviter.crlm_balance) || 0) + rewardAmount;
+      var patchPayload = { crlm_balance: newBalance };
+      
+      if (level === 1) {
+        patchPayload.invite_count = (Number(inviter.invite_count) || 0) + 1;
+      }
+      
+      var updateUserResult = await window.supabase
+        .from('users')
+        .update(patchPayload)
+        .eq('id', inviter.id);
+      
+      if (updateUserResult.error) {
+        console.warn('更新邀请人奖励失败:', updateUserResult.error);
+        continue;
+      }
+      
+      // 发送铃铛通知
+      var title = level === 1 ? '你成功邀请了一位新用户，获得一级邀请奖励' : '你成功邀请的一位好友进一步扩展了邀请网络，获得二级邀请奖励';
+      await writeInviteNotification(inviter.id, title, 'invite', userId);
+      
+      // 写入广播
+      var description = level === 1 ? '你成功邀请了一位新用户，获得一级邀请奖励' : '你的二级邀请关系产生了奖励';
+      writeInviteBroadcast(inviter.id, description, rewardAmount);
+      
+      console.log('邀请激活成功，邀请人:', inviterId, '获得奖励:', rewardAmount);
+    }
+  } catch (activateErr) {
+    console.warn('检查并激活邀请失败:', activateErr);
   }
 }
 
@@ -1181,8 +1255,7 @@ async function processInvite(newUserId) {
       return false;
     }
 
-    await writeInviteNotification(inviter.id, '你成功邀请了一位新用户，获得一级邀请奖励', 'invite', newUserId);
-    writeInviteBroadcast(inviter.id, '你成功邀请了一位新用户，获得一级邀请奖励', level1Reward);
+    // 不立即发送通知和广播，等待被邀请人激活后再发送
 
     var parentResult = await window.supabase
       .from('invites')
@@ -1205,10 +1278,7 @@ async function processInvite(newUserId) {
         if (!parentUserResult.error && parentUserResult.data) {
           var parentInviter = parentUserResult.data;
           var level2Done = await grantInviteReward(parentInviter, newUserId, 2, level2Reward);
-          if (level2Done) {
-            await writeInviteNotification(parentInviter.id, '你成功邀请的一位好友进一步扩展了邀请网络，获得二级邀请奖励', 'invite', newUserId);
-            writeInviteBroadcast(parentInviter.id, '你的二级邀请关系产生了奖励', level2Reward);
-          }
+          // 不立即发送通知和广播，等待被邀请人激活后再发送
         }
       }
     }
@@ -1228,6 +1298,7 @@ async function processInvite(newUserId) {
 }
 
 window.coinrealmProcessInvite = processInvite;
+window.coinrealmCheckAndActivateInvite = checkAndActivateInvite;
 
 async function processPendingInviteRegistration() {
   console.log('邀请处理-processPendingInviteRegistration 开始');
@@ -4858,6 +4929,11 @@ async function handleDailyCheckin() {
         if (insertResult.error) {
             alert(formatCheckinText('checkin_fail') + insertResult.error.message);
             return { ok: false };
+        }
+        
+        // 检查并激活邀请奖励
+        if (typeof window.coinrealmCheckAndActivateInvite === 'function') {
+          await window.coinrealmCheckAndActivateInvite(userId);
         }
 
         var updateResult = await window.supabase
@@ -11601,6 +11677,14 @@ window.addEventListener('hashchange', function () {
             id: submissionId
           });
         }
+        
+        // 任务批准后，检查并激活邀请奖励
+        if (subStatus === 'approved' && typeof window.coinrealmCheckAndActivateInvite === 'function') {
+          window.coinrealmCheckAndActivateInvite(workerId).catch(function(err) {
+            console.warn('任务批准后激活邀请奖励失败:', err);
+          });
+        }
+        
         return;
       }
 

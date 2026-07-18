@@ -31,7 +31,7 @@
       iv_lb_empty: '暂无排行数据',
       iv_lb_coming_soon: '🏆 邀请排行榜即将开放',
       iv_share_headline: '邀请好友，赚取 CRLM',
-      iv_reward_desc: '一级奖励：{level1} CRLM/人，二级奖励：{level2} CRLM/人',
+      iv_reward_desc: '一级奖励：{level1} CRLM/人（已激活 {level1Count} 人），二级奖励：{level2} CRLM/人（已激活 {level2Count} 人）',
       iv_stat_invites: '累计邀请',
       iv_stat_reward: '累计奖励',
       iv_invite_count: '{count} 人',
@@ -40,6 +40,7 @@
       iv_friends_title: '我邀请的好友',
       iv_rewards_title: '邀请奖励记录',
       iv_reward_amount: '+{amount} CRLM',
+      iv_reward_pending: '奖励发放中',
       iv_level_tag: 'L{level}',
       iv_alert_copied: '已复制！',
       iv_alert_share: '已复制链接，即将跳转...',
@@ -50,7 +51,7 @@
       iv_no_rewards: '暂无奖励记录',
       iv_airdrop: '空投',
       iv_airdrop_claimed: '已领取',
-      iv_airdrop_hint: '每日可领取一次空投，获得随机 CRLM 奖励',
+      iv_airdrop_hint: '请完成一次任意任务升级到 Lv.2 后，每日可领取一次空投，获得随机 CRLM 奖励',
       iv_airdrop_hint_level2: '升级到 Lv.2 后，每日可领取一次空投，获得随机 CRLM 奖励',
       iv_airdrop_hint_daily_task: '每日完成至少一个任务后，可领取一次空投，获得随机 CRLM 奖励',
       iv_airdrop_level_required: '请先完成任务升级到 Lv.2，即可每日领取空投',
@@ -74,7 +75,7 @@
       iv_lb_empty: 'No leaderboard data yet',
       iv_lb_coming_soon: '🏆 Invite leaderboard coming soon',
       iv_share_headline: 'Invite friends, earn CRLM',
-      iv_reward_desc: 'Level 1: {level1} CRLM each, Level 2: {level2} CRLM each',
+      iv_reward_desc: 'Level 1: {level1} CRLM each ({level1Count} activated), Level 2: {level2} CRLM each ({level2Count} activated)',
       iv_stat_invites: 'Total invites',
       iv_stat_reward: 'Total rewards',
       iv_invite_count: '{count}',
@@ -83,6 +84,7 @@
       iv_friends_title: 'My invites',
       iv_rewards_title: 'Reward history',
       iv_reward_amount: '+{amount} CRLM',
+      iv_reward_pending: 'Reward pending',
       iv_level_tag: 'L{level}',
       iv_alert_copied: 'Copied!',
       iv_alert_share: 'Link copied, redirecting...',
@@ -93,7 +95,7 @@
       iv_no_rewards: 'No reward records yet',
       iv_airdrop: 'Airdrop',
       iv_airdrop_claimed: 'Claimed',
-      iv_airdrop_hint: 'Claim one daily airdrop for a random CRLM reward',
+      iv_airdrop_hint: 'Complete any task to reach Lv.2, then claim your daily airdrop with random CRLM rewards',
       iv_airdrop_hint_level2: 'Reach Lv.2 to claim one daily airdrop for a random CRLM reward',
       iv_airdrop_hint_daily_task: 'Complete at least one task daily to claim a random CRLM airdrop',
       iv_airdrop_level_required: 'Reach Lv.2 to claim your daily airdrop',
@@ -449,42 +451,54 @@
           var inviteeIds = level1Rows.map(function (row) { return row.invitee_id; }).filter(Boolean);
           var uniqueIds = inviteeIds.filter(function (id, index) { return inviteeIds.indexOf(id) === index; });
 
-          var buildData = function (userMap) {
-            var friends = level1Rows.map(function (row) {
-              var user = userMap[row.invitee_id] || {};
-              return {
-                username: user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'Unknown'),
-                registeredAt: row.created_at ? String(row.created_at).slice(0, 10) : '—',
-                reward: Number(row.reward_amount) || 0
-              };
-            });
+            var buildData = function (userMap) {
+              var friends = level1Rows.map(function (row) {
+                var user = userMap[row.invitee_id] || {};
+                return {
+                  username: user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'Unknown'),
+                  registeredAt: row.created_at ? String(row.created_at).slice(0, 10) : '—',
+                  reward: Number(row.reward_amount) || 0,
+                  isActivated: Boolean(row.is_activated) // 新增：激活状态
+                };
+              });
 
-            var rewardRecords = inviteRows.map(function (row) {
-              var user = userMap[row.invitee_id] || {};
-              return {
-                level: Number(row.level) || 1,
-                username: user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'User'),
-                reward: Number(row.reward_amount) || 0,
-                createdAt: row.created_at ? String(row.created_at).slice(0, 16).replace('T', ' ') : '—'
-              };
-            });
+              var rewardRecords = inviteRows.map(function (row) {
+                var user = userMap[row.invitee_id] || {};
+                return {
+                  level: Number(row.level) || 1,
+                  username: user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'User'),
+                  reward: Number(row.reward_amount) || 0,
+                  createdAt: row.created_at ? String(row.created_at).slice(0, 16).replace('T', ' ') : '—',
+                  isActivated: Boolean(row.is_activated) // 新增：激活状态
+                };
+              });
 
-            return {
-              loggedIn: true,
-              userId: userId,
-              settings: settings,
-              showInviteLeaderboard: showInviteLeaderboard,
-              inviteCount: Number(userResult.data.invite_count) || friends.length,
-              totalReward: inviteRows.reduce(function (sum, row) {
-                return sum + (Number(row.reward_amount) || 0);
-              }, 0),
-              friends: friends,
-              rewardRecords: rewardRecords,
-              miningRecords: checkinsResult.error ? [] : (checkinsResult.data || []),
-              leaderboard: leaderboard || [],
-              myRank: myRank
+              // 新增：计算各级别的已激活人数
+              var level1ActivatedCount = inviteRows.filter(function (row) {
+                return Number(row.level) === 1 && Boolean(row.is_activated);
+              }).length;
+              var level2ActivatedCount = inviteRows.filter(function (row) {
+                return Number(row.level) === 2 && Boolean(row.is_activated);
+              }).length;
+
+              return {
+                loggedIn: true,
+                userId: userId,
+                settings: settings,
+                showInviteLeaderboard: showInviteLeaderboard,
+                inviteCount: Number(userResult.data.invite_count) || friends.length,
+                totalReward: inviteRows.reduce(function (sum, row) {
+                  return sum + (Number(row.reward_amount) || 0);
+                }, 0),
+                level1ActivatedCount: level1ActivatedCount, // 新增：一级已激活人数
+                level2ActivatedCount: level2ActivatedCount, // 新增：二级已激活人数
+                friends: friends,
+                rewardRecords: rewardRecords,
+                miningRecords: checkinsResult.error ? [] : (checkinsResult.data || []),
+                leaderboard: leaderboard || [],
+                myRank: myRank
+              };
             };
-          };
 
           if (!uniqueIds.length) {
             return buildData({});
@@ -540,9 +554,16 @@
     var descEl = document.getElementById('iv-reward-desc');
     if (!descEl) return;
     var settings = (inviteData && inviteData.settings) || INVITE_SETTINGS_DEFAULTS;
+    var level1Reward = Number(settings.invite_level1_reward) || INVITE_SETTINGS_DEFAULTS.invite_level1_reward;
+    var level2Reward = Number(settings.invite_level2_reward) || INVITE_SETTINGS_DEFAULTS.invite_level2_reward;
+    var level1Count = (inviteData && inviteData.level1ActivatedCount) || 0;
+    var level2Count = (inviteData && inviteData.level2ActivatedCount) || 0;
+    
     descEl.textContent = ivT('iv_reward_desc', {
-      level1: formatNumber(Number(settings.invite_level1_reward) || INVITE_SETTINGS_DEFAULTS.invite_level1_reward),
-      level2: formatNumber(Number(settings.invite_level2_reward) || INVITE_SETTINGS_DEFAULTS.invite_level2_reward)
+      level1: formatNumber(level1Reward),
+      level2: formatNumber(level2Reward),
+      level1Count: level1Count,
+      level2Count: level2Count
     });
   }
 
@@ -702,13 +723,26 @@
 
       listEl.innerHTML = friends.map(function (friend) {
         var safeName = typeof escapeHtml === 'function' ? escapeHtml(friend.username) : friend.username;
+        var rewardText;
+        var rewardClass;
+        
+        if (friend.isActivated) {
+          // 已激活：显示金色奖励金额
+          rewardText = ivT('iv_reward_amount', { amount: formatNumber(friend.reward) });
+          rewardClass = 'iv-record-reward iv-record-reward-activated';
+        } else {
+          // 未激活：显示灰色"奖励发放中"
+          rewardText = ivT('iv_reward_pending');
+          rewardClass = 'iv-record-reward iv-record-reward-pending';
+        }
+        
         return (
           '<li class="invite-record-item">' +
             '<div class="iv-lb-info">' +
               '<span class="iv-lb-name">' + safeName + '</span>' +
               '<span class="iv-lb-meta">' + friend.registeredAt + '</span>' +
             '</div>' +
-            '<span class="iv-record-reward">' + ivT('iv_reward_amount', { amount: formatNumber(friend.reward) }) + '</span>' +
+            '<span class="' + rewardClass + '">' + rewardText + '</span>' +
           '</li>'
         );
       }).join('');
