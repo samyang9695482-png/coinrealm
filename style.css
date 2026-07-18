@@ -516,10 +516,13 @@ img {
     position: absolute;
     width: 100%;
     animation: scrollBroadcast 12s linear infinite;
+    display: flex;
+    flex-direction: column;
 }
 .broadcast-item {
     height: 60px;
-    line-height: 60px;
+    display: flex;
+    align-items: center;
     padding-left: 24px;
     color: #333333;
     font-size: 14px;
