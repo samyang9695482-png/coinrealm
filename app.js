@@ -3154,62 +3154,98 @@ async function grantSimpleTaskRewards(task, userId, options) {
         return { alreadyRewarded: true };
     }
 
-    var shouldIncrementParticipants = options.incrementParticipants !== false
-        && priorStatus !== 'submitted';
+    // 只查询确定存在的字段，避免 stake_amount / deposit_amount 等导致 400
+    var taskInfoResult = await window.supabase
+        .from('tasks')
+        .select('id, title, reward_amount, reward_type, max_participants, publisher_id, current_participants')
+        .eq('id', taskId)
+        .maybeSingle();
 
-    if (shouldIncrementParticipants) {
-        var taskResult = await window.supabase
+    console.log('任务信息查询结果：', taskInfoResult.data || taskInfoResult);
+
+    if (taskInfoResult.error) {
+        console.error('任务信息查询失败（完整错误）：', taskInfoResult.error);
+        // 兜底：去掉可能不存在的 current_participants 再查一次
+        taskInfoResult = await window.supabase
             .from('tasks')
-            .select('current_participants, title, reward_amount, reward_type, max_participants')
+            .select('id, title, reward_amount, reward_type, max_participants, publisher_id')
             .eq('id', taskId)
             .maybeSingle();
-
-        if (!taskResult.error && taskResult.data) {
-            var current = Number(taskResult.data.current_participants) || 0;
-            await window.supabase
-                .from('tasks')
-                .update({ current_participants: current + 1 })
-                .eq('id', taskId);
-            task.current_participants = current + 1;
-            if (!task.title) task.title = taskResult.data.title;
-            if (task.reward_amount == null) task.reward_amount = taskResult.data.reward_amount;
-            if (task.reward_type == null) task.reward_type = taskResult.data.reward_type;
-            if (task.max_participants == null) task.max_participants = taskResult.data.max_participants;
+        console.log('任务信息查询结果：', taskInfoResult.data || taskInfoResult);
+        if (taskInfoResult.error) {
+            console.error('任务信息二次查询仍失败：', taskInfoResult.error);
+            return false;
         }
     }
 
-    if (task.max_participants == null || task.reward_amount == null) {
-        var rewardTaskResult = await window.supabase
-            .from('tasks')
-            .select('title, reward_amount, reward_type, max_participants')
-            .eq('id', taskId)
-            .maybeSingle();
+    var taskData = taskInfoResult.data || {};
+    console.log('任务信息查询结果：', taskData);
 
-        if (!rewardTaskResult.error && rewardTaskResult.data) {
-            if (!task.title) task.title = rewardTaskResult.data.title;
-            if (task.reward_amount == null) task.reward_amount = rewardTaskResult.data.reward_amount;
-            if (task.reward_type == null) task.reward_type = rewardTaskResult.data.reward_type;
-            if (task.max_participants == null) task.max_participants = rewardTaskResult.data.max_participants;
+    if (taskData.title) task.title = taskData.title;
+    if (taskData.reward_amount != null) task.reward_amount = taskData.reward_amount;
+    if (taskData.reward_type != null) task.reward_type = taskData.reward_type;
+    if (taskData.max_participants != null) task.max_participants = taskData.max_participants;
+    if (taskData.publisher_id != null) task.publisher_id = taskData.publisher_id;
+    if (taskData.current_participants != null) task.current_participants = taskData.current_participants;
+
+    var shouldIncrementParticipants = options.incrementParticipants !== false
+        && priorStatus !== 'submitted'
+        && taskData.current_participants != null;
+
+    if (shouldIncrementParticipants) {
+        var current = Number(taskData.current_participants) || 0;
+        var bumpResult = await window.supabase
+            .from('tasks')
+            .update({ current_participants: current + 1 })
+            .eq('id', taskId);
+        if (bumpResult.error) {
+            console.warn('更新任务参与人数失败：', bumpResult.error);
+        } else {
+            task.current_participants = current + 1;
         }
     }
 
     var rewardAmount = calculatePerParticipantReward(task);
 
     if (options.creditRewardClient !== false) {
-        var userResult = await window.supabase
-            .from('users')
-            .select('crlm_balance, usdt_balance')
-            .eq('id', userId)
-            .maybeSingle();
+        if (!(rewardAmount > 0)) {
+            console.warn('任务奖励金额为 0，跳过余额更新：', { taskId: taskId, userId: userId, task: task });
+        } else {
+            var userResult = await window.supabase
+                .from('users')
+                .select('crlm_balance, usdt_balance')
+                .eq('id', userId)
+                .maybeSingle();
 
-        if (!userResult.error && userResult.data && rewardAmount > 0) {
+            if (userResult.error || !userResult.data) {
+                console.error('读取用户余额失败：', userResult.error || 'no user data', { userId: userId });
+                return false;
+            }
+
             var rewardType = String(task.reward_type || 'CRLM').toUpperCase();
             var balanceField = rewardType === 'USDT' ? 'usdt_balance' : 'crlm_balance';
             var currentBalance = Number(userResult.data[balanceField]) || 0;
+            var newBalance = currentBalance + rewardAmount;
+
+            console.log('准备更新余额：', userId, currentBalance, rewardAmount, newBalance);
+
             var patch = {};
-            patch[balanceField] = currentBalance + rewardAmount;
-            await window.supabase.from('users').update(patch).eq('id', userId);
-            console.log('简单任务自动审核发奖：', { taskId: taskId, userId: userId, rewardAmount: rewardAmount });
+            patch[balanceField] = newBalance;
+
+            var updateResult = await window.supabase
+                .from('users')
+                .update(patch)
+                .eq('id', userId)
+                .select(balanceField);
+
+            console.log('余额更新结果：', updateResult);
+
+            if (updateResult.error) {
+                console.error('余额更新失败（完整错误）：', updateResult.error);
+                return false;
+            }
+
+            console.log('简单任务自动审核发奖：', { taskId: taskId, userId: userId, rewardAmount: rewardAmount, newBalance: newBalance });
         }
     }
 
@@ -3325,9 +3361,15 @@ async function verifyTwitterTask(taskId, userId) {
         if (verified) {
             var taskResult = await window.supabase
                 .from('tasks')
-                .select('*')
+                .select('id, title, reward_amount, reward_type, max_participants, publisher_id, type, task_type, category, platform, verification_type, current_participants')
                 .eq('id', taskId)
                 .maybeSingle();
+
+            console.log('任务信息查询结果：', taskResult.data || taskResult);
+
+            if (taskResult.error) {
+                console.error('verifyTwitterTask 任务查询失败：', taskResult.error);
+            }
 
             if (taskResult.data && isSimpleAutoApprovalTask(taskResult.data)) {
                 await applyTwitterVerificationSuccess(taskResult.data, userId, {
@@ -3368,9 +3410,16 @@ async function maybeFinalizeSimpleTaskAfterWorkerVerify(taskId, userId, submissi
 
     var taskResult = await window.supabase
         .from('tasks')
-        .select('*')
+        .select('id, title, reward_amount, reward_type, max_participants, publisher_id, type, task_type, category, platform, verification_type, current_participants')
         .eq('id', taskId)
         .maybeSingle();
+
+    console.log('任务信息查询结果：', taskResult.data || taskResult);
+
+    if (taskResult.error) {
+        console.error('maybeFinalizeSimpleTaskAfterWorkerVerify 任务查询失败：', taskResult.error);
+        return false;
+    }
 
     if (!taskResult.data || !isSimpleAutoApprovalTask(taskResult.data)) return false;
 
@@ -3973,8 +4022,12 @@ async function submitTaskProofSubmission(options) {
             .eq('id', taskId)
             .maybeSingle();
 
+        console.log('任务信息查询结果：', taskResult.data || taskResult);
+
         if (!taskResult.error && taskResult.data) {
             taskRecord = Object.assign({}, taskRecord || {}, taskResult.data);
+        } else if (taskResult.error) {
+            console.error('提交凭证时任务查询失败：', taskResult.error);
         }
     }
 
@@ -5536,12 +5589,16 @@ window.addEventListener('hashchange', function () {
     try {
       var publishedResult = await window.supabase
         .from('tasks')
-        .select('id, title, created_at, reward_amount, reward_type, stake_amount, deposit_amount, max_participants, current_participants, status')
+        .select('id, title, created_at, reward_amount, reward_type, max_participants, current_participants, status, publisher_id')
         .eq('publisher_id', userId)
         .order('created_at', { ascending: false })
         .limit(queryLimit);
 
-      if (!publishedResult.error) {
+      console.log('任务信息查询结果：', publishedResult.data || publishedResult);
+
+      if (publishedResult.error) {
+        console.error('余额明细：发布任务消耗查询失败（完整错误）：', publishedResult.error);
+      } else {
         (publishedResult.data || []).forEach(function (task) {
           if (!isCrlmLedgerTask(task)) return;
           var stakeAmount = resolveLedgerTaskStakeAmount(task);
@@ -5562,13 +5619,17 @@ window.addEventListener('hashchange', function () {
     try {
       var cancelledResult = await window.supabase
         .from('tasks')
-        .select('id, title, created_at, updated_at, reward_amount, reward_type, stake_amount, deposit_amount, max_participants, current_participants, status')
+        .select('id, title, created_at, updated_at, reward_amount, reward_type, max_participants, current_participants, status, publisher_id')
         .eq('publisher_id', userId)
         .eq('status', 'cancelled')
         .order('updated_at', { ascending: false })
         .limit(queryLimit);
 
-      if (!cancelledResult.error) {
+      console.log('任务信息查询结果：', cancelledResult.data || cancelledResult);
+
+      if (cancelledResult.error) {
+        console.error('余额明细：任务退款查询失败（完整错误）：', cancelledResult.error);
+      } else {
         (cancelledResult.data || []).forEach(function (task) {
           if (!isCrlmLedgerTask(task)) return;
           var refundAmount = calculateLedgerTaskRefund(task);
