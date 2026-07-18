@@ -3136,8 +3136,85 @@ function notifySubmissionStatusChanged(payload) {
 
 window.coinrealmNotifySubmissionStatusChanged = notifySubmissionStatusChanged;
 
-/** 任务发奖：最近一次余额成功入账（用于审核路径防重复，与邀请无关） */
+/** 任务发奖：最近一次余额成功入账（本会话防重复，与邀请无关） */
 var lastTaskBalanceCreditMeta = null;
+
+/** 任务发奖：只查确定存在的字段，避免 400 / 空结果 */
+var TASK_REWARD_SELECT_FIELDS = 'id, title, reward_amount, reward_type, max_participants, publisher_id';
+
+/**
+ * 解析任务 ID：兼容 id / task_id / taskId，避免变量名写错导致查空
+ */
+function resolveRewardTaskId(taskRef) {
+    if (taskRef == null || taskRef === '') return null;
+    if (typeof taskRef === 'string' || typeof taskRef === 'number') {
+        var raw = String(taskRef).trim();
+        return raw || null;
+    }
+    if (typeof taskRef !== 'object') return null;
+    var candidate = taskRef.id != null ? taskRef.id
+        : (taskRef.task_id != null ? taskRef.task_id
+            : (taskRef.taskId != null ? taskRef.taskId : null));
+    if (candidate == null || candidate === '') return null;
+    return String(candidate).trim() || null;
+}
+
+/**
+ * 查询任务发奖所需字段；空数组 / null 时做一次 list 兜底
+ */
+async function fetchTaskDataForReward(taskId) {
+    console.log('任务发奖-查询参数：', taskId);
+
+    if (!window.supabase || !taskId) {
+        console.error('任务发奖-查询失败：缺少 supabase 或 taskId', { taskId: taskId });
+        return { data: null, error: 'missing_params' };
+    }
+
+    var taskInfoResult = await window.supabase
+        .from('tasks')
+        .select(TASK_REWARD_SELECT_FIELDS)
+        .eq('id', taskId)
+        .maybeSingle();
+
+    if (taskInfoResult.error) {
+        console.error('任务发奖-查询 tasks 失败（完整错误）：', taskInfoResult.error);
+        return { data: null, error: taskInfoResult.error };
+    }
+
+    var taskData = taskInfoResult.data;
+    // 兼容异常返回 []：空数组在 JS 中为 truthy，需显式判断
+    if (Array.isArray(taskData)) {
+        console.log('任务发奖-查询结果：', taskData);
+        taskData = taskData.length ? taskData[0] : null;
+    }
+
+    if (!taskData || !taskData.id) {
+        var listResult = await window.supabase
+            .from('tasks')
+            .select(TASK_REWARD_SELECT_FIELDS)
+            .eq('id', taskId)
+            .limit(1);
+
+        console.log('任务发奖-查询结果：', listResult.data || listResult);
+
+        if (listResult.error) {
+            console.error('任务发奖-查询 tasks 兜底失败（完整错误）：', listResult.error);
+            return { data: null, error: listResult.error };
+        }
+
+        var rows = listResult.data || [];
+        taskData = rows.length ? rows[0] : null;
+    } else {
+        console.log('任务发奖-查询结果：', taskData);
+    }
+
+    if (!taskData || !taskData.id) {
+        console.error('任务发奖失败：tasks 无数据（请检查 taskId 是否等于 tasks.id）', { taskId: taskId });
+        return { data: null, error: 'task_not_found' };
+    }
+
+    return { data: taskData, error: null };
+}
 
 /**
  * 任务奖励入账：查询 tasks 安全字段后更新 users.crlm_balance
@@ -3150,32 +3227,36 @@ async function creditTaskRewardToUser(userId, taskRef, options) {
         return { ok: false, error: 'missing_params' };
     }
 
-    var taskId = typeof taskRef === 'object' && taskRef ? taskRef.id : taskRef;
+    var taskId = resolveRewardTaskId(taskRef);
     if (!taskId) {
-        console.error('任务发奖失败：缺少 taskId');
+        console.error('任务发奖失败：缺少 taskId（检查 id / task_id）', { taskRef: taskRef });
         return { ok: false, error: 'missing_task_id' };
     }
 
-    var taskInfoResult = await window.supabase
-        .from('tasks')
-        .select('id, title, reward_amount, reward_type, max_participants, publisher_id')
-        .eq('id', taskId)
-        .maybeSingle();
-
-    if (taskInfoResult.error) {
-        console.error('任务发奖-查询 tasks 失败（完整错误）：', taskInfoResult.error);
-        return { ok: false, error: taskInfoResult.error };
+    // 本会话同一任务已入账则跳过，防止 Worker 提前 approved 后重复发放
+    if (lastTaskBalanceCreditMeta
+        && String(lastTaskBalanceCreditMeta.taskId) === String(taskId)
+        && String(lastTaskBalanceCreditMeta.userId) === String(userId)
+        && (Date.now() - (lastTaskBalanceCreditMeta.at || 0)) < 120000) {
+        console.log('任务发奖：本会话已入账，跳过重复更新', lastTaskBalanceCreditMeta);
+        return {
+            ok: true,
+            alreadyCredited: true,
+            rewardAmount: lastTaskBalanceCreditMeta.rewardAmount,
+            taskData: { id: taskId },
+            title: ''
+        };
     }
 
-    var taskData = taskInfoResult.data || {};
-    console.log('任务发奖-查询结果：', taskData);
-
-    if (!taskData.id) {
-        console.error('任务发奖失败：tasks 无数据', { taskId: taskId });
-        return { ok: false, error: 'task_not_found' };
+    var fetched = await fetchTaskDataForReward(taskId);
+    if (fetched.error || !fetched.data) {
+        return { ok: false, error: fetched.error || 'task_not_found' };
     }
 
+    var taskData = fetched.data;
     var task = Object.assign({}, typeof taskRef === 'object' && taskRef ? taskRef : {}, taskData);
+    if (!task.id) task.id = taskData.id;
+
     var rewardAmount = typeof calculatePerParticipantReward === 'function'
         ? calculatePerParticipantReward(task)
         : (Number(task.reward_amount) || 0);
@@ -3236,23 +3317,40 @@ async function creditTaskRewardToUser(userId, taskRef, options) {
 }
 
 window.coinrealmCreditTaskRewardToUser = creditTaskRewardToUser;
+window.coinrealmResolveRewardTaskId = resolveRewardTaskId;
 
 async function grantSimpleTaskRewards(task, userId, options) {
     options = options || {};
-    if (!window.supabase || !task || !task.id || !userId) return false;
+    if (!window.supabase || !task || !userId) return false;
 
-    var taskId = task.id;
-    var priorStatus = options.priorStatus || '';
+    var taskId = resolveRewardTaskId(task);
+    if (!taskId) {
+        console.error('任务发奖失败：task 缺少 id/task_id', { task: task });
+        return false;
+    }
+    if (!task.id) task.id = taskId;
+
+    var priorStatus = String(options.priorStatus || '').toLowerCase();
 
     var duplicateResult = await checkTaskRewardDuplicate(taskId, userId);
     if (duplicateResult.alreadyRewarded) {
-        notifySubmissionStatusChanged({
+        // Worker 常会先把 submission 写成 approved，再由客户端发奖。
+        // 若 priorStatus 本来就不是 approved，说明余额可能尚未入账，不能跳过。
+        if (priorStatus === 'approved' && !options.forceCredit) {
+            notifySubmissionStatusChanged({
+                taskId: taskId,
+                userId: userId,
+                status: 'approved',
+                path: options.path || 'grantSimpleTaskRewards-duplicate'
+            });
+            return { alreadyRewarded: true };
+        }
+        console.log('任务发奖：DB 已是 approved（可能由 Worker 提前写入），继续发放余额', {
             taskId: taskId,
             userId: userId,
-            status: 'approved',
-            path: options.path || 'grantSimpleTaskRewards-duplicate'
+            priorStatus: priorStatus,
+            path: options.path || 'grantSimpleTaskRewards'
         });
-        return { alreadyRewarded: true };
     }
 
     var creditResult = { ok: true, rewardAmount: 0, title: task.title || '' };
@@ -3271,12 +3369,7 @@ async function grantSimpleTaskRewards(task, userId, options) {
             if (creditResult.taskData.publisher_id != null) task.publisher_id = creditResult.taskData.publisher_id;
         }
     } else {
-        var infoOnly = await window.supabase
-            .from('tasks')
-            .select('id, title, reward_amount, reward_type, max_participants, publisher_id')
-            .eq('id', taskId)
-            .maybeSingle();
-        console.log('任务发奖-查询结果：', infoOnly.data || infoOnly);
+        var infoOnly = await fetchTaskDataForReward(taskId);
         if (infoOnly.error) {
             console.error('任务发奖-查询 tasks 失败（完整错误）：', infoOnly.error);
         } else if (infoOnly.data) {
@@ -3426,28 +3519,45 @@ async function verifyTwitterTask(taskId, userId) {
         var submissionRow = await loadUserSubmissionForTask(taskId, userId);
 
         if (verified) {
+            // Worker 可能已把 submission 写成 approved；客户端仍须发奖入账
+            var priorForGrant = submissionRow && submissionRow.status ? submissionRow.status : 'pending';
             var taskResult = await window.supabase
                 .from('tasks')
-                .select('id, title, reward_amount, reward_type, max_participants, publisher_id, type, task_type, category, platform, verification_type, current_participants')
+                .select(TASK_REWARD_SELECT_FIELDS + ', type, platform')
                 .eq('id', taskId)
                 .maybeSingle();
 
-            console.log('任务信息查询结果：', taskResult.data || taskResult);
+            console.log('任务发奖-查询参数：', taskId);
+            console.log('任务发奖-查询结果：', taskResult.data || taskResult);
 
             if (taskResult.error) {
-                console.error('verifyTwitterTask 任务查询失败：', taskResult.error);
+                console.error('verifyTwitterTask 任务查询失败（完整错误）：', taskResult.error);
+                // 字段不兼容时回退到安全字段，保证仍能发奖
+                taskResult = await window.supabase
+                    .from('tasks')
+                    .select(TASK_REWARD_SELECT_FIELDS)
+                    .eq('id', taskId)
+                    .maybeSingle();
+                console.log('任务发奖-查询结果：', taskResult.data || taskResult);
             }
 
-            if (taskResult.data && isSimpleAutoApprovalTask(taskResult.data)) {
-                await applyTwitterVerificationSuccess(taskResult.data, userId, {
-                    priorStatus: submissionRow && submissionRow.status ? submissionRow.status : 'pending',
-                    creditRewardClient: true,
-                    submissionId: submissionRow && submissionRow.id,
-                    path: 'verifyTwitterTask'
-                });
-
-                submissionRow = await loadUserSubmissionForTask(taskId, userId);
+            var taskForGrant = taskResult.data;
+            if (Array.isArray(taskForGrant)) {
+                taskForGrant = taskForGrant.length ? taskForGrant[0] : null;
             }
+            if (!taskForGrant || !taskForGrant.id) {
+                taskForGrant = { id: taskId };
+            }
+
+            await applyTwitterVerificationSuccess(taskForGrant, userId, {
+                priorStatus: priorForGrant === 'approved' ? 'pending' : priorForGrant,
+                creditRewardClient: true,
+                forceCredit: priorForGrant === 'approved',
+                submissionId: submissionRow && submissionRow.id,
+                path: 'verifyTwitterTask'
+            });
+
+            submissionRow = await loadUserSubmissionForTask(taskId, userId);
         }
 
         var submissionStatus = submissionRow && submissionRow.status
@@ -3475,20 +3585,39 @@ async function verifyTwitterTask(taskId, userId) {
 async function maybeFinalizeSimpleTaskAfterWorkerVerify(taskId, userId, submissionId) {
     if (!window.supabase || !taskId || !userId) return false;
 
+    console.log('任务发奖-查询参数：', taskId);
     var taskResult = await window.supabase
         .from('tasks')
-        .select('id, title, reward_amount, reward_type, max_participants, publisher_id, type, task_type, category, platform, verification_type, current_participants')
+        .select(TASK_REWARD_SELECT_FIELDS + ', type, platform')
         .eq('id', taskId)
         .maybeSingle();
 
-    console.log('任务信息查询结果：', taskResult.data || taskResult);
+    console.log('任务发奖-查询结果：', taskResult.data || taskResult);
 
     if (taskResult.error) {
-        console.error('maybeFinalizeSimpleTaskAfterWorkerVerify 任务查询失败：', taskResult.error);
+        console.error('maybeFinalizeSimpleTaskAfterWorkerVerify 任务查询失败（完整错误）：', taskResult.error);
+        taskResult = await window.supabase
+            .from('tasks')
+            .select(TASK_REWARD_SELECT_FIELDS)
+            .eq('id', taskId)
+            .maybeSingle();
+        console.log('任务发奖-查询结果：', taskResult.data || taskResult);
+        if (taskResult.error) {
+            console.error('maybeFinalizeSimpleTaskAfterWorkerVerify 二次查询仍失败：', taskResult.error);
+            return false;
+        }
+    }
+
+    var taskData = taskResult.data;
+    if (Array.isArray(taskData)) {
+        taskData = taskData.length ? taskData[0] : null;
+    }
+    if (!taskData || !taskData.id) {
+        console.error('maybeFinalizeSimpleTaskAfterWorkerVerify：tasks 无数据', { taskId: taskId });
         return false;
     }
 
-    if (!taskResult.data || !isSimpleAutoApprovalTask(taskResult.data)) return false;
+    if (!isSimpleAutoApprovalTask(taskData)) return false;
 
     var submissionRow = null;
     if (submissionId) {
@@ -3509,12 +3638,15 @@ async function maybeFinalizeSimpleTaskAfterWorkerVerify(taskId, userId, submissi
     }
 
     if (!submissionRow || !submissionRow.id) return false;
-    if (submissionRow.status === 'approved') return true;
 
-    return finalizeSimpleTaskSubmission(taskResult.data, userId, {
-        priorStatus: submissionRow.status || 'pending',
+    var priorStatus = submissionRow.status || 'pending';
+    // Worker 可能已提前写成 approved：仍要走发奖，不能直接 return
+    return finalizeSimpleTaskSubmission(taskData, userId, {
+        priorStatus: priorStatus === 'approved' ? 'pending' : priorStatus,
         submissionId: submissionRow.id,
-        creditRewardClient: true
+        creditRewardClient: true,
+        forceCredit: priorStatus === 'approved',
+        path: 'maybeFinalizeSimpleTaskAfterWorkerVerify'
     });
 }
 
@@ -3790,20 +3922,27 @@ window.coinrealmCalculatePerParticipantReward = calculatePerParticipantReward;
 
 async function applyTwitterVerificationSuccess(task, userId, options) {
     options = options || {};
-    if (!window.supabase || !task || !task.id || !userId) return false;
+    if (!window.supabase || !task || !userId) return false;
 
-    var taskId = task.id;
+    var taskId = resolveRewardTaskId(task);
+    if (!taskId) {
+        console.error('applyTwitterVerificationSuccess：缺少 taskId', { task: task });
+        return false;
+    }
+    if (!task.id) task.id = taskId;
+
     var now = new Date().toISOString();
-    var priorStatus = options.priorStatus || '';
+    var priorStatus = String(options.priorStatus || '').toLowerCase();
 
-    if (priorStatus === 'approved') {
+    // 仅当调用前本地已知已是 approved，且未要求强制入账时，才整段跳过
+    if (priorStatus === 'approved' && !options.forceCredit) {
         console.log('防重复领取：提交状态已是 approved，跳过发奖', { taskId: taskId, userId: userId });
         notifySubmissionStatusChanged({ taskId: taskId, userId: userId, status: 'approved', path: options.path || 'applyTwitterVerificationSuccess-prior-approved' });
         return { alreadyRewarded: true };
     }
 
     var duplicateResult = await checkTaskRewardDuplicate(taskId, userId);
-    if (duplicateResult.alreadyRewarded) {
+    if (duplicateResult.alreadyRewarded && priorStatus === 'approved' && !options.forceCredit) {
         console.log('该用户已领取过奖励，跳过发奖', { taskId: taskId, userId: userId, path: options.path || 'applyTwitterVerificationSuccess' });
         notifySubmissionStatusChanged({
             taskId: taskId,
@@ -3814,10 +3953,20 @@ async function applyTwitterVerificationSuccess(task, userId, options) {
         return duplicateResult;
     }
 
+    if (duplicateResult.alreadyRewarded) {
+        console.log('任务发奖：DB 已是 approved（可能由 Worker 提前写入），继续发放余额', {
+            taskId: taskId,
+            userId: userId,
+            priorStatus: priorStatus,
+            path: options.path || 'applyTwitterVerificationSuccess'
+        });
+    }
+
     var grantResult = await grantSimpleTaskRewards(task, userId, {
-        priorStatus: priorStatus,
+        priorStatus: priorStatus === 'approved' ? 'pending' : priorStatus,
         creditRewardClient: options.creditRewardClient !== false,
         incrementParticipants: options.incrementParticipants,
+        forceCredit: !!options.forceCredit || (duplicateResult.alreadyRewarded && priorStatus !== 'approved'),
         path: options.path || 'applyTwitterVerificationSuccess-grant'
     });
 
@@ -3889,9 +4038,16 @@ async function finalizeSimpleTaskSubmission(task, userId, options) {
     options = options || {};
     if (!task || !userId) return false;
 
-    var taskId = task.id;
+    var taskId = resolveRewardTaskId(task);
+    if (!taskId) {
+        console.error('finalizeSimpleTaskSubmission：缺少 taskId', { task: task });
+        return false;
+    }
+    if (!task.id) task.id = taskId;
+
+    var priorStatus = String(options.priorStatus || 'pending').toLowerCase();
     var duplicateResult = await checkTaskRewardDuplicate(taskId, userId);
-    if (duplicateResult.alreadyRewarded) {
+    if (duplicateResult.alreadyRewarded && priorStatus === 'approved' && !options.forceCredit) {
         console.log('finalizeSimpleTaskSubmission: 该用户已领取过奖励，跳过', {
             taskId: taskId,
             userId: userId,
@@ -3906,11 +4062,10 @@ async function finalizeSimpleTaskSubmission(task, userId, options) {
         return duplicateResult;
     }
 
-    var priorStatus = options.priorStatus || 'pending';
     var approvedStatus = 'approved';
 
     console.log('简单任务提交，status：', approvedStatus, {
-        taskId: task.id,
+        taskId: taskId,
         userId: userId,
         submissionId: options.submissionId || null,
         priorStatus: priorStatus
@@ -3922,6 +4077,7 @@ async function finalizeSimpleTaskSubmission(task, userId, options) {
         submissionId: options.submissionId,
         skipStatusUpdate: options.skipStatusUpdate,
         incrementParticipants: options.incrementParticipants,
+        forceCredit: !!options.forceCredit,
         path: options.path || 'finalizeSimpleTaskSubmission'
     });
 }
@@ -4082,19 +4238,34 @@ async function submitTaskProofSubmission(options) {
     var taskType = '';
     var isSimpleAuto = false;
 
-    if (window.supabase && (!taskRecord || taskRecord.publisher_id == null)) {
+    if (window.supabase && (!taskRecord || taskRecord.publisher_id == null || taskRecord.reward_amount == null)) {
+        console.log('任务发奖-查询参数：', taskId);
         var taskResult = await window.supabase
             .from('tasks')
-            .select('id, title, type, task_type, category, platform, verification_type, reward_amount, reward_type, max_participants, current_participants, publisher_id')
+            .select(TASK_REWARD_SELECT_FIELDS + ', type, platform')
             .eq('id', taskId)
             .maybeSingle();
 
-        console.log('任务信息查询结果：', taskResult.data || taskResult);
+        console.log('任务发奖-查询结果：', taskResult.data || taskResult);
 
-        if (!taskResult.error && taskResult.data) {
-            taskRecord = Object.assign({}, taskRecord || {}, taskResult.data);
+        if (taskResult.error) {
+            console.error('提交凭证时任务查询失败（完整错误）：', taskResult.error);
+            taskResult = await window.supabase
+                .from('tasks')
+                .select(TASK_REWARD_SELECT_FIELDS)
+                .eq('id', taskId)
+                .maybeSingle();
+            console.log('任务发奖-查询结果：', taskResult.data || taskResult);
+        }
+
+        var fetchedTask = taskResult.data;
+        if (Array.isArray(fetchedTask)) {
+            fetchedTask = fetchedTask.length ? fetchedTask[0] : null;
+        }
+        if (!taskResult.error && fetchedTask) {
+            taskRecord = Object.assign({}, taskRecord || {}, fetchedTask);
         } else if (taskResult.error) {
-            console.error('提交凭证时任务查询失败：', taskResult.error);
+            console.error('提交凭证时任务二次查询仍失败：', taskResult.error);
         }
     }
 
