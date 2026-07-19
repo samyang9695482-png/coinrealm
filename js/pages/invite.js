@@ -19,6 +19,12 @@
   var miningRecordsExpanded = false;
   var rankBadges = ['🥇', '🥈', '🥉'];
 
+  // 从 window 获取默认值
+  var INVITE_SETTINGS_DEFAULTS = window.coinrealmInviteSettingsDefaults || {
+    invite_level1_reward: 50,
+    invite_level2_reward: 10
+  };
+
   var inviteTranslations = {
     zh: {
       iv_page_title: '邀请好友',
@@ -414,13 +420,17 @@
 
     inviteDataLoading = true;
 
+    // 使用 window 对象引用 app.js 中暴露的函数
+    var appFetchInviteSettings = window.coinrealmFetchInviteSettings || fetchInviteSettings;
+
     return Promise.all([
-      fetchInviteSettings(),
+      appFetchInviteSettings(),
       fetchShowInviteLeaderboard(),
       getCurrentUserId()
     ])
       .then(function (results) {
         var settings = results[0];
+        console.log('邀请页面-加载数据-settings:', settings);
         var showLeaderboardValue = results[1];
         var userId = results[2];
         var showInviteLeaderboard = isInviteLeaderboardEnabled(showLeaderboardValue);
@@ -554,8 +564,11 @@
     var descEl = document.getElementById('iv-reward-desc');
     if (!descEl) return;
     var settings = (inviteData && inviteData.settings) || INVITE_SETTINGS_DEFAULTS;
+    console.log('邀请奖励渲染-settings:', settings);
+    console.log('邀请奖励渲染-inviteData.settings:', inviteData ? inviteData.settings : 'null');
     var level1Reward = Number(settings.invite_level1_reward) || INVITE_SETTINGS_DEFAULTS.invite_level1_reward;
     var level2Reward = Number(settings.invite_level2_reward) || INVITE_SETTINGS_DEFAULTS.invite_level2_reward;
+    console.log('邀请奖励渲染-level1Reward:', level1Reward, 'level2Reward:', level2Reward);
     descEl.textContent = ivT('iv_reward_desc', {
       level1: formatNumber(level1Reward),
       level2: formatNumber(level2Reward)
