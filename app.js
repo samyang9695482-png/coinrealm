@@ -373,12 +373,17 @@ async function fetchInviteSettings() {
       .select('key, value')
       .in('key', keys);
 
+    console.log('邀请奖励设置-查询结果：', result);
+
     if (!result.error && result.data) {
       result.data.forEach(function (row) {
         if (row.key && row.value != null && row.value !== '') {
           settings[row.key] = Number(row.value);
         }
       });
+      console.log('邀请奖励设置-解析后：', settings);
+    } else if (result.error) {
+      console.error('邀请奖励设置-查询失败：', result.error);
     }
   } catch (settingsErr) {
     console.warn('读取邀请奖励设置失败:', settingsErr);
@@ -454,6 +459,8 @@ window.coinrealmIsInviteLeaderboardEnabled = function () {
 };
 window.coinrealmApplyLeaderboardMenuVisibility = applyLeaderboardMenuVisibility;
 window.coinrealmInvalidateShowInviteLeaderboardCache = invalidateShowInviteLeaderboardCache;
+window.coinrealmFetchInviteSettings = fetchInviteSettings;
+window.coinrealmInviteSettingsDefaults = INVITE_SETTINGS_DEFAULTS;
 
 var SHOW_EXCHANGE_DEFAULT = 'false';
 var SHOW_DIVIDENDS_DEFAULT = 'false';
