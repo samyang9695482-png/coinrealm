@@ -569,10 +569,7 @@
     var level1Reward = Number(settings.invite_level1_reward) || INVITE_SETTINGS_DEFAULTS.invite_level1_reward;
     var level2Reward = Number(settings.invite_level2_reward) || INVITE_SETTINGS_DEFAULTS.invite_level2_reward;
     console.log('邀请奖励渲染-level1Reward:', level1Reward, 'level2Reward:', level2Reward);
-    descEl.textContent = ivT('iv_reward_desc', {
-      level1: formatNumber(level1Reward),
-      level2: formatNumber(level2Reward)
-    });
+    descEl.textContent = '一级奖励：' + level1Reward + ' CRLM/人，二级奖励：' + level2Reward + ' CRLM/人';
   }
 
   function renderOverview() {
