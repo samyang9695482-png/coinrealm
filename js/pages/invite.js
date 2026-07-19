@@ -31,7 +31,7 @@
       iv_lb_empty: '暂无排行数据',
       iv_lb_coming_soon: '🏆 邀请排行榜即将开放',
       iv_share_headline: '邀请好友，赚取 CRLM',
-      iv_reward_desc: '一级奖励：{level1} CRLM/人（已激活 {level1Count} 人），二级奖励：{level2} CRLM/人（已激活 {level2Count} 人）',
+      iv_reward_desc: '一级奖励：{level1} CRLM/人，二级奖励：{level2} CRLM/人',
       iv_stat_invites: '累计邀请',
       iv_stat_reward: '累计奖励',
       iv_invite_count: '{count} 人',
@@ -75,7 +75,7 @@
       iv_lb_empty: 'No leaderboard data yet',
       iv_lb_coming_soon: '🏆 Invite leaderboard coming soon',
       iv_share_headline: 'Invite friends, earn CRLM',
-      iv_reward_desc: 'Level 1: {level1} CRLM each ({level1Count} activated), Level 2: {level2} CRLM each ({level2Count} activated)',
+      iv_reward_desc: 'Level 1: {level1} CRLM each, Level 2: {level2} CRLM each',
       iv_stat_invites: 'Total invites',
       iv_stat_reward: 'Total rewards',
       iv_invite_count: '{count}',
@@ -556,14 +556,9 @@
     var settings = (inviteData && inviteData.settings) || INVITE_SETTINGS_DEFAULTS;
     var level1Reward = Number(settings.invite_level1_reward) || INVITE_SETTINGS_DEFAULTS.invite_level1_reward;
     var level2Reward = Number(settings.invite_level2_reward) || INVITE_SETTINGS_DEFAULTS.invite_level2_reward;
-    var level1Count = (inviteData && inviteData.level1ActivatedCount) || 0;
-    var level2Count = (inviteData && inviteData.level2ActivatedCount) || 0;
-    
     descEl.textContent = ivT('iv_reward_desc', {
       level1: formatNumber(level1Reward),
-      level2: formatNumber(level2Reward),
-      level1Count: level1Count,
-      level2Count: level2Count
+      level2: formatNumber(level2Reward)
     });
   }
 
