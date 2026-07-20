@@ -721,7 +721,12 @@ function fetchTasks() {
 // ==========================================
 
 function initHomePageLogic() {
-    // A. 新用户引导条关闭处理逻辑
+    // A. 轮播广告区显示/隐藏控制
+    if (typeof window.coinrealmApplyAdsCarouselVisibility === 'function') {
+      window.coinrealmApplyAdsCarouselVisibility();
+    }
+
+    // B. 新用户引导条关闭处理逻辑
     const guideBar = document.getElementById('user-guide-bar');
     const closeGuideBtn = document.getElementById('close-guide-btn');
     
