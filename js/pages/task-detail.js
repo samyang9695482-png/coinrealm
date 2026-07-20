@@ -1728,18 +1728,7 @@
       return;
     }
 
-    var nextCount = current + 1;
-    var updateResult = await window.supabase
-      .from('tasks')
-      .update({ current_participants: nextCount })
-      .eq('id', taskId);
-
-    if (updateResult.error) {
-      alert(tdT('td_alert_claim_fail') + updateResult.error.message);
-      return;
-    }
-
-    currentTaskRecord.current_participants = nextCount;
+    // 不在领取时增加 current_participants，等审核通过后再增加
     currentSubmissionRecord = insertResult.data;
     currentUserId = userId;
     detailActionState = resolveDetailActionState(currentTaskRecord, currentSubmissionRecord, currentUserId);

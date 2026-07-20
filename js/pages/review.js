@@ -878,6 +878,22 @@
 
     await upgradeUserLevelOnTaskApproved(submission.user_id);
 
+    // 审核通过后增加任务名额
+    var taskUpdateResult = await window.supabase
+      .from('tasks')
+      .select('current_participants')
+      .eq('id', submission.task_id)
+      .maybeSingle();
+
+    if (!taskUpdateResult.error && taskUpdateResult.data) {
+      var currentCount = Number(taskUpdateResult.data.current_participants) || 0;
+      await window.supabase
+        .from('tasks')
+        .update({ current_participants: currentCount + 1 })
+        .eq('id', submission.task_id);
+      console.log('审核通过-任务名额已增加：', { taskId: submission.task_id, newCount: currentCount + 1 });
+    }
+
     writeBroadcast({
       user_id: submission.user_id,
       event_type: 'task_approved',
