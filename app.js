@@ -453,6 +453,54 @@ async function applyLeaderboardMenuVisibility() {
   }
 }
 
+// 控制轮播广告区显示/隐藏
+var cachedShowAdsCarousel = null;
+
+async function fetchShowAdsCarousel() {
+  if (cachedShowAdsCarousel !== null) return cachedShowAdsCarousel;
+
+  if (!window.supabase) {
+    cachedShowAdsCarousel = 'true';
+    return cachedShowAdsCarousel;
+  }
+
+  try {
+    var result = await window.supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'show_ads_carousel')
+      .maybeSingle();
+
+    if (result.error) {
+      cachedShowAdsCarousel = 'true';
+      return cachedShowAdsCarousel;
+    }
+
+    cachedShowAdsCarousel = result && result.data && result.data.value != null ? result.data.value : 'true';
+  } catch (err) {
+    cachedShowAdsCarousel = 'true';
+  }
+
+  return cachedShowAdsCarousel;
+}
+
+function invalidateShowAdsCarouselCache() {
+  cachedShowAdsCarousel = null;
+}
+
+async function applyAdsCarouselVisibility() {
+  var enabled = isSettingsFlagEnabled(await fetchShowAdsCarousel(), 'true');
+  var carouselEl = document.getElementById('ads-carousel');
+
+  if (carouselEl) {
+    if (enabled) {
+      carouselEl.classList.remove('hidden');
+    } else {
+      carouselEl.classList.add('hidden');
+    }
+  }
+}
+
 window.coinrealmFetchShowInviteLeaderboard = fetchShowInviteLeaderboard;
 window.coinrealmIsInviteLeaderboardEnabled = function () {
   return fetchShowInviteLeaderboard().then(isInviteLeaderboardEnabled);
@@ -461,6 +509,8 @@ window.coinrealmApplyLeaderboardMenuVisibility = applyLeaderboardMenuVisibility;
 window.coinrealmInvalidateShowInviteLeaderboardCache = invalidateShowInviteLeaderboardCache;
 window.coinrealmFetchInviteSettings = fetchInviteSettings;
 window.coinrealmInviteSettingsDefaults = INVITE_SETTINGS_DEFAULTS;
+window.coinrealmApplyAdsCarouselVisibility = applyAdsCarouselVisibility;
+window.coinrealmInvalidateShowAdsCarouselCache = invalidateShowAdsCarouselCache;
 
 var SHOW_EXCHANGE_DEFAULT = 'false';
 var SHOW_DIVIDENDS_DEFAULT = 'false';
@@ -5315,6 +5365,9 @@ function handleRoute() {
     if (getRouteBaseFromHash() !== 'home') return;
     initHomePageLogic();
     applyLanguageStrings();
+    if (typeof window.coinrealmApplyAdsCarouselVisibility === 'function') {
+      window.coinrealmApplyAdsCarouselVisibility();
+    }
 }
 
 function applyInitialRoute() {
@@ -9586,6 +9639,7 @@ window.addEventListener('hashchange', function () {
       ad_invite_level1: '一级奖励金额（CRLM）',
       ad_invite_level2: '二级奖励金额（CRLM）',
       ad_invite_show_leaderboard: '显示邀请排行榜',
+      ad_invite_show_ads_carousel: '显示轮播广告区',
       ad_btn_save_invite: '保存',
       ad_invite_save_ok: '邀请设置已保存',
       ad_invite_save_fail: '保存邀请设置失败：',
@@ -9714,6 +9768,7 @@ window.addEventListener('hashchange', function () {
       ad_invite_level1: 'Level 1 reward (CRLM)',
       ad_invite_level2: 'Level 2 reward (CRLM)',
       ad_invite_show_leaderboard: 'Show invite leaderboard',
+      ad_invite_show_ads_carousel: 'Show ads carousel',
       ad_btn_save_invite: 'Save',
       ad_invite_save_ok: 'Invite settings saved',
       ad_invite_save_fail: 'Failed to save invite settings: ',
@@ -10466,11 +10521,16 @@ window.addEventListener('hashchange', function () {
     var level2El = document.getElementById('ad-invite-level2');
     var showLeaderboardEl = document.getElementById('ad-invite-show-leaderboard');
     var showLeaderboardValue = await fetchShowInviteLeaderboard();
+    var showAdsCarouselEl = document.getElementById('ad-invite-show-ads-carousel');
+    var showAdsCarouselValue = await fetchShowAdsCarousel();
 
     if (level1El) level1El.value = String(settings.invite_level1_reward);
     if (level2El) level2El.value = String(settings.invite_level2_reward);
     if (showLeaderboardEl) {
       showLeaderboardEl.checked = isInviteLeaderboardEnabled(showLeaderboardValue);
+    }
+    if (showAdsCarouselEl) {
+      showAdsCarouselEl.checked = isSettingsFlagEnabled(showAdsCarouselValue, 'true');
     }
   }
 
@@ -10481,14 +10541,22 @@ window.addEventListener('hashchange', function () {
     var saveBtn = document.getElementById('ad-invite-save-btn');
     if (!form || !saveBtn) return;
 
-    var toggleWrap = document.createElement('label');
-    toggleWrap.className = 'admin-ads-toggle';
-    toggleWrap.innerHTML =
+    var toggleWrap1 = document.createElement('label');
+    toggleWrap1.className = 'admin-ads-toggle';
+    toggleWrap1.innerHTML =
       '<input type="checkbox" id="ad-invite-show-leaderboard" class="admin-ads-toggle-input">' +
       '<span class="admin-ads-toggle-slider" aria-hidden="true"></span>' +
       '<span class="admin-ads-toggle-text" data-i18n="ad_invite_show_leaderboard">显示邀请排行榜</span>';
 
-    form.insertBefore(toggleWrap, saveBtn);
+    var toggleWrap2 = document.createElement('label');
+    toggleWrap2.className = 'admin-ads-toggle';
+    toggleWrap2.innerHTML =
+      '<input type="checkbox" id="ad-invite-show-ads-carousel" class="admin-ads-toggle-input">' +
+      '<span class="admin-ads-toggle-slider" aria-hidden="true"></span>' +
+      '<span class="admin-ads-toggle-text" data-i18n="ad_invite_show_ads_carousel">显示轮播广告区</span>';
+
+    form.insertBefore(toggleWrap1, saveBtn);
+    form.insertBefore(toggleWrap2, saveBtn);
   }
 
   async function saveAdminInviteSettings() {
@@ -10498,11 +10566,43 @@ window.addEventListener('hashchange', function () {
     var level2 = Number(document.getElementById('ad-invite-level2') && document.getElementById('ad-invite-level2').value);
     var showLeaderboardEl = document.getElementById('ad-invite-show-leaderboard');
     var showLeaderboard = !!(showLeaderboardEl && showLeaderboardEl.checked);
+    var showAdsCarouselEl = document.getElementById('ad-invite-show-ads-carousel');
+    var showAdsCarousel = !!(showAdsCarouselEl && showAdsCarouselEl.checked);
 
     if (!Number.isFinite(level1) || level1 < 0 || !Number.isFinite(level2) || level2 < 0) {
       alert(adT('ad_invite_invalid'));
       return;
     }
+
+    var rows = [
+      { key: 'invite_level1_reward', value: String(level1) },
+      { key: 'invite_level2_reward', value: String(level2) },
+      { key: 'show_invite_leaderboard', value: showLeaderboard ? 'true' : 'false' },
+      { key: 'show_ads_carousel', value: showAdsCarousel ? 'true' : 'false' }
+    ];
+
+    var result = await window.supabase
+      .from('settings')
+      .upsert(rows, { onConflict: 'key' });
+
+    if (result.error) {
+      alert(adT('ad_invite_save_fail') + result.error.message);
+      return;
+    }
+
+    invalidateInviteSettingsCache();
+    invalidateShowInviteLeaderboardCache();
+    if (typeof applyLeaderboardMenuVisibility === 'function') {
+      applyLeaderboardMenuVisibility();
+    }
+    if (typeof window.coinrealmRefreshAuthArea === 'function') {
+      window.coinrealmRefreshAuthArea();
+    }
+    if (typeof window.coinrealmApplyAdsCarouselVisibility === 'function') {
+      window.coinrealmApplyAdsCarouselVisibility();
+    }
+    alert(adT('ad_invite_save_ok'));
+  }
 
     var rows = [
       { key: 'invite_level1_reward', value: String(level1) },
