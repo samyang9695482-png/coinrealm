@@ -852,16 +852,25 @@
     var dropdown = document.querySelector('.auth-dropdown');
 
     if (wrap && dropdown) {
-      wrap.addEventListener('mouseenter', function () {
+      // 鼠标进入触发器或下拉菜单时显示菜单
+      var showDropdown = function () {
         clearTimeout(hideTimer);
         dropdown.classList.add('visible');
-      });
+      };
 
-      wrap.addEventListener('mouseleave', function () {
+      // 鼠标离开触发器或下拉菜单时延迟隐藏
+      var hideDropdown = function () {
         hideTimer = setTimeout(function () {
           dropdown.classList.remove('visible');
-        }, 200);
-      });
+        }, 500);
+      };
+
+      wrap.addEventListener('mouseenter', showDropdown);
+      wrap.addEventListener('mouseleave', hideDropdown);
+
+      // 下拉菜单也要监听鼠标事件，防止鼠标移入菜单时菜单消失
+      dropdown.addEventListener('mouseenter', showDropdown);
+      dropdown.addEventListener('mouseleave', hideDropdown);
 
       dropdown.addEventListener('mouseenter', function () {
         clearTimeout(hideTimer);
