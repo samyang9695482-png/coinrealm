@@ -194,7 +194,7 @@
       ct_alert_keyword_required: '请填写关键词',
       ct_type_simple: '简单任务',
       ct_ph_reward: '请输入奖励金额',
-      ct_ph_slots: '请输入名额（留空则不限）',
+      ct_ph_slots: '',
       ct_type_other: '其他',
       ct_add_req: '+ 添加要求',
       ct_proof_text: '文字凭证',
@@ -333,7 +333,7 @@
       ct_alert_keyword_required: 'Please enter a keyword',
       ct_type_simple: 'Simple Task',
       ct_ph_reward: 'Enter reward amount',
-      ct_ph_slots: 'Enter slots (leave empty for unlimited)',
+      ct_ph_slots: '',
       ct_type_other: 'Other',
       ct_add_req: '+ Add Requirement',
       ct_proof_text: 'Text Proof',
@@ -784,9 +784,13 @@
     }
   }
 
+  function getSelectedTaskType() {
+    var checked = document.querySelector('input[name="ct-task-type"]:checked');
+    return checked ? checked.value : 'simple';
+  }
+
   function isSimpleTaskTypeSelected() {
-    var type = document.getElementById('ct-task-type');
-    return !!(type && type.value === 'simple');
+    return getSelectedTaskType() === 'simple';
   }
 
   function getSelectedPlatform() {
@@ -1384,7 +1388,6 @@
 
   function resetCreateTaskForm() {
     var title = document.getElementById('ct-task-title');
-    var type = document.getElementById('ct-task-type');
     var desc = document.getElementById('ct-task-desc');
     var reward = document.getElementById('ct-reward-amount');
     var slots = document.getElementById('ct-task-slots');
@@ -1392,7 +1395,8 @@
     var list = document.getElementById('ct-requirements-list');
 
     if (title) title.value = '';
-    if (type) type.value = 'all';
+    var simpleRadio = document.querySelector('input[name="ct-task-type"][value="simple"]');
+    if (simpleRadio) simpleRadio.checked = true;
     if (desc) desc.value = '';
     if (reward) reward.value = '';
     if (slots) slots.value = '';
@@ -1503,7 +1507,6 @@
 
   function validateForm() {
     var title = document.getElementById('ct-task-title');
-    var type = document.getElementById('ct-task-type');
     var desc = document.getElementById('ct-task-desc');
     var reward = document.getElementById('ct-reward-amount');
     var slots = document.getElementById('ct-task-slots');
@@ -1513,7 +1516,8 @@
 
     var titleVal = title ? title.value.trim() : '';
     if (!titleVal || titleVal.length > CT_TITLE_MAX_LEN) return false;
-    if (!type || !type.value || type.value === 'all') return false;
+    var typeVal = getSelectedTaskType();
+    if (!typeVal) return false;
     if (!desc || !desc.value.trim()) return false;
 
     var rewardNum = reward ? parseFloat(reward.value) : NaN;
@@ -1605,9 +1609,9 @@
         }
 
         var title = document.getElementById('ct-task-title').value.trim();
-        var typeSelect = document.getElementById('ct-task-type');
+        var typeSelect = document.querySelector('input[name="ct-task-type"]:checked');
         var simpleTask = typeSelect && typeSelect.value === 'simple';
-        var type = simpleTask ? 'simple' : typeSelect.value;
+        var type = simpleTask ? 'simple' : (typeSelect ? typeSelect.value : 'other');
         var description = document.getElementById('ct-task-desc').value.trim();
         var requirements = collectRequirements();
         var rewardType = simpleTask ? 'CRLM' : getRewardType();
@@ -1710,8 +1714,8 @@
 
     page.addEventListener('change', function (e) {
       var target = e.target;
-      if (!target || !target.id) return;
-      if (target.id === 'ct-task-type') {
+      if (!target) return;
+      if (target.name === 'ct-task-type') {
         updateCreateTaskTemplate();
         applyCreateTaskI18n();
         return;
