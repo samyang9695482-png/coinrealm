@@ -505,17 +505,40 @@
 
         <div class="create-task-field">
           <label class="create-task-label" data-i18n="ct_label_type">任务类型</label>
-          <select id="ct-task-type" class="create-task-input">
-            <option value="all" data-i18n="tag_all">全部</option>
-            <option value="simple" data-i18n="ct_type_simple">简单任务</option>
-            <option value="airdrop" data-i18n="tag_airdrop">空投</option>
-            <option value="register" data-i18n="tag_register">注册</option>
-            <option value="trade" data-i18n="tag_trade">交易</option>
-            <option value="game" data-i18n="tag_game">游戏</option>
-            <option value="content" data-i18n="tag_content">内容</option>
-            <option value="test" data-i18n="tag_test">测试</option>
-            <option value="other" data-i18n="ct_type_other">其他</option>
-          </select>
+          <div id="ct-task-type-group" class="create-task-radio-group ct-task-type-group">
+            <label class="create-task-radio-label">
+              <input type="radio" name="ct-task-type" value="simple" data-i18n="ct_type_simple" checked>
+              <span data-i18n="ct_type_simple">简单任务</span>
+            </label>
+            <label class="create-task-radio-label">
+              <input type="radio" name="ct-task-type" value="airdrop" data-i18n="tag_airdrop">
+              <span data-i18n="tag_airdrop">空投</span>
+            </label>
+            <label class="create-task-radio-label">
+              <input type="radio" name="ct-task-type" value="register" data-i18n="tag_register">
+              <span data-i18n="tag_register">注册</span>
+            </label>
+            <label class="create-task-radio-label">
+              <input type="radio" name="ct-task-type" value="trade" data-i18n="tag_trade">
+              <span data-i18n="tag_trade">交易</span>
+            </label>
+            <label class="create-task-radio-label">
+              <input type="radio" name="ct-task-type" value="game" data-i18n="tag_game">
+              <span data-i18n="tag_game">游戏</span>
+            </label>
+            <label class="create-task-radio-label">
+              <input type="radio" name="ct-task-type" value="content" data-i18n="tag_content">
+              <span data-i18n="tag_content">内容</span>
+            </label>
+            <label class="create-task-radio-label">
+              <input type="radio" name="ct-task-type" value="test" data-i18n="tag_test">
+              <span data-i18n="tag_test">测试</span>
+            </label>
+            <label class="create-task-radio-label">
+              <input type="radio" name="ct-task-type" value="other" data-i18n="ct_type_other">
+              <span data-i18n="ct_type_other">其他</span>
+            </label>
+          </div>
         </div>
 
         <div class="create-task-field">
@@ -689,7 +712,7 @@
 
         <div class="create-task-field">
           <label class="create-task-label" data-i18n="ct_label_slots">任务名额</label>
-          <input type="number" id="ct-task-slots" class="create-task-input" data-placeholder="ct_ph_slots" placeholder="请输入名额（留空则不限）" min="1">
+          <input type="number" id="ct-task-slots" class="create-task-input" data-placeholder="ct_ph_slots" placeholder="" min="1">
         </div>
 
         <div id="ct-field-duration" class="create-task-field">

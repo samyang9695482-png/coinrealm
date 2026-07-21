@@ -2153,6 +2153,14 @@ img {
     cursor: pointer;
 }
 
+.ct-task-type-group {
+    gap: 12px 20px;
+}
+
+.ct-task-type-group .create-task-radio-label {
+    font-size: 14px;
+}
+
 .create-task-stake-card {
     background-color: #e6f7ff;
     border-radius: 8px;
