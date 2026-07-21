@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whitepaper - CoinRealm</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        body {
+            background: #ffffff;
+            color: #333;
+            line-height: 1.75;
+            min-height: 100vh;
+            padding-bottom: 80px;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* 全局全屏CRLM斜向水印 滚动全程铺满 */
+        body::before {
+            content: "CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM";
+            position: fixed;
+            top: -100%;
+            left: -100%;
+            width: 300%;
+            height: 300%;
+            font-size: 90px;
+            font-weight: 600;
+            color: #999;
+            opacity: 0.04;
+            z-index: -1;
+            white-space: pre-wrap;
+            word-spacing: 60px;
+            line-height: 140px;
+            transform: rotate(-45deg);
+            pointer-events: none;
+        }
+
+        /* 顶部导航栏 */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            background: #fff;
+            border-bottom: 1px solid #eee;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .page-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #FF6B35;
+        }
+        .lang-switch {
+            padding: 6px 12px;
+            border: 1px solid #FF6B35;
+            border-radius: 6px;
+            background: #fff;
+            color: #FF6B35;
+            cursor: pointer;
+            font-size: 14px;
+            transition: 0.2s ease;
+        }
+        .lang-switch:hover {
+            background: #FF6B35;
+            color: #fff;
+        }
+
+        /* 主内容左右布局 */
+        .main-wrap {
+            max-width: 1100px;
+            margin: 40px auto;
+            padding: 0 20px;
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 30px;
+        }
+
+        /* 左侧侧边菜单 */
+        .sidebar-menu {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            padding: 24px;
+            height: fit-content;
+            position: sticky;
+            top: 90px;
+        }
+        .sidebar-menu h2 {
+            font-size: 20px;
+            color: #222;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        .menu-item {
+            margin-bottom: 8px;
+        }
+        .menu-title {
+            width: 100%;
+            padding: 12px 14px;
+            background: #f9f9f9;
+            border: none;
+            border-radius: 8px;
+            text-align: left;
+            font-size: 15px;
+            cursor: pointer;
+            transition: 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .menu-title.active {
+            background: #FF6B35;
+            color: #fff;
+        }
+        .menu-title:hover:not(.active) {
+            background: #f2f2f2;
+        }
+
+        /* 右侧内容卡片 */
+        .content-box {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            padding: 36px;
+        }
+        .content-panel {
+            display: none;
+        }
+        .content-panel.show {
+            display: block;
+        }
+        .content-panel h3 {
+            font-size: 22px;
+            color: #222;
+            margin-bottom: 24px;
+            border-left: 4px solid #FF6B35;
+            padding-left: 12px;
+        }
+        .qa-block {
+            margin-bottom: 26px;
+        }
+        .qa-block h4 {
+            font-size: 16px;
+            color: #FF6B35;
+            margin-bottom: 8px;
+        }
+        .qa-block p {
+            font-size: 15px;
+            color: #444;
+            padding-left: 4px;
+        }
+        .qa-block ul {
+            padding-left: 22px;
+            margin: 8px 0;
+        }
+        .qa-block ul li {
+            font-size: 15px;
+            color: #444;
+            margin-bottom: 6px;
+        }
+
+        /* 页脚区域 */
+        footer {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 24px;
+            text-align: center;
+            border-top: 1px solid #eee;
+        }
+        .footer-links {
+            margin-bottom: 12px;
+        }
+        .footer-links a {
+            color: #666;
+            text-decoration: none;
+            margin: 0 8px;
+            font-size: 14px;
+        }
+        .footer-links a:hover {
+            color: #FF6B35;
+        }
+        .copyright {
+            font-size: 13px;
+            color: #888;
+        }
+
+        /* 双语切换样式 默认英文打开 */
+        .zh { display: none; }
+        .en { display: block; }
+        body.chinese .zh { display: block !important; }
+        body.chinese .en { display: none !important; }
+
+        /* 移动端适配 */
+        @media (max-width: 768px) {
+            .main-wrap {
+                grid-template-columns: 1fr;
+            }
+            .sidebar-menu {
+                position: static;
+            }
+            .content-box {
+                padding: 24px 18px;
+            }
+            body::before {
+                font-size: 70px;
+                line-height: 110px;
+            }
+        }
+    </style>
+</head>
+<body class="english">
+    <!-- 顶部导航 -->
+    <header>
+        <div class="page-title zh">白皮书</div>
+        <div class="page-title en">Whitepaper</div>
+        <button class="lang-switch" id="langBtn">中文</button>
+    </header>
+
+    <div class="main-wrap">
+        <!-- 左侧侧边目录菜单 -->
+        <aside class="sidebar-menu">
+            <h2 class="zh">目录导航</h2>
+            <h2 class="en">Navigation Menu</h2>
+
+            <div class="menu-item">
+                <button class="menu-title" data-target="panel1">
+                    <span class="zh">项目简介</span>
+                    <span class="en">Project Introduction</span>
+                    <span>+</span>
+                </button>
+            </div>
+            <div class="menu-item">
+                <button class="menu-title" data-target="panel2">
+                    <span class="zh">项目愿景</span>
+                    <span class="en">Project Vision</span>
+                    <span>+</span>
+                </button>
+            </div>
+            <div class="menu-item">
+                <button class="menu-title" data-target="panel3">
+                    <span class="zh">核心功能详解</span>
+                    <span class="en">Core Functions Details</span>
+                    <span>+</span>
+                </button>
+            </div>
+            <div class="menu-item">
+                <button class="menu-title" data-target="panel4">
+                    <span class="zh">代币经济（CRLM）</span>
+                    <span class="en">Token Economics (CRLM)</span>
+                    <span>+</span>
+                </button>
+            </div>
+            <div class="menu-item">
+                <button class="menu-title" data-target="panel5">
+                    <span class="zh">平台收益来源</span>
+                    <span class="en">Platform Revenue Sources</span>
+                    <span>+</span>
+                </button>
+            </div>
+            <div class="menu-item">
+                <button class="menu-title" data-target="panel6">
+                    <span class="zh">用户赚取路径</span>
+                    <span class="en">User Earning Path</span>
+                    <span>+</span>
+                </button>
+            </div>
+            <div class="menu-item">
+                <button class="menu-title" data-target="panel7">
+                    <span class="zh">路线图</span>
+                    <span class="en">Roadmap</span>
+                    <span>+</span>
+                </button>
+            </div>
+            <div class="menu-item">
+                <button class="menu-title" data-target="panel8">
+                    <span class="zh">免责声明</span>
+                    <span class="en">Disclaimer</span>
+                    <span>+</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- 右侧正文内容区域 -->
+        <section class="content-box">
+            <!-- 1 项目简介 -->
+            <div class="content-panel" id="panel1">
+                <div class="zh">
+                    <h3>项目简介</h3>
+                    <div class="qa-block">
+                        <h4>CoinRealm 项目背景与定位</h4>
+                        <p>CoinRealm 是面向普通大众的轻量化Web3任务生态平台，降低区块链与加密货币参与门槛。依托任务激励、双层推广、代币挖矿体系，让无区块链基础的用户可以日常轻松获取加密收益，打造普惠型加密流量生态。</p>
+                    </div>
+                </div>
+                <div class="en">
+                    <h3>Project Introduction</h3>
+                    <div class="qa-block">
+                        <h4>Background & Positioning of CoinRealm</h4>
+                        <p>CoinRealm is a lightweight Web3 task ecosystem platform for the general public, lowering the entry barrier of blockchain and cryptocurrency. Relying on task incentives, two-tier referral system and token mining mechanism, users without blockchain experience can gain crypto earnings easily every day, building an inclusive crypto traffic ecosystem.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2 项目愿景 -->
+            <div class="content-panel" id="panel2">
+                <div class="zh">
+                    <h3>项目愿景</h3>
+                    <div class="qa-block">
+                        <h4>长期发展愿景</h4>
+                        <p>让加密货币触达每一个人</p>
+                    </div>
+                </div>
+                <div class="en">
+                    <h3>Project Vision</h3>
+                    <div class="qa-block">
+                        <h4>Long-term Vision</h4>
+                        <p>Make cryptocurrency accessible to everyone</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3 核心功能详解 -->
+            <div class="content-panel" id="panel3">
+                <div class="zh">
+                    <h3>核心功能详解</h3>
+                    <div class="qa-block">
+                        <h4>四大核心板块</h4>
+                        <ul>
+                            <li>任务系统：各类日常线上任务发布、领取、审核、结算一站式服务</li>
+                            <li>邀请机制：一级直推、二级间推双层返佣，好友完成任务即可持续获得分红</li>
+                            <li>每日空投：每日完成任意任务，即可领取平台原生代币CRLM空投奖励</li>
+                            <li>挖矿系统：持有CRLM代币开启持币生息挖矿，获取持续被动收益</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="en">
+                    <h3>Core Functions Details</h3>
+                    <div class="qa-block">
+                        <h4>Four Core Modules</h4>
+                        <ul>
+                            <li>Task System: One-stop service for publishing, claiming, reviewing and settling all kinds of daily online tasks</li>
+                            <li>Referral Mechanism: Two-tier commission for direct & indirect invites, earn dividends whenever your referrals complete tasks</li>
+                            <li>Daily Airdrop: Claim native CRLM token airdrop rewards daily after finishing any task</li>
+                            <li>Mining System: Hold CRLM tokens to activate staking mining and gain steady passive income</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4 代币经济 CRLM -->
+            <div class="content-panel" id="panel4">
+                <div class="zh">
+                    <h3>代币经济（CRLM）</h3>
+                    <div class="qa-block">
+                        <h4>代币总量</h4>
+                        <p>CRLM代币总发行量为1亿枚，总量恒定，永不增发</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>代币分配</h4>
+                        <ul>
+                            <li>用户空投&任务挖矿：最大占比，面向全体参与用户</li>
+                            <li>社区生态运营：用于活动、推广、社群激励</li>
+                            <li>团队储备：锁仓分期释放，保障平台长期运维</li>
+                            <li>市场流动性：cex/dex上币与交易流动性供给</li>
+                        </ul>
+                    </div>
+                    <div class="qa-block">
+                        <h4>代币用途</h4>
+                        <ul>
+                            <li>日常任务奖励结算</li>
+                            <li>提现渠道：CRLM提现，未来支持USDT双向提现</li>
+                            <li>链内转账、交易手续费抵扣</li>
+                            <li>质押挖矿获取收益</li>
+                        </ul>
+                    </div>
+                    <div class="qa-block">
+                        <h4>释放机制</h4>
+                        <p>用户挖矿与空投即时释放；团队、运营份额按月线性解锁，杜绝大额砸盘，稳定代币价格。</p>
+                    </div>
+                </div>
+                <div class="en">
+                    <h3>Token Economics (CRLM)</h3>
+                    <div class="qa-block">
+                        <h4>Total Token Supply</h4>
+                        <p>The total supply of CRLM is 100,000,000 tokens with a fixed cap, no additional minting forever.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>Token Allocation</h4>
+                        <ul>
+                            <li>User Airdrop & Task Mining: Largest share for all participants</li>
+                            <li>Community Operation: For campaigns, promotion and community incentives</li>
+                            <li>Team Reserve: Locked and vested gradually to guarantee long-term platform operation</li>
+                            <li>Market Liquidity: For CEX & DEX listing and trading liquidity provision</li>
+                        </ul>
+                    </div>
+                    <div class="qa-block">
+                        <h4>Token Utilities</h4>
+                        <ul>
+                            <li>Settlement reward for daily tasks</li>
+                            <li>Withdrawal: CRLM withdrawal available, USDT withdrawal will be supported in the future</li>
+                            <li>Deduction for on-chain transfer and trading fees</li>
+                            <li>Stake tokens to earn mining rewards</li>
+                        </ul>
+                    </div>
+                    <div class="qa-block">
+                        <h4>Vesting Mechanism</h4>
+                        <p>Mining and airdrop tokens are released instantly; team & operation portions are unlocked linearly month by month to avoid massive dump and stabilize token price.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 5 平台收益来源 -->
+            <div class="content-panel" id="panel5">
+                <div class="zh">
+                    <h3>平台收益来源</h3>
+                    <div class="qa-block">
+                        <h4>三大盈利渠道</h4>
+                        <ul>
+                            <li>广告收入：品牌方任务投放、站内流量广告收益</li>
+                            <li>交易手续费：代币提现、转账、质押赎回手续费分成</li>
+                            <li>增值服务：高阶权益、专属任务等付费增值服务</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="en">
+                    <h3>Platform Revenue Sources</h3>
+                    <div class="qa-block">
+                        <h4>Three Profit Channels</h4>
+                        <ul>
+                            <li>Advertising Revenue: Brand task orders and in-site display ads</li>
+                            <li>Transaction Fees: Commission from withdrawal, transfer and unstaking fees</li>
+                            <li>Value-added Services: Premium membership, exclusive paid tasks and other privileges</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 6 用户赚取路径 -->
+            <div class="content-panel" id="panel6">
+                <div class="zh">
+                    <h3>用户赚取路径</h3>
+                    <div class="qa-block">
+                        <h4>从注册到提现完整流程</h4>
+                        <p>注册绑定钱包 → 领取日常任务完成，赚取CRLM积分奖励；积分可在社区内流通，用于发布任务、协作、交换价值；CRLM作为数字积分具备加密资产潜力，未来或可合规流通；同时邀请好友赚取两级分红 → 持币挖矿增值 → 申请CRLM提现（未来支持USDT）至个人钱包</p>
+                    </div>
+                </div>
+                <div class="en">
+                    <h3>User Earning Path</h3>
+                    <div class="qa-block">
+                        <h4>Full Process From Registration to Withdrawal</h4>
+                        <p>Register & bind wallet → Complete daily tasks to earn CRLM point rewards; Points can circulate within the community for task posting, collaboration and value exchange; As digital points, CRLM holds crypto asset potential and may achieve compliant circulation in the future. Meanwhile, invite friends to gain two-tier commissions → Hold tokens for mining appreciation → Apply to withdraw CRLM (USDT will be supported later) to personal wallet</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 7 路线图 -->
+            <div class="content-panel" id="panel7">
+                <div class="zh">
+                    <h3>路线图</h3>
+                    <div class="qa-block">
+                        <h4>已完成阶段</h4>
+                        <ul>
+                            <li>智能合约部署上线</li>
+                            <li>平台MVP基础版本开发与发布</li>
+                            <li>基础任务、邀请、空投、挖矿功能上线</li>
+                        </ul>
+                    </div>
+                    <div class="qa-block">
+                        <h4>进行中阶段</h4>
+                        <ul>
+                            <li>产品功能持续迭代优化</li>
+                            <li>海内外多社区搭建与用户增长</li>
+                            <li>代币流动性布局筹备</li>
+                        </ul>
+                    </div>
+                    <div class="qa-block">
+                        <h4>未来长期计划</h4>
+                        <ul>
+                            <li>多区块链网络兼容与跨链互通</li>
+                            <li>搭建DAO去中心化自治体系</li>
+                            <li>拓展更多线下+线上应用场景</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="en">
+                    <h3>Roadmap</h3>
+                    <div class="qa-block">
+                        <h4>Completed Milestones</h4>
+                        <ul>
+                            <li>Smart contract deployed and launched</li>
+                            <li>Platform MVP version developed and released</li>
+                            <li>Basic tasks, referral, airdrop and mining functions launched</li>
+                        </ul>
+                    </div>
+                    <div class="qa-block">
+                        <h4>Ongoing Progress</h4>
+                        <ul>
+                            <li>Continuous iteration and optimization of product features</li>
+                            <li>Global community building and user expansion</li>
+                            <li>Preparation for token liquidity arrangement</li>
+                        </ul>
+                    </div>
+                    <div class="qa-block">
+                        <h4>Future Long-term Plans</h4>
+                        <ul>
+                            <li>Multi-chain compatibility and cross-chain interoperability</li>
+                            <li>Build DAO decentralized autonomous governance system</li>
+                            <li>Expand more online & offline application scenarios</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 8 免责声明 -->
+            <div class="content-panel" id="panel8">
+                <div class="zh">
+                    <h3>免责声明</h3>
+                    <div class="qa-block">
+                        <h4>风险提示与合规说明</h4>
+                        <p>加密资产价格波动极大，存在较高投资风险。本白皮书仅为项目介绍文档，不构成任何投资邀约、理财建议。各国对加密货币监管政策存在差异，用户需自行了解所在地区法律法规，自愿参与平台生态，一切盈亏由用户本人自行承担。</p>
+                    </div>
+                </div>
+                <div class="en">
+                    <h3>Disclaimer</h3>
+                    <div class="qa-block">
+                        <h4>Risk Warning & Compliance Statement</h4>
+                        <p>Crypto assets face extreme price volatility and high investment risks. This whitepaper is merely a project introduction document, not an investment solicitation or financial advice. Cryptocurrency regulations vary across jurisdictions. Users shall independently check local laws and regulations, participate in the platform ecosystem voluntarily, and bear all profits and losses on their own.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- 底部页脚导航 双语切换 -->
+    <footer>
+        <div class="footer-links">
+            <span class="zh">
+                <a href="about.html">关于我们</a> |
+                <a href="help.html">帮助中心</a> |
+                <a href="whitepaper.html">白皮书</a> |
+                <a href="terms.html">服务条款</a>
+            </span>
+            <span class="en">
+                <a href="about.html">About Us</a> |
+                <a href="help.html">Help Center</a> |
+                <a href="whitepaper.html">Whitepaper</a> |
+                <a href="terms.html">Terms of Service</a>
+            </span>
+        </div>
+        <div class="copyright">© 2026 CoinRealm. All rights reserved.</div>
+    </footer>
+
+    <script>
+        // 左侧菜单手风琴展开收起
+        const menuBtns = document.querySelectorAll('.menu-title');
+        const panels = document.querySelectorAll('.content-panel');
+        menuBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                menuBtns.forEach(b => {
+                    b.classList.remove('active');
+                    b.lastElementChild.textContent = '+';
+                })
+                panels.forEach(p => p.classList.remove('show'));
+                btn.classList.add('active');
+                btn.lastElementChild.textContent = '-';
+                document.getElementById(btn.dataset.target).classList.add('show');
+            })
+        })
+        menuBtns[0].click();
+
+        // 全局语言切换 默认英文
+        const langBtn = document.getElementById('langBtn');
+        let isEn = true;
+        langBtn.onclick = () => {
+            isEn = !isEn;
+            if(isEn){
+                document.body.classList.remove('chinese');
+                document.body.classList.add('english');
+                langBtn.textContent = '中文';
+                document.documentElement.lang = 'en';
+            }else{
+                document.body.classList.remove('english');
+                document.body.classList.add('chinese');
+                langBtn.textContent = 'English';
+                document.documentElement.lang = 'zh-CN';
+            }
+        }
+    </script>
+</body>
+</html>

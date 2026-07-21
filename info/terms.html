@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terms of Service - CoinRealm</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        body {
+            background: #ffffff;
+            color: #333;
+            line-height: 1.75;
+            min-height: 100vh;
+            padding-bottom: 80px;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* 全局固定全屏CRLM斜向水印 滚动永久铺满 */
+        body::before {
+            content: "CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM";
+            position: fixed;
+            top: -100%;
+            left: -100%;
+            width: 300%;
+            height: 300%;
+            font-size: 90px;
+            font-weight: 600;
+            color: #999;
+            opacity: 0.04;
+            z-index: -1;
+            white-space: pre-wrap;
+            word-spacing: 60px;
+            line-height: 140px;
+            transform: rotate(-45deg);
+            pointer-events: none;
+        }
+
+        /* 顶部导航栏 */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            background: #fff;
+            border-bottom: 1px solid #eee;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .page-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #FF6B35;
+        }
+        .lang-switch {
+            padding: 6px 12px;
+            border: 1px solid #FF6B35;
+            border-radius: 6px;
+            background: #fff;
+            color: #FF6B35;
+            cursor: pointer;
+            font-size: 14px;
+            transition: 0.2s ease;
+        }
+        .lang-switch:hover {
+            background: #FF6B35;
+            color: #fff;
+        }
+
+        /* 主内容左右布局 */
+        .main-wrap {
+            max-width: 1100px;
+            margin: 40px auto;
+            padding: 0 20px;
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 30px;
+        }
+
+        /* 左侧侧边菜单 */
+        .sidebar-menu {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            padding: 24px;
+            height: fit-content;
+            position: sticky;
+            top: 90px;
+        }
+        .sidebar-menu h2 {
+            font-size: 20px;
+            color: #222;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        .menu-item {
+            margin-bottom: 8px;
+        }
+        .menu-title {
+            width: 100%;
+            padding: 12px 14px;
+            background: #f9f9f9;
+            border: none;
+            border-radius: 8px;
+            text-align: left;
+            font-size: 15px;
+            cursor: pointer;
+            transition: 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .menu-title.active {
+            background: #FF6B35;
+            color: #fff;
+        }
+        .menu-title:hover:not(.active) {
+            background: #f2f2f2;
+        }
+
+        /* 右侧内容卡片 */
+        .content-box {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            padding: 36px;
+        }
+        .content-panel {
+            display: none;
+        }
+        .content-panel.show {
+            display: block;
+        }
+        .content-panel h3 {
+            font-size: 22px;
+            color: #222;
+            margin-bottom: 24px;
+            border-left: 4px solid #FF6B35;
+            padding-left: 12px;
+        }
+        .qa-block {
+            margin-bottom: 26px;
+        }
+        .qa-block h4 {
+            font-size: 16px;
+            color: #FF6B35;
+            margin-bottom: 8px;
+        }
+        .qa-block p {
+            font-size: 15px;
+            color: #444;
+            padding-left: 4px;
+        }
+        .qa-block ul {
+            padding-left: 22px;
+            margin: 8px 0;
+        }
+        .qa-block ul li {
+            font-size: 15px;
+            color: #444;
+            margin-bottom: 6px;
+        }
+
+        /* 页脚区域 */
+        footer {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 24px;
+            text-align: center;
+            border-top: 1px solid #eee;
+        }
+        .footer-links {
+            margin-bottom: 12px;
+        }
+        .footer-links a {
+            color: #666;
+            text-decoration: none;
+            margin: 0 8px;
+            font-size: 14px;
+        }
+        .footer-links a:hover {
+            color: #FF6B35;
+        }
+        .copyright {
+            font-size: 13px;
+            color: #888;
+        }
+
+        /* 全局双语切换核心样式：默认英文开启 */
+        .zh { display: none; }
+        .en { display: block; }
+        body.chinese .zh { display: block !important; }
+        body.chinese .en { display: none !important; }
+
+        /* 移动端适配 */
+        @media (max-width: 768px) {
+            .main-wrap {
+                grid-template-columns: 1fr;
+            }
+            .sidebar-menu {
+                position: static;
+            }
+            .content-box {
+                padding: 24px 18px;
+            }
+            body::before {
+                font-size: 70px;
+                line-height: 110px;
+            }
+        }
+    </style>
+</head>
+<body class="english">
+    <!-- 顶部导航 -->
+    <header>
+        <div class="page-title zh">服务条款</div>
+        <div class="page-title en">Terms of Service</div>
+        <button class="lang-switch" id="langBtn">中文</button>
+    </header>
+
+    <div class="main-wrap">
+        <!-- 左侧导航菜单 -->
+        <aside class="sidebar-menu">
+            <h2 class="zh">目录导航</h2>
+            <h2 class="en">Navigation Menu</h2>
+
+            <div class="menu-item">
+                <button class="menu-title" data-target="panel1">
+                    <span class="zh">接受条款</span>
+                    <span class="en">Accept Terms</span>
+                    <span>+</span>
+                </button>
+            </div>
+            <div class="menu-item">
+                <button class="menu-title" data-target="panel2">
+                    <span class="zh">用户注册与账户</span>
+                    <span class="en">Registration & Account</span>
+                    <span>+</span>
+                </button>
+            </div>
+            <div class="menu-item">
+                <button class="menu-title" data-target="panel3">
+                    <span class="zh">平台使用规则</span>
+                    <span class="en">Platform Usage Rules</span>
+                    <span>+</span>
+                </button>
+            </div>
+            <div class="menu-item">
+                <button class="menu-title" data-target="panel4">
+                    <span class="zh">任务与奖励</span>
+                    <span class="en">Tasks & Rewards</span>
+                    <span>+</span>
+                </button>
+            </div>
+            <div class="menu-item">
+                <button class="menu-title" data-target="panel5">
+                    <span class="zh">提现与充币</span>
+                    <span class="en">Deposit & Withdrawal</span>
+                    <span>+</span>
+                </button>
+            </div>
+            <div class="menu-item">
+                <button class="menu-title" data-target="panel6">
+                    <span class="zh">风险提示</span>
+                    <span class="en">Risk Notice</span>
+                    <span>+</span>
+                </button>
+            </div>
+            <div class="menu-item">
+                <button class="menu-title" data-target="panel7">
+                    <span class="zh">隐私政策</span>
+                    <span class="en">Privacy Policy</span>
+                    <span>+</span>
+                </button>
+            </div>
+            <div class="menu-item">
+                <button class="menu-title" data-target="panel8">
+                    <span class="zh">免责声明</span>
+                    <span class="en">Disclaimer</span>
+                    <span>+</span>
+                </button>
+            </div>
+            <div class="menu-item">
+                <button class="menu-title" data-target="panel9">
+                    <span class="zh">条款变更</span>
+                    <span class="en">Terms Revision</span>
+                    <span>+</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- 右侧正文内容 -->
+        <section class="content-box">
+            <!-- 1 接受条款 -->
+            <div class="content-panel" id="panel1">
+                <div class="zh">
+                    <h3>接受条款</h3>
+                    <div class="qa-block">
+                        <h4>协议认可规则</h4>
+                        <p>您注册、浏览、使用CoinRealm平台全部功能，即代表您已完整阅读、理解并无条件同意本服务条款全部内容。如若不认可本协议约定，请立即停止使用本平台。</p>
+                    </div>
+                </div>
+                <div class="en">
+                    <h3>Accept Terms</h3>
+                    <div class="qa-block">
+                        <h4>Agreement Confirmation</h4>
+                        <p>By registering, browsing and using all functions of CoinRealm, you confirm that you have fully read, understood and unconditionally agreed to all contents of these Terms of Service. If you do not accept the agreement, please stop using the platform immediately.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2 用户注册与账户 -->
+            <div class="content-panel" id="panel2">
+                <div class="zh">
+                    <h3>用户注册与账户</h3>
+                    <div class="qa-block">
+                        <h4>注册条件</h4>
+                        <p>用户必须年满18周岁方可注册使用；受当地法律法规限制地区的用户，禁止入驻平台，需自行遵守所在区域监管要求。</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>账户安全责任</h4>
+                        <p>账户钱包私钥、登录权限均由用户个人全权保管，因泄露、转借、遗失产生的所有资产损失，平台不予承担任何责任。</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>账户冻结与注销</h4>
+                        <p>存在违规作弊行为的账户，平台有权临时冻结、永久封禁；用户可申请注销账户，注销后账户内未提现资产将按规则处理。</p>
+                    </div>
+                </div>
+                <div class="en">
+                    <h3>Registration & Account</h3>
+                    <div class="qa-block">
+                        <h4>Registration Requirements</h4>
+                        <p>Users must be at least 18 years old to register. Residents in regions with restrictive local regulations are prohibited from accessing the platform and shall abide by local laws on their own.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>Account Security Liability</h4>
+                        <p>Users shall take full charge of their wallet private keys and login credentials. The platform shall not be liable for any asset losses caused by leakage, lending or loss of account information.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>Account Freeze & Deletion</h4>
+                        <p>Accounts violating platform rules may be temporarily frozen or permanently banned. Users may apply for account cancellation, and remaining assets will be disposed of in accordance with rules after cancellation.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3 平台使用规则 -->
+            <div class="content-panel" id="panel3">
+                <div class="zh">
+                    <h3>平台使用规则</h3>
+                    <div class="qa-block">
+                        <h4>禁止行为</h4>
+                        <ul>
+                            <li>批量注册账号刷单、脚本挂机作弊刷取奖励</li>
+                            <li>借助平台实施网络诈骗、引流欺诈、传销推广</li>
+                            <li>盗用他人信息、钱包账户开展违规操作</li>
+                        </ul>
+                    </div>
+                    <div class="qa-block">
+                        <h4>内容规范</h4>
+                        <p>用户提交的任务截图、完成凭证必须真实有效，严禁篡改、伪造素材骗取任务奖励。</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>违规处理方式</h4>
+                        <p>根据违规情节轻重，平台可采取扣除奖励、限制功能、冻结账户、清空账户资产等处置措施。</p>
+                    </div>
+                </div>
+                <div class="en">
+                    <h3>Platform Usage Rules</h3>
+                    <div class="qa-block">
+                        <h4>Prohibited Activities</h4>
+                        <ul>
+                            <li>Creating bulk accounts, using bots to farm rewards illegally</li>
+                            <li>Carrying out online fraud, scam attraction and pyramid selling via the platform</li>
+                            <li>Stealing personal information or wallets for illegal operations</li>
+                        </ul>
+                    </div>
+                    <div class="qa-block">
+                        <h4>Content Standards</h4>
+                        <p>All screenshots and submission proofs for tasks must be authentic. Tampering or forging materials to claim rewards is strictly forbidden.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>Penalties for Violations</h4>
+                        <p>Depending on the severity of violations, the platform may deduct rewards, restrict features, freeze accounts or clear all assets in the account.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4 任务与奖励 -->
+            <div class="content-panel" id="panel4">
+                <div class="zh">
+                    <h3>任务与奖励</h3>
+                    <div class="qa-block">
+                        <h4>任务发布规则</h4>
+                        <p>商家及用户发布任务不得包含违法、暴力、色情、诱导性内容，平台有权审核下架违规任务。</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>奖励发放标准</h4>
+                        <p>任务审核核验通过后，CRLM积分奖励自动发放至用户账户；审核不通过将不予派发奖励。</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>争议处理</h4>
+                        <p>任务双方产生分歧时，可提交平台客服介入仲裁，平台判定结果为最终处理依据。</p>
+                    </div>
+                </div>
+                <div class="en">
+                    <h3>Tasks & Rewards</h3>
+                    <div class="qa-block">
+                        <h4>Task Posting Rules</h4>
+                        <p>Tasks shall not contain illegal, violent, pornographic or misleading content. The platform reserves the right to review and remove non-compliant tasks.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>Reward Distribution Rules</h4>
+                        <p>CRLM point rewards will be automatically credited after task review; no rewards will be issued if the submission fails verification.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>Dispute Resolution</h4>
+                        <p>Both parties may submit disputes to official support for arbitration, and the platform’s judgment shall be final.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 5 提现与充币 -->
+            <div class="content-panel" id="panel5">
+                <div class="zh">
+                    <h3>提现与充币</h3>
+                    <div class="qa-block">
+                        <h4>提现门槛与手续费</h4>
+                        <p>用户满足最低额度即可申请CRLM提现，提现将收取固定手续费；未来平台将支持USDT提现通道。</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>充币确认时间</h4>
+                        <p>外部钱包转入资产将依据区块链区块确认速度到账，常规情况下短时间内完成入账。</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>错误转账处理</h4>
+                        <p>用户填写错误地址发起转账，资产将无法找回，平台不承担追回义务，请务必核对收款地址。</p>
+                    </div>
+                </div>
+                <div class="en">
+                    <h3>Deposit & Withdrawal</h3>
+                    <div class="qa-block">
+                        <h4>Withdrawal Threshold & Fees</h4>
+                        <p>Users can apply for CRLM withdrawal upon reaching the minimum limit with fixed handling fees charged. USDT withdrawal channels will be available in the future.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>Deposit Confirmation Time</h4>
+                        <p>Deposits from external wallets arrive based on blockchain confirmation speed, usually credited within a short period.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>Mistaken Transfer Handling</h4>
+                        <p>Funds sent to wrong wallet addresses cannot be retrieved. The platform has no obligation to recover lost assets, please double-check addresses carefully.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 6 风险提示 -->
+            <div class="content-panel" id="panel6">
+                <div class="zh">
+                    <h3>风险提示</h3>
+                    <div class="qa-block">
+                        <h4>加密货币价格波动风险</h4>
+                        <p>CRLM及各类加密资产行情波动剧烈，价格涨跌不受平台控制，资产盈亏由用户自行承担。</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>平台运营风险</h4>
+                        <p>受行业环境、市场因素影响，平台存在功能调整、迭代升级的可能性。</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>不可抗力</h4>
+                        <p>自然灾害、政策监管调整、网络大范围故障等不可抗力因素造成的损失，平台无需承担责任。</p>
+                    </div>
+                </div>
+                <div class="en">
+                    <h3>Risk Notice</h3>
+                    <div class="qa-block">
+                        <h4>Crypto Price Volatility Risk</h4>
+                        <p>The price of CRLM and other crypto assets fluctuates drastically. The platform cannot control market price changes, and all gains and losses shall be borne by users individually.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>Platform Operation Risk</h4>
+                        <p>The platform may carry out function adjustments and iterations due to industry and market changes.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>Force Majeure</h4>
+                        <p>The platform shall not be liable for losses caused by natural disasters, regulatory policy changes, large-scale network failures and other force majeure events.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 7 隐私政策 -->
+            <div class="content-panel" id="panel7">
+                <div class="zh">
+                    <h3>隐私政策</h3>
+                    <div class="qa-block">
+                        <h4>信息收集与使用</h4>
+                        <p>平台仅收集必要的设备、访问日志信息用于安全风控与功能优化，不会随意泄露、售卖用户个人数据。</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>数据保护</h4>
+                        <p>平台采用加密技术存储用户数据，严格遵守数据安全规范，杜绝用户隐私信息外泄。</p>
+                    </div>
+                </div>
+                <div class="en">
+                    <h3>Privacy Policy</h3>
+                    <div class="qa-block">
+                        <h4>Information Collection & Usage</h4>
+                        <p>The platform only collects necessary device and access logs for security risk control and function optimization. User data will never be disclosed or sold without authorization.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>Data Protection</h4>
+                        <p>User data is stored with encryption technologies in compliance with data security standards to prevent privacy leakage.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 8 免责声明 -->
+            <div class="content-panel" id="panel8">
+                <div class="zh">
+                    <h3>免责声明</h3>
+                    <div class="qa-block">
+                        <h4>责任界定</h4>
+                        <p>平台仅提供任务生态服务通道，不做任何投资价值承诺；因市场行情、个人操作、第三方钱包问题产生的全部资产损失，平台不对用户承担直接赔偿责任。</p>
+                    </div>
+                </div>
+                <div class="en">
+                    <h3>Disclaimer</h3>
+                    <div class="qa-block">
+                        <h4>Liability Definition</h4>
+                        <p>The platform merely provides a task ecosystem service and makes no promises on investment value. The platform shall not bear direct compensation liability for all asset losses caused by market fluctuations, personal operations or third-party wallet issues.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 9 条款变更 -->
+            <div class="content-panel" id="panel9">
+                <div class="zh">
+                    <h3>条款变更</h3>
+                    <div class="qa-block">
+                        <h4>协议更新规则</h4>
+                        <p>平台拥有随时修订、更新本服务条款的权利，修订内容将在站内公示；用户持续使用平台各项服务，即视为自愿接受更新后的全部条款内容。</p>
+                    </div>
+                </div>
+                <div class="en">
+                    <h3>Terms Revision</h3>
+                    <div class="qa-block">
+                        <h4>Agreement Update Rules</h4>
+                        <p>The platform reserves the right to revise and update these Terms of Service at any time, with revisions announced on the website. Continued use of platform services constitutes acceptance of the updated terms.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- 底部页脚导航 双语切换 -->
+    <footer>
+        <div class="footer-links">
+            <span class="zh">
+                <a href="about.html">关于我们</a> |
+                <a href="help.html">帮助中心</a> |
+                <a href="whitepaper.html">白皮书</a> |
+                <a href="terms.html">服务条款</a>
+            </span>
+            <span class="en">
+                <a href="about.html">About Us</a> |
+                <a href="help.html">Help Center</a> |
+                <a href="whitepaper.html">Whitepaper</a> |
+                <a href="terms.html">Terms of Service</a>
+            </span>
+        </div>
+        <div class="copyright">© 2026 CoinRealm. All rights reserved.</div>
+    </footer>
+
+    <script>
+        // 侧边菜单手风琴展开收起
+        const menuBtns = document.querySelectorAll('.menu-title');
+        const panels = document.querySelectorAll('.content-panel');
+        menuBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                menuBtns.forEach(b => {
+                    b.classList.remove('active');
+                    b.lastElementChild.textContent = '+';
+                })
+                panels.forEach(p => p.classList.remove('show'));
+                btn.classList.add('active');
+                btn.lastElementChild.textContent = '-';
+                document.getElementById(btn.dataset.target).classList.add('show');
+            })
+        })
+        menuBtns[0].click();
+
+        // 全局语言切换 默认英文启动
+        const langBtn = document.getElementById('langBtn');
+        let isEn = true;
+        langBtn.onclick = () => {
+            isEn = !isEn;
+            if(isEn){
+                document.body.classList.remove('chinese');
+                document.body.classList.add('english');
+                langBtn.textContent = '中文';
+                document.documentElement.lang = 'en';
+            }else{
+                document.body.classList.remove('english');
+                document.body.classList.add('chinese');
+                langBtn.textContent = 'English';
+                document.documentElement.lang = 'zh-CN';
+            }
+        }
+    </script>
+</body>
+</html>
