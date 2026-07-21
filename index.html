@@ -1,11 +1,45 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+  <!-- 立即捕获邀请链接 ref 参数，避免页面跳转时丢失 -->
+  <script>
+    (function () {
+      try {
+        var urlParams = new URLSearchParams(window.location.search);
+        var refParam = urlParams.get('ref');
+        if (refParam) {
+          localStorage.setItem('inviter_id', refParam);
+          localStorage.setItem('coinrealm_invite_ref', refParam);
+          console.log('页面加载-检测到 ref 参数：', refParam);
+          console.log('页面加载-已存入 localStorage：', localStorage.getItem('inviter_id'));
+        }
+      } catch (e) {
+        console.warn('捕获 ref 参数失败:', e);
+      }
+    })();
+  </script>
+  <script>
+    (function () {
+      var path = location.pathname || '';
+      if (/mobile\.html$/i.test(path)) return;
+      if (/[?&]desktop=1(?:&|$)/.test(location.search)) return;
+      var ua = navigator.userAgent || '';
+      var isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua)
+        || (window.matchMedia && window.matchMedia('(max-width: 768px)').matches);
+      if (!isMobile) return;
+      location.replace('mobile.html' + location.search + location.hash);
+    })();
+  </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f8fafc">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="CoinRealm">
+  <meta name="mobile-web-app-capable" content="yes">
   <title>CoinRealm</title>
+  <link rel="manifest" href="/manifest.json">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20260717">
   <style>
     .auth-area {
       display: flex;
@@ -15,6 +49,7 @@
       display: flex;
       align-items: center;
       gap: 8px;
+      position: relative;
     }
     .auth-avatar {
       width: 32px;
@@ -30,9 +65,19 @@
       background-color: #ccc;
       flex-shrink: 0;
     }
+    .auth-avatar.cr-avatar-letter {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
     .auth-user-name {
       font-size: 0.875rem;
       color: #ffffff;
+      opacity: 1;
       max-width: 120px;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -62,7 +107,26 @@
   <!-- ==================== 顶部导航栏（保持不变） ==================== -->
   <header class="navbar">
     <div class="navbar-inner">
-      <a href="#home" class="logo" id="logo" data-i18n="CoinRealm">CoinRealm</a>
+      <div class="navbar-start">
+        <a href="#home" class="logo" id="logo" data-i18n="CoinRealm">CoinRealm</a>
+        <nav class="navbar-nav">
+          <a href="#simple-tasks" class="navbar-link" data-i18n="nav_simple_tasks">⚡ 简单任务</a>
+        </nav>
+      </div>
+      <nav class="navbar-center" aria-label="Main navigation">
+        <a href="#home" class="navbar-main-link" data-nav-route="home">
+          <span class="navbar-main-icon" aria-hidden="true">🏠</span>
+          <span class="navbar-main-text" data-i18n="nav_home">首页</span>
+        </a>
+        <a href="#invite" class="navbar-main-link" data-nav-route="invite">
+          <span class="navbar-main-icon" aria-hidden="true">🎁</span>
+          <span class="navbar-main-text" data-i18n="nav_airdrop">空投</span>
+        </a>
+        <a href="#invite" class="navbar-main-link" data-nav-route="invite">
+          <span class="navbar-main-icon" aria-hidden="true">💰</span>
+          <span class="navbar-main-text" data-i18n="nav_invite_earn">邀请赚币</span>
+        </a>
+      </nav>
       <div class="navbar-actions">
         <button type="button" class="btn btn-secondary btn-lang" id="lang-toggle" aria-label="Switch language">
           <span id="lang-label">中文</span>
@@ -77,9 +141,14 @@
     <!-- 首页（任务大厅）主容器 — 由路由 #home 显示 -->
     <div id="home-page" class="home-container">
 
-      <!-- 1. Web3 广告横幅区 -->
-      <div class="ads-banner">
-        <span data-i18n="ads_banner">广告位（Web3 Ads）</span>
+      <!-- 1. Web3 广告轮播区 -->
+      <div id="ads-carousel" class="ads-carousel">
+        <div class="ads-carousel-viewport">
+          <div id="ads-carousel-slide" class="ads-carousel-slide">
+            <span class="ads-carousel-placeholder" data-i18n="ads_placeholder">广告位招租 | 联系 @CoinRealm_X</span>
+          </div>
+        </div>
+        <div id="ads-carousel-dots" class="ads-carousel-dots hidden" aria-hidden="true"></div>
       </div>
 
       <!-- 2. 广播动态区 -->
@@ -97,6 +166,15 @@
         </div>
       </div>
 
+      <!-- 官方推荐区 -->
+      <section id="official-recommend-section" class="official-recommend-section hidden">
+        <div class="official-recommend-header">
+          <h2 class="official-recommend-title" data-i18n="official_recommend_title">⭐ 官方推荐</h2>
+          <button type="button" id="official-view-all-btn" class="official-view-all-link" data-i18n="official_view_all">查看全部 &gt;</button>
+        </div>
+        <div id="official-recommend-grid" class="official-recommend-grid"></div>
+      </section>
+
       <!-- 3. 新用户引导提示条 -->
       <div id="user-guide-bar" class="user-guide-bar">
         <div class="guide-content">
@@ -113,6 +191,8 @@
         </div>
         <div class="filter-tags" id="filter-tags">
           <button class="tag-btn active" data-type="all" data-i18n="tag_all">全部</button>
+          <button class="tag-btn tag-btn-simple" data-type="simple" data-i18n="tag_simple">⚡ 简单任务</button>
+          <a href="#simple-tasks" class="simple-tasks-more-link" data-i18n="simple_view_all">查看更多 →</a>
           <button class="tag-btn" data-type="official" data-i18n="tag_official">官方</button>
           <button class="tag-btn" data-type="airdrop" data-i18n="tag_airdrop">空投</button>
           <button class="tag-btn" data-type="register" data-i18n="tag_register">注册</button>
@@ -235,142 +315,7 @@
         </div>
 
         <!-- 6. 任务卡片瀑布流网格 -->
-        <div id="task-grid" class="task-grid hidden">
-          <!-- 卡片 1：官方任务 -->
-          <div class="task-card" data-category="official">
-            <div class="card-top">
-              <div class="author-info">
-                <div class="css-avatar"></div>
-                <div class="meta-text">
-                  <span class="username">CoinRealm Core</span>
-                  <span class="level-badge">Lv.9</span>
-                </div>
-              </div>
-              <span class="badge official-badge" data-i18n="badge_official">官方</span>
-            </div>
-            <div class="reward-amount">1,500 CRLM</div>
-            <div class="card-bottom">
-              <div class="meta-tags">
-                <span class="type-label label-official" data-i18n="tag_official">官方</span>
-                <span class="info-text"><span data-i18n="text_slots">剩余名额</span> 15/20</span>
-                <span class="info-text">3 <span data-i18n="text_days">天后</span></span>
-              </div>
-              <button class="claim-btn" data-i18n="btn_claim">领取</button>
-            </div>
-          </div>
-
-          <!-- 卡片 2：推广 + 空投任务 -->
-          <div class="task-card" data-category="airdrop">
-            <div class="card-top">
-              <div class="author-info">
-                <div class="css-avatar"></div>
-                <div class="meta-text">
-                  <span class="username">AlphaRadar</span>
-                  <span class="level-badge">Lv.5</span>
-                </div>
-              </div>
-              <span class="badge promo-badge" data-i18n="badge_promo">推广</span>
-            </div>
-            <div class="reward-amount">500 CRLM</div>
-            <div class="card-bottom">
-              <div class="meta-tags">
-                <span class="type-label label-airdrop" data-i18n="tag_airdrop">空投</span>
-                <span class="info-text"><span data-i18n="text_slots">剩余名额</span> 88/100</span>
-                <span class="info-text">5 <span data-i18n="text_days">天后</span></span>
-              </div>
-              <button class="claim-btn" data-i18n="btn_claim">领取</button>
-            </div>
-          </div>
-
-          <!-- 卡片 3：注册任务 -->
-          <div class="task-card" data-category="register">
-            <div class="card-top">
-              <div class="author-info">
-                <div class="css-avatar"></div>
-                <div class="meta-text">
-                  <span class="username">LinkerDAO</span>
-                  <span class="level-badge">Lv.3</span>
-                </div>
-              </div>
-            </div>
-            <div class="reward-amount">300 CRLM</div>
-            <div class="card-bottom">
-              <div class="meta-tags">
-                <span class="type-label label-register" data-i18n="tag_register">注册</span>
-                <span class="info-text"><span data-i18n="text_slots">剩余名额</span> 2/50</span>
-                <span class="info-text">1 <span data-i18n="text_days">天后</span></span>
-              </div>
-              <button class="claim-btn" data-i18n="btn_claim">领取</button>
-            </div>
-          </div>
-
-          <!-- 卡片 4：交易任务 -->
-          <div class="task-card" data-category="trade">
-            <div class="card-top">
-              <div class="author-info">
-                <div class="css-avatar"></div>
-                <div class="meta-text">
-                  <span class="username">WhaleSwap</span>
-                  <span class="level-badge">Lv.6</span>
-                </div>
-              </div>
-            </div>
-            <div class="reward-amount">2,500 CRLM</div>
-            <div class="card-bottom">
-              <div class="meta-tags">
-                <span class="type-label label-trade" data-i18n="tag_trade">交易</span>
-                <span class="info-text"><span data-i18n="text_slots">剩余名额</span> 11/15</span>
-                <span class="info-text">7 <span data-i18n="text_days">天后</span></span>
-              </div>
-              <button class="claim-btn" data-i18n="btn_claim">领取</button>
-            </div>
-          </div>
-
-          <!-- 卡片 5：游戏任务 -->
-          <div class="task-card" data-category="game">
-            <div class="card-top">
-              <div class="author-info">
-                <div class="css-avatar"></div>
-                <div class="meta-text">
-                  <span class="username">GameFi_Hub</span>
-                  <span class="level-badge">Lv.4</span>
-                </div>
-              </div>
-            </div>
-            <div class="reward-amount">800 CRLM</div>
-            <div class="card-bottom">
-              <div class="meta-tags">
-                <span class="type-label label-game" data-i18n="tag_game">游戏</span>
-                <span class="info-text"><span data-i18n="text_slots">剩余名额</span> 40/200</span>
-                <span class="info-text">12 <span data-i18n="text_days">天后</span></span>
-              </div>
-              <button class="claim-btn" data-i18n="btn_claim">领取</button>
-            </div>
-          </div>
-
-          <!-- 卡片 6：测试任务 -->
-          <div class="task-card" data-category="test">
-            <div class="card-top">
-              <div class="author-info">
-                <div class="css-avatar"></div>
-                <div class="meta-text">
-                  <span class="username">ZkLayer X</span>
-                  <span class="level-badge">Lv.8</span>
-                </div>
-              </div>
-              <span class="badge official-badge" data-i18n="badge_official">官方</span>
-            </div>
-            <div class="reward-amount">3,000 CRLM</div>
-            <div class="card-bottom">
-              <div class="meta-tags">
-                <span class="type-label label-test" data-i18n="tag_test">测试</span>
-                <span class="info-text"><span data-i18n="text_slots">剩余名额</span> 150/500</span>
-                <span class="info-text">14 <span data-i18n="text_days">天后</span></span>
-              </div>
-              <button class="claim-btn" data-i18n="btn_claim">领取</button>
-            </div>
-          </div>
-        </div>
+        <div id="task-grid" class="task-grid hidden"></div>
 
         <!-- 7. 空状态提示 -->
         <div id="empty-state" class="empty-state hidden">
@@ -380,7 +325,7 @@
 
       <!-- 8. 右下角悬浮按钮群 -->
       <div class="floating-actions">
-        <button class="float-btn post-task-btn" title="发布任务">+</button>
+        <button type="button" class="float-btn post-task-btn" title="发布任务">+</button>
         <button id="back-to-top-btn" class="float-btn back-to-top hidden" title="回到顶部">↑</button>
       </div>
 
@@ -424,10 +369,67 @@
           <h3 class="task-detail-section-title" data-i18n="td_desc_title">任务描述</h3>
           <div id="td-task-description" class="task-detail-desc"></div>
         </div>
+        <div id="td-proof-upload-section" class="task-detail-section hidden">
+          <h3 class="task-detail-section-title" data-i18n="td_proof_title">提交凭证</h3>
+          <input type="file" id="td-proof-file-input" class="td-proof-file-input" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple hidden>
+          <div id="td-proof-upload-zone" class="td-proof-upload-zone" role="button" tabindex="0">
+            <span class="td-proof-upload-icon" aria-hidden="true">📷</span>
+            <span id="td-proof-upload-text" class="td-proof-upload-text" data-i18n="td_proof_upload_main">点击上传截图</span>
+            <span id="td-proof-upload-hint" class="td-proof-upload-hint" data-i18n="td_proof_upload_hint">支持 JPG、PNG、WebP，单张不超过 5MB，最多 3 张</span>
+          </div>
+          <div id="td-proof-preview-list" class="td-proof-preview-list"></div>
+          <button type="button" id="td-proof-submit-btn" class="td-proof-submit-btn" data-i18n="td_proof_submit">提交凭证</button>
+        </div>
+        <div id="td-task-images-section" class="task-detail-section hidden">
+          <h3 class="task-detail-section-title" data-i18n="td_images_title">任务图片</h3>
+          <div id="td-task-images-grid" class="td-task-images-grid"></div>
+        </div>
         <div class="task-detail-section">
           <h3 class="task-detail-section-title" data-i18n="td_req_title">任务要求</h3>
           <ul id="td-task-requirements" class="task-requirements-list"></ul>
         </div>
+        <div id="td-subtasks-section" class="task-detail-section hidden">
+          <h3 class="task-detail-section-title" data-i18n="td_subtasks_title">任务步骤</h3>
+          <div id="td-subtasks-list" class="td-subtasks-list"></div>
+        </div>
+
+        <div id="td-screenshot-verify-section" class="task-detail-section hidden">
+          <h3 class="task-detail-section-title" data-i18n="td_verify_title">提交验证</h3>
+          <div id="td-verify-steps" class="td-verify-steps" aria-label="Verification steps"></div>
+
+          <div id="td-verify-upload-wrap">
+            <input type="file" id="td-verify-file-input" class="td-verify-file-input" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" hidden>
+            <div id="td-verify-upload-zone" class="td-verify-upload-zone" role="button" tabindex="0">
+              <span class="td-verify-upload-icon" aria-hidden="true">📷</span>
+              <span id="td-verify-upload-text" class="td-verify-upload-text">点击上传截图</span>
+              <span id="td-verify-upload-hint" class="td-verify-upload-hint">请上传任务完成截图</span>
+            </div>
+            <div id="td-verify-preview-wrap" class="td-verify-preview-wrap hidden">
+              <img id="td-verify-preview-img" class="td-verify-preview-img" src="" alt="">
+              <button type="button" id="td-verify-reupload-btn" class="td-verify-reupload-btn" data-i18n="td_verify_reupload">重新上传</button>
+            </div>
+          </div>
+
+          <div class="td-verify-field">
+            <label id="td-verify-confirm-label" class="td-verify-label" for="td-verify-account-input">请填写确认信息</label>
+            <input type="text" id="td-verify-account-input" class="td-verify-input" placeholder="">
+            <p id="td-verify-confirm-hint" class="td-verify-field-hint">系统将自动比对您填写的内容与任务目标是否一致</p>
+          </div>
+
+          <p id="td-verify-error" class="td-verify-error hidden" role="alert"></p>
+
+          <button type="button" id="td-verify-submit-btn" class="td-verify-submit-btn" data-i18n="td_verify_submit">提交验证</button>
+
+          <div id="td-verify-success-panel" class="td-verify-success-panel hidden">
+            <div class="td-verify-success-icon" aria-hidden="true">✓</div>
+            <p id="td-verify-success-text" class="td-verify-success-text" data-i18n="td_verify_success">✓ 验证通过！奖励已到账</p>
+          </div>
+        </div>
+      </div>
+
+      <div id="td-image-lightbox" class="td-image-lightbox hidden" aria-hidden="true">
+        <div class="td-image-lightbox-backdrop"></div>
+        <img id="td-image-lightbox-img" class="td-image-lightbox-img" src="" alt="">
       </div>
 
       <!-- 卡片3：任务状态信息 -->
@@ -500,6 +502,7 @@
           <label class="create-task-label" data-i18n="ct_label_type">任务类型</label>
           <select id="ct-task-type" class="create-task-input">
             <option value="all" data-i18n="tag_all">全部</option>
+            <option value="simple" data-i18n="ct_type_simple">简单任务</option>
             <option value="airdrop" data-i18n="tag_airdrop">空投</option>
             <option value="register" data-i18n="tag_register">注册</option>
             <option value="trade" data-i18n="tag_trade">交易</option>
@@ -515,7 +518,13 @@
           <textarea id="ct-task-desc" class="create-task-textarea" data-placeholder="ct_ph_desc" placeholder="请详细描述任务内容和要求"></textarea>
         </div>
 
-        <div class="create-task-field">
+        <div id="ct-field-images" class="create-task-field">
+          <label class="create-task-label" data-i18n="ct_label_images">任务图片</label>
+          <input type="file" id="ct-image-input" class="ct-image-file-input" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple hidden>
+          <div id="ct-image-list" class="ct-image-list"></div>
+        </div>
+
+        <div id="ct-field-req" class="create-task-field">
           <label class="create-task-label" data-i18n="ct_label_req">任务要求</label>
           <div id="ct-requirements-list" class="create-task-req-list">
             <div class="create-task-req-row">
@@ -534,7 +543,106 @@
           <button type="button" id="ct-add-req-btn" class="create-task-add-req" data-i18n="ct_add_req">+ 添加要求</button>
         </div>
 
-        <div class="create-task-field">
+        <div id="ct-field-platform" class="create-task-field hidden">
+          <label class="create-task-label" for="ct-task-platform" data-i18n="ct_label_platform">任务平台</label>
+          <select id="ct-task-platform" class="create-task-input">
+            <option value="" data-i18n="ct_platform_select">请选择平台</option>
+            <option value="twitter" data-i18n="ct_platform_twitter">Twitter (X)</option>
+            <option value="telegram" data-i18n="ct_platform_telegram">Telegram</option>
+            <option value="discord" data-i18n="ct_platform_discord">Discord</option>
+            <option value="youtube" data-i18n="ct_platform_youtube">YouTube</option>
+            <option value="github" data-i18n="ct_platform_github">GitHub</option>
+            <option value="tiktok" data-i18n="ct_platform_tiktok">TikTok</option>
+            <option value="instagram" data-i18n="ct_platform_instagram">Instagram</option>
+            <option value="reddit" data-i18n="ct_platform_reddit">Reddit</option>
+          </select>
+        </div>
+
+        <div id="ct-field-platform-config" class="create-task-platform-config hidden">
+          <div id="ct-config-twitter" class="hidden">
+            <div class="create-task-field">
+              <label class="create-task-label" data-i18n="ct_label_action">任务动作</label>
+              <div id="ct-twitter-action-group" class="ct-action-toggle-group" role="group" aria-label="Twitter actions">
+                <button type="button" class="ct-action-toggle" data-action="follow" data-i18n="ct_toggle_follow" onclick="window.coinrealmToggleTwitterAction && window.coinrealmToggleTwitterAction(this)">关注</button>
+                <button type="button" class="ct-action-toggle" data-action="like" data-i18n="ct_toggle_like" onclick="window.coinrealmToggleTwitterAction && window.coinrealmToggleTwitterAction(this)">点赞</button>
+                <button type="button" class="ct-action-toggle" data-action="reply" data-i18n="ct_toggle_reply" onclick="window.coinrealmToggleTwitterAction && window.coinrealmToggleTwitterAction(this)">评论</button>
+              </div>
+            </div>
+            <div id="ct-target-field-follow" class="create-task-field ct-action-target-field hidden">
+              <label class="create-task-label" for="ct-target-input-follow" data-i18n="ct_label_target_follow">关注目标</label>
+              <input type="text" id="ct-target-input-follow" class="create-task-input" data-placeholder="ct_ph_target_follow" placeholder="">
+            </div>
+            <div id="ct-target-field-like" class="create-task-field ct-action-target-field hidden">
+              <label class="create-task-label" for="ct-target-input-like" data-i18n="ct_label_target_like">点赞目标</label>
+              <input type="text" id="ct-target-input-like" class="create-task-input" data-placeholder="ct_ph_target_like" placeholder="">
+            </div>
+            <div id="ct-target-field-reply" class="create-task-field ct-action-target-field hidden">
+              <label class="create-task-label" for="ct-target-input-reply" data-i18n="ct_label_target_reply">评论目标</label>
+              <input type="text" id="ct-target-input-reply" class="create-task-input" data-placeholder="ct_ph_target_reply" placeholder="">
+              <div id="ct-target-field-reply-keyword" class="ct-action-keyword-field hidden">
+                <input type="text" id="ct-target-keyword-reply" class="create-task-input" data-placeholder="ct_ph_keyword_reply" placeholder="">
+              </div>
+            </div>
+          </div>
+          <div id="ct-config-telegram" class="hidden">
+            <div class="create-task-field">
+              <label class="create-task-label" data-i18n="ct_label_action">任务动作</label>
+              <div id="ct-telegram-action-group" class="ct-action-toggle-group" role="group" aria-label="Telegram actions">
+                <button type="button" class="ct-action-toggle" data-action="join" data-i18n="ct_toggle_tg_join" onclick="window.coinrealmToggleTelegramAction && window.coinrealmToggleTelegramAction(this)">加入群组</button>
+                <button type="button" class="ct-action-toggle" data-action="follow" data-i18n="ct_toggle_tg_follow" onclick="window.coinrealmToggleTelegramAction && window.coinrealmToggleTelegramAction(this)">关注频道</button>
+                <button type="button" class="ct-action-toggle" data-action="message" data-i18n="ct_toggle_tg_message" onclick="window.coinrealmToggleTelegramAction && window.coinrealmToggleTelegramAction(this)">发送消息</button>
+              </div>
+            </div>
+            <div id="ct-target-field-join" class="create-task-field ct-action-target-field hidden">
+              <label class="create-task-label" for="ct-target-input-join" data-i18n="ct_label_target_tg_join">加入群组</label>
+              <input type="text" id="ct-target-input-join" class="create-task-input" data-placeholder="ct_ph_target_tg_join" placeholder="">
+            </div>
+            <div id="ct-target-field-tg-follow" class="create-task-field ct-action-target-field hidden">
+              <label class="create-task-label" for="ct-target-input-tg-follow" data-i18n="ct_label_target_tg_follow">关注频道</label>
+              <input type="text" id="ct-target-input-tg-follow" class="create-task-input" data-placeholder="ct_ph_target_tg_follow" placeholder="">
+            </div>
+            <div id="ct-target-field-message" class="create-task-field ct-action-target-field hidden">
+              <label class="create-task-label" for="ct-target-input-message" data-i18n="ct_label_target_tg_message">发送消息</label>
+              <input type="text" id="ct-target-input-message" class="create-task-input" data-placeholder="ct_ph_target_tg_message" placeholder="">
+              <div id="ct-target-field-message-keyword" class="ct-action-keyword-field hidden">
+                <input type="text" id="ct-target-keyword-message" class="create-task-input" data-placeholder="ct_ph_keyword_tg_message" placeholder="">
+              </div>
+            </div>
+          </div>
+          <div id="ct-config-discord" class="hidden">
+            <div class="create-task-field">
+              <label class="create-task-label" data-i18n="ct_label_action">任务动作</label>
+              <div id="ct-discord-action-group" class="ct-action-toggle-group" role="group" aria-label="Discord actions">
+                <button type="button" class="ct-action-toggle" data-action="join" data-i18n="ct_toggle_dc_join" onclick="window.coinrealmToggleDiscordAction && window.coinrealmToggleDiscordAction(this)">加入服务器</button>
+                <button type="button" class="ct-action-toggle" data-action="message" data-i18n="ct_toggle_dc_message" onclick="window.coinrealmToggleDiscordAction && window.coinrealmToggleDiscordAction(this)">发送消息</button>
+              </div>
+            </div>
+            <div id="ct-target-field-discord" class="create-task-field ct-action-target-field hidden">
+              <label class="create-task-label" for="ct-target-input-discord" data-i18n="ct_label_target_dc_invite">服务器邀请链接</label>
+              <input type="text" id="ct-target-input-discord" class="create-task-input" data-placeholder="ct_ph_target_dc_invite" placeholder="">
+            </div>
+            <div id="ct-target-field-discord-keyword" class="create-task-field ct-action-keyword-field hidden">
+              <input type="text" id="ct-target-keyword-discord" class="create-task-input" data-placeholder="ct_ph_keyword_dc_message" placeholder="">
+            </div>
+          </div>
+          <div id="ct-config-generic">
+            <div class="create-task-field">
+              <label class="create-task-label" for="ct-task-action" data-i18n="ct_label_action">任务动作</label>
+              <select id="ct-task-action" class="create-task-input"></select>
+            </div>
+            <div class="create-task-field">
+              <label class="create-task-label" for="ct-task-target" data-i18n="ct_label_target">目标</label>
+              <input type="text" id="ct-task-target" class="create-task-input" data-placeholder="ct_ph_target" placeholder="">
+            </div>
+            <div id="ct-field-keyword" class="create-task-field hidden">
+              <label class="create-task-label" for="ct-task-keyword" data-i18n="ct_label_keyword">关键词</label>
+              <input type="text" id="ct-task-keyword" class="create-task-input" data-placeholder="ct_ph_keyword" placeholder="">
+              <p class="create-task-orange-hint" data-i18n="ct_keyword_hint">仅回复/评论/发送消息类任务需要填写</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="ct-field-reward-type" class="create-task-field">
           <label class="create-task-label" data-i18n="ct_label_reward_type">奖励类型</label>
           <div class="create-task-radio-group">
             <label class="create-task-radio-label">
@@ -551,6 +659,7 @@
         <div class="create-task-field">
           <label class="create-task-label" data-i18n="ct_label_reward_amount">奖励金额</label>
           <input type="number" id="ct-reward-amount" class="create-task-input" data-placeholder="ct_ph_reward" placeholder="请输入奖励金额" min="0">
+          <p id="ct-unit-price-hint" class="create-task-orange-hint hidden"></p>
         </div>
 
         <div class="create-task-field">
@@ -561,9 +670,10 @@
         <div class="create-task-field">
           <label class="create-task-label" data-i18n="ct_label_deadline">截止时间</label>
           <input type="date" id="ct-deadline" class="create-task-input">
+          <p class="create-task-orange-hint create-task-deadline-hint" data-i18n="ct_deadline_hint">⏰ 超时审核将自动通过。若多次超时未审核，发布权限可能被暂停。</p>
         </div>
 
-        <div class="create-task-field">
+        <div id="ct-field-proof" class="create-task-field">
           <label class="create-task-label" data-i18n="ct_label_proof">凭证要求</label>
           <div class="create-task-radio-group">
             <label class="create-task-radio-label">
@@ -608,7 +718,7 @@
 
         <div class="submit-task-field">
           <div id="st-upload-zone" class="submit-task-upload-zone">
-            <input type="file" id="st-file-input" class="submit-task-file-input" accept="image/jpeg,image/png,.jpg,.jpeg,.png" multiple hidden>
+            <input type="file" id="st-file-input" class="submit-task-file-input" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple hidden>
             <p class="st-upload-main" data-i18n="st_upload_main">📷 点击或拖拽上传截图</p>
             <p class="st-upload-hint" data-i18n="st_upload_hint">支持 JPG、PNG 格式，单张不超过 5MB</p>
           </div>
@@ -638,44 +748,51 @@
 
       <!-- 用户信息区 -->
       <div class="profile-user-card">
-        <div class="profile-avatar"></div>
-        <h2 id="pf-username" class="profile-username">AlphaRadar</h2>
-        <span id="pf-level-badge" class="profile-level-badge">Lv.5 大师</span>
-        <span id="pf-reputation" class="profile-reputation">98% 完成率</span>
+        <div class="profile-avatar-wrap">
+          <div id="pf-avatar" class="profile-avatar"></div>
+          <button type="button" id="pf-avatar-edit-btn" class="profile-avatar-edit-btn hidden" aria-label="选择头像">+</button>
+        </div>
+        <h2 id="pf-username" class="profile-username">--</h2>
+        <span id="pf-level-badge" class="profile-level-badge">Lv.--</span>
+        <span id="pf-reputation" class="profile-reputation">--% 完成率</span>
       </div>
 
       <!-- 资产卡片 -->
       <div class="profile-asset-card">
         <div class="profile-asset-left">
-          <div id="pf-crlm-balance" class="profile-crlm-balance">12,500 CRLM</div>
-          <div id="pf-usdt-value" class="profile-usdt-value">≈ 1,250 USDT</div>
+          <div class="profile-balance-row">
+            <div id="pf-crlm-balance" class="profile-crlm-balance">-- CRLM</div>
+            <button type="button" id="pf-balance-ledger-btn" class="profile-balance-ledger-btn" data-i18n="pf_balance_ledger">明细</button>
+            <button type="button" id="pf-deposit-btn" class="profile-deposit-btn profile-balance-deposit-btn" data-i18n="pf_btn_deposit">充币</button>
+            <button type="button" id="pf-withdraw-btn" class="profile-withdraw-btn profile-balance-withdraw-btn" data-i18n="pf_btn_withdraw">提币</button>
+          </div>
+          <div id="pf-usdt-value" class="profile-usdt-value">≈ -- USDT</div>
         </div>
-        <button type="button" class="profile-withdraw-btn" data-i18n="pf_btn_withdraw">提币</button>
       </div>
 
       <!-- 数据统计行 -->
       <div class="profile-stats-row">
         <div class="profile-stat-item">
-          <span id="pf-stat-progress" class="profile-stat-num">3</span>
+          <span id="pf-stat-progress" class="profile-stat-num">--</span>
           <span class="profile-stat-label" data-i18n="pf_stat_progress">进行中</span>
         </div>
         <div class="profile-stat-item">
-          <span id="pf-stat-completed" class="profile-stat-num">28</span>
+          <span id="pf-stat-completed" class="profile-stat-num">--</span>
           <span class="profile-stat-label" data-i18n="pf_stat_completed">已完成</span>
         </div>
         <div class="profile-stat-item">
-          <span id="pf-stat-earnings" class="profile-stat-num">15,600</span>
+          <span id="pf-stat-earnings" class="profile-stat-num">--</span>
           <span class="profile-stat-label" data-i18n="pf_stat_earnings">累计收益</span>
         </div>
       </div>
 
       <!-- 功能入口列表 -->
       <div class="profile-menu-card">
-        <a href="#home" class="profile-menu-item">
+        <a href="#my-tasks" class="profile-menu-item" data-route="my-tasks">
           <span data-i18n="pf_menu_tasks">我的任务（进行中/已完成/已驳回）</span>
           <span class="profile-menu-arrow">→</span>
         </a>
-        <a href="#home" class="profile-menu-item">
+        <a href="#publish-management" class="profile-menu-item" data-route="publish-management">
           <span data-i18n="pf_menu_publish">发布管理（我发布的任务列表）</span>
           <span class="profile-menu-arrow">→</span>
         </a>
@@ -691,6 +808,18 @@
           <span data-i18n="pf_menu_leaderboard">排行榜</span>
           <span class="profile-menu-arrow">→</span>
         </a>
+        <button type="button" id="pf-twitter-bind-item" class="profile-menu-item profile-menu-item-action">
+          <span id="pf-twitter-menu-label" data-i18n="pf_menu_twitter_bind">绑定 Twitter 账号</span>
+          <span id="pf-twitter-menu-status" class="profile-menu-status profile-menu-status-muted" data-i18n="pf_twitter_unbound">未绑定</span>
+        </button>
+        <button type="button" id="pf-telegram-bind-item" class="profile-menu-item profile-menu-item-action">
+          <span id="pf-telegram-menu-label" data-i18n="pf_menu_telegram_bind">绑定 Telegram 账号</span>
+          <span id="pf-telegram-menu-status" class="profile-menu-status profile-menu-status-muted" data-i18n="pf_telegram_unbound">未绑定</span>
+        </button>
+        <button type="button" id="pf-discord-bind-item" class="profile-menu-item profile-menu-item-action">
+          <span id="pf-discord-menu-label" data-i18n="pf_menu_discord_bind">绑定 Discord 账号</span>
+          <span id="pf-discord-menu-status" class="profile-menu-status profile-menu-status-muted" data-i18n="pf_discord_unbound">未绑定</span>
+        </button>
         <a href="#invite" class="profile-menu-item" data-route="invite">
           <span data-i18n="pf_menu_invite">邀请好友</span>
           <span class="profile-menu-arrow">→</span>
@@ -701,6 +830,151 @@
         </a>
       </div>
 
+      <div id="avatar-picker-modal" class="avatar-picker-modal hidden" aria-hidden="true">
+        <div class="avatar-picker-overlay"></div>
+        <div class="avatar-picker-card">
+          <h3 class="avatar-picker-title" data-i18n="pf_avatar_picker_title">选择头像</h3>
+          <div id="avatar-picker-grid" class="avatar-picker-grid"></div>
+          <div class="avatar-picker-actions">
+            <button type="button" id="avatar-picker-cancel" class="avatar-picker-cancel-btn" data-i18n="pf_avatar_cancel">取消</button>
+            <button type="button" id="avatar-picker-confirm" class="avatar-picker-confirm-btn" data-i18n="pf_avatar_confirm">确认</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 我的任务页 — 由路由 #my-tasks 显示 -->
+    <div id="my-tasks-page" class="my-tasks-container hidden">
+      <header class="my-tasks-header">
+        <a href="#profile" class="my-tasks-back-btn" aria-label="Back">←</a>
+        <h1 class="my-tasks-title" data-i18n="mt_page_title">我的任务</h1>
+      </header>
+
+      <div id="mt-login-required" class="my-tasks-login hidden">
+        <p data-i18n="mt_login_required">请先登录查看任务</p>
+        <a href="#home" class="my-tasks-home-btn" data-i18n="mt_btn_home">去任务大厅</a>
+      </div>
+
+      <div id="mt-main-content" class="my-tasks-main hidden">
+        <div class="my-tasks-tabs" role="tablist">
+          <button type="button" id="mt-tab-active" class="my-tasks-tab my-tasks-tab-active" data-tab="active" data-i18n="mt_tab_active">进行中</button>
+          <button type="button" id="mt-tab-completed" class="my-tasks-tab" data-tab="completed" data-i18n="mt_tab_completed">已完成</button>
+          <button type="button" id="mt-tab-expired" class="my-tasks-tab" data-tab="expired" data-i18n="mt_tab_expired">已失效</button>
+        </div>
+
+        <div id="mt-loading" class="my-tasks-loading hidden" data-i18n="mt_loading">加载中...</div>
+        <div id="mt-task-list" class="my-tasks-list"></div>
+
+        <div id="mt-empty-state" class="my-tasks-empty hidden">
+          <p id="mt-empty-text" class="my-tasks-empty-text"></p>
+          <a href="#home" class="my-tasks-home-btn" data-i18n="mt_btn_home">去任务大厅</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 简单任务页 — 由路由 #simple-tasks 显示 -->
+    <div id="simple-tasks-page" class="simple-tasks-container hidden">
+      <section class="simple-tasks-banner">
+        <a href="#home" class="simple-tasks-back" aria-label="Back">←</a>
+        <h1 class="simple-tasks-banner-title" data-i18n="st_page_title">⚡ 简单任务</h1>
+        <p class="simple-tasks-banner-subtitle" data-i18n="st_page_subtitle">一键完成，快速赚取 CRLM</p>
+      </section>
+      <div class="simple-tasks-main">
+        <div id="st-loading" class="simple-tasks-loading hidden" data-i18n="st_loading">加载中...</div>
+        <div id="st-task-grid" class="simple-tasks-grid"></div>
+        <div id="st-empty-state" class="simple-tasks-empty hidden">
+          <p class="simple-tasks-empty-text" data-i18n="st_empty">暂无简单任务，稍后再来看看吧</p>
+          <a href="#create-task" class="simple-tasks-action-btn" data-i18n="st_btn_create">发布简单任务</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 发布管理页 — 由路由 #publish-management 显示 -->
+    <div id="publish-management-page" class="publish-mgmt-container hidden">
+      <header class="publish-mgmt-header">
+        <a href="#profile" class="publish-mgmt-back-btn" aria-label="Back">←</a>
+        <h1 class="publish-mgmt-title" data-i18n="pm_page_title">发布管理</h1>
+      </header>
+
+      <div id="pm-login-required" class="publish-mgmt-login hidden">
+        <p data-i18n="pm_login_required">请先登录查看发布任务</p>
+        <a href="#create-task" class="publish-mgmt-action-btn" data-i18n="pm_btn_create">去发布任务</a>
+      </div>
+
+      <div id="pm-main-content" class="publish-mgmt-main hidden">
+        <div id="pm-loading" class="publish-mgmt-loading hidden" data-i18n="pm_loading">加载中...</div>
+        <div id="pm-task-list" class="publish-mgmt-list"></div>
+        <div id="pm-empty-state" class="publish-mgmt-empty hidden">
+          <p class="publish-mgmt-empty-text" data-i18n="pm_empty_text">你还没有发布过任务</p>
+          <a href="#create-task" class="publish-mgmt-action-btn" data-i18n="pm_btn_create">去发布任务</a>
+        </div>
+      </div>
+
+      <div id="pm-delete-modal" class="pm-delete-modal hidden" aria-hidden="true">
+        <div class="pm-delete-modal-overlay"></div>
+        <div class="pm-delete-modal-card">
+          <p class="pm-delete-modal-text" data-i18n="pm_delete_confirm">确定要删除该任务吗？剩余资金将退回你的账户。</p>
+          <p id="pm-delete-error" class="pm-delete-modal-error hidden"></p>
+          <div class="pm-delete-modal-actions">
+            <button type="button" id="pm-delete-cancel" class="pm-delete-cancel-btn" data-i18n="pm_btn_cancel">取消</button>
+            <button type="button" id="pm-delete-confirm" class="pm-delete-confirm-btn" data-i18n="pm_btn_confirm_delete">确定删除</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="pm-pin-modal" class="pm-action-modal hidden" aria-hidden="true">
+        <div class="pm-action-modal-overlay"></div>
+        <div class="pm-action-modal-card">
+          <h3 class="pm-action-modal-title" data-i18n="pm_pin_title">置顶任务</h3>
+          <p class="pm-action-modal-desc" data-i18n="pm_pin_desc">选择置顶套餐，支付 CRLM 后任务将展示在首页置顶区。</p>
+          <div class="pm-pin-package-group">
+            <button type="button" class="pm-pin-package-btn" data-days="1" data-price="100">
+              <span data-i18n="pm_pin_1d">1天</span> 100 CRLM
+            </button>
+            <button type="button" class="pm-pin-package-btn" data-days="7" data-price="500">
+              <span data-i18n="pm_pin_7d">7天</span> 500 CRLM
+            </button>
+            <button type="button" class="pm-pin-package-btn" data-days="30" data-price="2000">
+              <span data-i18n="pm_pin_30d">30天</span> 2000 CRLM
+            </button>
+          </div>
+          <p id="pm-pin-error" class="pm-action-modal-error hidden"></p>
+          <div class="pm-action-modal-actions">
+            <button type="button" id="pm-pin-cancel" class="pm-action-cancel-btn" data-i18n="pm_btn_cancel">取消</button>
+            <button type="button" id="pm-pin-confirm" class="pm-action-confirm-btn" data-i18n="pm_btn_confirm_pin">确认置顶</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="pm-boost-modal" class="pm-action-modal hidden" aria-hidden="true">
+        <div class="pm-action-modal-overlay"></div>
+        <div class="pm-action-modal-card">
+          <h3 class="pm-action-modal-title" data-i18n="pm_boost_title">追加奖励</h3>
+          <p class="pm-action-modal-desc" data-i18n="pm_boost_desc">输入要追加的奖励金额，系统将额外扣除 20% 作为押金。</p>
+          <input type="number" id="pm-boost-input" class="pm-action-input" min="0" step="0.01" data-placeholder="pm_boost_ph">
+          <p id="pm-boost-hint" class="pm-action-hint"></p>
+          <p id="pm-boost-error" class="pm-action-modal-error hidden"></p>
+          <div class="pm-action-modal-actions">
+            <button type="button" id="pm-boost-cancel" class="pm-action-cancel-btn" data-i18n="pm_btn_cancel">取消</button>
+            <button type="button" id="pm-boost-confirm" class="pm-action-confirm-btn" data-i18n="pm_btn_confirm">确认</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="pm-slots-modal" class="pm-action-modal hidden" aria-hidden="true">
+        <div class="pm-action-modal-overlay"></div>
+        <div class="pm-action-modal-card">
+          <h3 class="pm-action-modal-title" data-i18n="pm_slots_title">增加名额</h3>
+          <p class="pm-action-modal-desc" data-i18n="pm_slots_desc">输入要增加的名额数量（≥1）。</p>
+          <input type="number" id="pm-slots-input" class="pm-action-input" min="1" step="1" data-placeholder="pm_slots_ph">
+          <p id="pm-slots-error" class="pm-action-modal-error hidden"></p>
+          <div class="pm-action-modal-actions">
+            <button type="button" id="pm-slots-cancel" class="pm-action-cancel-btn" data-i18n="pm_btn_cancel">取消</button>
+            <button type="button" id="pm-slots-confirm" class="pm-action-confirm-btn" data-i18n="pm_btn_confirm">确认</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 我的分红页 — 由路由 #dividends 显示 -->
@@ -939,91 +1213,451 @@
 
     <!-- 邀请专属页 — 由路由 #invite 显示 -->
     <div id="invite-page" class="invite-container hidden">
-
       <h1 class="invite-title" data-i18n="iv_page_title">邀请好友</h1>
 
-      <!-- 邀请数据总览 -->
-      <div class="invite-overview-card">
-        <div class="invite-code-row">
-          <span class="invite-code-label" data-i18n="iv_code_label">我的专属邀请码</span>
-          <div class="invite-code-wrap">
-            <span id="iv-invite-code" class="invite-code-value">CRLM888</span>
-            <button type="button" id="iv-copy-code-btn" class="invite-copy-btn" data-i18n="iv_btn_copy">复制</button>
+      <div class="invite-layout">
+        <aside class="invite-column invite-column-left">
+          <div class="invite-panel invite-link-panel">
+            <h2 class="invite-panel-title" data-i18n="iv_share_headline">邀请好友，赚取 CRLM</h2>
+            <p id="iv-reward-desc" class="invite-reward-desc">一级奖励：{level1} CRLM/人，二级奖励：{level2} CRLM/人</p>
+            <div class="invite-stats-inline">
+              <div class="invite-stat-pill">
+                <span id="iv-invite-count" class="invite-stat-pill-num">0</span>
+                <span class="invite-stat-pill-label" data-i18n="iv_stat_invites">累计邀请</span>
+              </div>
+              <div class="invite-stat-pill invite-stat-pill-gold">
+                <span id="iv-invite-reward" class="invite-stat-pill-num">0</span>
+                <span class="invite-stat-pill-label" data-i18n="iv_stat_reward">累计奖励</span>
+              </div>
+            </div>
+            <div class="invite-link-row">
+              <input type="text" id="iv-invite-link" class="invite-link-input" readonly value="">
+              <button type="button" id="iv-copy-link-btn" class="invite-copy-link-btn" data-i18n="iv_btn_copy_link">复制链接</button>
+            </div>
+            <div class="invite-share-btns">
+              <button type="button" class="invite-share-btn invite-share-twitter" data-share="twitter">𝕏 Twitter</button>
+              <button type="button" class="invite-share-btn invite-share-telegram" data-share="telegram">✈️ Telegram</button>
+              <button type="button" class="invite-share-btn invite-share-discord" data-share="discord">👾 Discord</button>
+            </div>
+          </div>
+
+          <div class="invite-panel invite-leaderboard-panel">
+            <h2 class="invite-panel-title" data-i18n="iv_lb_title">🏆 邀请排行榜</h2>
+            <ul id="iv-leaderboard-list" class="invite-leaderboard-list"></ul>
+            <button type="button" id="iv-leaderboard-expand" class="invite-expand-btn" data-i18n="iv_lb_expand">查看完整排行榜</button>
+            <div id="iv-my-rank-footer" class="invite-my-rank hidden"></div>
+          </div>
+        </aside>
+
+        <main class="invite-column invite-column-center">
+          <div class="invite-panel invite-mining-panel">
+            <div class="invite-mining-section">
+              <div class="invite-mining-wrap">
+                <span id="invite-mining-halo" class="invite-mining-halo" aria-hidden="true"></span>
+                <button type="button" id="invite-mining-btn" class="invite-mining-btn">
+                  <span id="invite-mining-label" data-i18n="iv_airdrop">空投</span>
+                </button>
+                <div id="invite-mining-particles" class="invite-mining-particles" aria-hidden="true"></div>
+              </div>
+              <p class="invite-mining-hint" data-i18n="iv_airdrop_hint">请完成一次任意任务升级到 Lv.2 后，每日可领取一次空投，获得随机 CRLM 奖励</p>
+            </div>
+            <div class="invite-mining-progress-wrap">
+              <div id="iv-mining-progress-fill" class="invite-mining-progress-fill"></div>
+            </div>
+            <p id="iv-mining-countdown" class="invite-mining-countdown"></p>
+            <div id="mining-reward-toast" class="mining-reward-toast hidden" aria-hidden="true" role="status">
+              <p id="mining-reward-amount" class="mining-reward-amount">+500 CRLM</p>
+              <p id="mining-reward-streak" class="mining-reward-streak"></p>
+            </div>
+          </div>
+
+          <div class="invite-panel invite-records-panel">
+            <div class="invite-records-tabs">
+              <button type="button" id="iv-tab-friends" class="invite-records-tab invite-records-tab-active" data-i18n="iv_friends_title">我邀请的好友</button>
+              <button type="button" id="iv-tab-rewards" class="invite-records-tab" data-i18n="iv_rewards_title">邀请奖励记录</button>
+            </div>
+            <ul id="iv-records-list" class="invite-records-list"></ul>
+          </div>
+        </main>
+
+        <aside class="invite-column invite-column-right">
+          <div class="invite-panel invite-earnings-panel">
+            <h2 class="invite-panel-title" data-i18n="iv_airdrop_earnings_title">🎁 空投收益</h2>
+            <ul id="iv-mining-records" class="invite-mining-records-list"></ul>
+            <button type="button" id="iv-mining-expand" class="invite-expand-btn" data-i18n="iv_airdrop_expand">查看全部记录</button>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <!-- 管理后台 — 由路由 #admin 显示 -->
+    <div id="admin-page" class="admin-container hidden">
+      <div id="admin-denied" class="admin-denied hidden">
+        <h1 class="admin-title" data-i18n="ad_denied_title">无权访问</h1>
+        <p class="admin-denied-text" data-i18n="ad_denied_text">您没有权限访问此页面</p>
+        <a href="#home" class="admin-primary-btn admin-home-link" data-i18n="ad_btn_back_home">返回首页</a>
+      </div>
+
+      <div id="admin-content" class="hidden">
+        <h1 class="admin-title" data-i18n="ad_page_title">管理后台</h1>
+
+        <div class="admin-tabs">
+          <button type="button" class="admin-tab admin-tab-active" data-admin-tab="dashboard" data-i18n="ad_tab_dashboard">数据看板</button>
+          <button type="button" class="admin-tab" data-admin-tab="tasks" data-i18n="ad_tab_tasks">任务管理</button>
+          <button type="button" class="admin-tab" data-admin-tab="users" data-i18n="ad_tab_users">用户管理</button>
+          <button type="button" class="admin-tab" data-admin-tab="broadcasts" data-i18n="ad_tab_broadcasts">广播管理</button>
+          <button type="button" class="admin-tab" data-admin-tab="withdraw" data-i18n="ad_tab_withdraw">提币设置</button>
+          <button type="button" class="admin-tab" data-admin-tab="invite" data-i18n="ad_tab_invite">邀请设置</button>
+          <button type="button" class="admin-tab" data-admin-tab="ads" data-i18n="ad_tab_ads">广告管理</button>
+        </div>
+
+        <section id="admin-panel-dashboard" class="admin-panel">
+          <h2 class="admin-section-title" data-i18n="ad_dashboard_title">数据看板</h2>
+          <div class="admin-stats-grid">
+            <div class="admin-stat-card"><span id="ad-stat-users" class="admin-stat-value">0</span><span class="admin-stat-label" data-i18n="ad_stat_users">总用户数</span></div>
+            <div class="admin-stat-card"><span id="ad-stat-tasks" class="admin-stat-value">0</span><span class="admin-stat-label" data-i18n="ad_stat_tasks">总任务数</span></div>
+            <div class="admin-stat-card"><span id="ad-stat-active" class="admin-stat-value">0</span><span class="admin-stat-label" data-i18n="ad_stat_active">进行中任务</span></div>
+            <div class="admin-stat-card"><span id="ad-stat-completed" class="admin-stat-value">0</span><span class="admin-stat-label" data-i18n="ad_stat_completed">已完成任务</span></div>
+            <div class="admin-stat-card"><span id="ad-stat-checkins" class="admin-stat-value">0</span><span class="admin-stat-label" data-i18n="ad_stat_checkins">累计空投次数</span></div>
+            <div class="admin-stat-card"><span id="ad-stat-broadcasts" class="admin-stat-value">0</span><span class="admin-stat-label" data-i18n="ad_stat_broadcasts">累计广播数</span></div>
+          </div>
+        </section>
+
+        <section id="admin-panel-tasks" class="admin-panel hidden">
+          <div class="admin-section-header">
+            <h2 class="admin-section-title" data-i18n="ad_tasks_title">任务管理</h2>
+            <button type="button" id="ad-official-add-btn" class="admin-primary-btn" data-i18n="ad_btn_publish_official">发布官方任务</button>
+          </div>
+          <div class="admin-toolbar">
+            <input type="search" id="ad-task-search" class="admin-input admin-search-input" data-i18n-placeholder="ad_search_tasks" placeholder="搜索任务标题...">
+            <select id="ad-task-filter" class="admin-input admin-filter-select">
+              <option value="all" data-i18n="ad_filter_all">全部状态</option>
+              <option value="active" data-i18n="ad_filter_active">进行中</option>
+              <option value="completed" data-i18n="ad_filter_completed">已完成</option>
+              <option value="cancelled" data-i18n="ad_filter_cancelled">已下架</option>
+              <option value="high" data-i18n="ad_filter_high">高风险</option>
+            </select>
+          </div>
+          <div id="ad-task-list" class="admin-list"></div>
+        </section>
+
+        <section id="admin-panel-users" class="admin-panel hidden">
+          <h2 class="admin-section-title" data-i18n="ad_users_title">用户管理</h2>
+          <div id="ad-users-list" class="admin-list"></div>
+        </section>
+
+        <section id="admin-panel-broadcasts" class="admin-panel hidden">
+          <h2 class="admin-section-title" data-i18n="ad_broadcasts_title">广播管理</h2>
+          <div id="ad-broadcast-list" class="admin-list"></div>
+        </section>
+
+        <section id="admin-panel-withdraw" class="admin-panel hidden">
+          <h2 class="admin-section-title" data-i18n="ad_withdraw_title">提币设置</h2>
+          <form id="ad-withdraw-form" class="admin-form admin-withdraw-form">
+            <label class="admin-label" for="ad-withdraw-min" data-i18n="ad_withdraw_min">最小提币金额（CRLM）</label>
+            <input type="number" id="ad-withdraw-min" class="admin-input" min="1" step="1" value="10">
+            <label class="admin-label" for="ad-withdraw-max-tx" data-i18n="ad_withdraw_max_tx">单笔提币上限（CRLM）</label>
+            <input type="number" id="ad-withdraw-max-tx" class="admin-input" min="1" step="1" value="5000">
+            <label class="admin-label" for="ad-withdraw-max-daily-user" data-i18n="ad_withdraw_max_daily_user">每日提币上限（CRLM）</label>
+            <input type="number" id="ad-withdraw-max-daily-user" class="admin-input" min="1" step="1" value="10000">
+            <label class="admin-label" for="ad-withdraw-max-daily-global" data-i18n="ad_withdraw_max_daily_global">全局每日提币上限（CRLM）</label>
+            <input type="number" id="ad-withdraw-max-daily-global" class="admin-input" min="1" step="1" value="100000">
+            <button type="button" id="ad-withdraw-save-btn" class="admin-primary-btn" data-i18n="ad_btn_save_withdraw">保存</button>
+          </form>
+        </section>
+
+        <section id="admin-panel-invite" class="admin-panel hidden">
+          <h2 class="admin-section-title" data-i18n="ad_invite_title">邀请设置</h2>
+          <form id="ad-invite-form" class="admin-form admin-invite-form">
+            <label class="admin-label" for="ad-invite-level1" data-i18n="ad_invite_level1">一级奖励金额（CRLM）</label>
+            <input type="number" id="ad-invite-level1" class="admin-input" min="0" step="1" value="50">
+            <label class="admin-label" for="ad-invite-level2" data-i18n="ad_invite_level2">二级奖励金额（CRLM）</label>
+            <input type="number" id="ad-invite-level2" class="admin-input" min="0" step="1" value="10">
+            <button type="button" id="ad-invite-save-btn" class="admin-primary-btn" data-i18n="ad_btn_save_invite">保存</button>
+          </form>
+        </section>
+
+        <section id="admin-panel-ads" class="admin-panel hidden">
+          <h2 class="admin-section-title" data-i18n="ad_ads_title">广告管理</h2>
+          <form id="ad-ads-form" class="admin-form admin-ads-form">
+            <label class="admin-label" for="ad-ads-interval" data-i18n="ad_ads_interval">轮播间隔（秒）</label>
+            <input type="number" id="ad-ads-interval" class="admin-input" min="2" step="1" value="5">
+
+            <div class="admin-ads-slots">
+              <div class="admin-ads-slot" data-ad-slot="0">
+                <h3 class="admin-ads-slot-title" data-i18n="ad_ads_slot1">广告位 1</h3>
+                <label class="admin-label" for="ad-ads-name-0" data-i18n="ad_ads_slot_name">广告名称</label>
+                <input type="text" id="ad-ads-name-0" class="admin-input" placeholder="广告位 1">
+                <label class="admin-label" for="ad-ads-image-0" data-i18n="ad_ads_slot_image">广告图片链接</label>
+                <input type="url" id="ad-ads-image-0" class="admin-input" placeholder="https://">
+                <label class="admin-label" for="ad-ads-link-0" data-i18n="ad_ads_slot_link">广告目标链接</label>
+                <input type="url" id="ad-ads-link-0" class="admin-input" placeholder="https://">
+                <label class="admin-label" for="ad-ads-code-0" data-i18n="ad_ads_slot_code">广告代码</label>
+                <textarea id="ad-ads-code-0" class="admin-textarea" rows="3" placeholder="HTML / JS"></textarea>
+                <label class="admin-ads-toggle">
+                  <input type="checkbox" id="ad-ads-enabled-0" class="admin-ads-toggle-input">
+                  <span class="admin-ads-toggle-slider" aria-hidden="true"></span>
+                  <span class="admin-ads-toggle-text" data-i18n="ad_ads_slot_enabled">开启此广告位</span>
+                </label>
+              </div>
+
+              <div class="admin-ads-slot" data-ad-slot="1">
+                <h3 class="admin-ads-slot-title" data-i18n="ad_ads_slot2">广告位 2</h3>
+                <label class="admin-label" for="ad-ads-name-1" data-i18n="ad_ads_slot_name">广告名称</label>
+                <input type="text" id="ad-ads-name-1" class="admin-input" placeholder="广告位 2">
+                <label class="admin-label" for="ad-ads-image-1" data-i18n="ad_ads_slot_image">广告图片链接</label>
+                <input type="url" id="ad-ads-image-1" class="admin-input" placeholder="https://">
+                <label class="admin-label" for="ad-ads-link-1" data-i18n="ad_ads_slot_link">广告目标链接</label>
+                <input type="url" id="ad-ads-link-1" class="admin-input" placeholder="https://">
+                <label class="admin-label" for="ad-ads-code-1" data-i18n="ad_ads_slot_code">广告代码</label>
+                <textarea id="ad-ads-code-1" class="admin-textarea" rows="3" placeholder="HTML / JS"></textarea>
+                <label class="admin-ads-toggle">
+                  <input type="checkbox" id="ad-ads-enabled-1" class="admin-ads-toggle-input">
+                  <span class="admin-ads-toggle-slider" aria-hidden="true"></span>
+                  <span class="admin-ads-toggle-text" data-i18n="ad_ads_slot_enabled">开启此广告位</span>
+                </label>
+              </div>
+
+              <div class="admin-ads-slot" data-ad-slot="2">
+                <h3 class="admin-ads-slot-title" data-i18n="ad_ads_slot3">广告位 3</h3>
+                <label class="admin-label" for="ad-ads-name-2" data-i18n="ad_ads_slot_name">广告名称</label>
+                <input type="text" id="ad-ads-name-2" class="admin-input" placeholder="广告位 3">
+                <label class="admin-label" for="ad-ads-image-2" data-i18n="ad_ads_slot_image">广告图片链接</label>
+                <input type="url" id="ad-ads-image-2" class="admin-input" placeholder="https://">
+                <label class="admin-label" for="ad-ads-link-2" data-i18n="ad_ads_slot_link">广告目标链接</label>
+                <input type="url" id="ad-ads-link-2" class="admin-input" placeholder="https://">
+                <label class="admin-label" for="ad-ads-code-2" data-i18n="ad_ads_slot_code">广告代码</label>
+                <textarea id="ad-ads-code-2" class="admin-textarea" rows="3" placeholder="HTML / JS"></textarea>
+                <label class="admin-ads-toggle">
+                  <input type="checkbox" id="ad-ads-enabled-2" class="admin-ads-toggle-input">
+                  <span class="admin-ads-toggle-slider" aria-hidden="true"></span>
+                  <span class="admin-ads-toggle-text" data-i18n="ad_ads_slot_enabled">开启此广告位</span>
+                </label>
+              </div>
+            </div>
+
+            <button type="button" id="ad-ads-save-btn" class="admin-primary-btn" data-i18n="ad_btn_save_ads">保存</button>
+          </form>
+        </section>
+
+        <div id="ad-official-modal" class="admin-modal hidden" aria-hidden="true">
+          <div class="admin-modal-overlay"></div>
+          <div class="admin-modal-card admin-modal-wide">
+            <h3 class="admin-modal-title" data-i18n="ad_modal_publish_official">发布官方任务</h3>
+            <form id="ad-official-form" class="admin-form">
+              <label class="admin-label" data-i18n="ad_label_title">标题</label>
+              <input type="text" id="ad-official-title" class="admin-input" required>
+              <label class="admin-label" data-i18n="ad_label_type">类型</label>
+              <select id="ad-official-type" class="admin-input">
+                <option value="airdrop">空投</option>
+                <option value="register">注册</option>
+                <option value="trade">交易</option>
+                <option value="game">游戏</option>
+                <option value="content">内容</option>
+                <option value="test">测试</option>
+                <option value="other">其他</option>
+              </select>
+              <label class="admin-label" data-i18n="ad_label_desc">描述</label>
+              <textarea id="ad-official-desc" class="admin-textarea" rows="3" required></textarea>
+              <label class="admin-label" data-i18n="ad_label_req">要求（每行一条）</label>
+              <textarea id="ad-official-reqs" class="admin-textarea" rows="3" required></textarea>
+              <label class="admin-label" data-i18n="ad_label_reward">奖励金额（CRLM）</label>
+              <input type="number" id="ad-official-reward" class="admin-input" min="1" step="1" required>
+              <label class="admin-label" data-i18n="ad_label_slots">名额</label>
+              <input type="number" id="ad-official-slots" class="admin-input" min="1" step="1">
+              <label class="admin-label" data-i18n="ad_label_deadline">截止时间</label>
+              <input type="date" id="ad-official-deadline" class="admin-input" required>
+              <label class="admin-label" data-i18n="ad_label_proof">凭证要求</label>
+              <select id="ad-official-proof" class="admin-input">
+                <option value="text" data-i18n="ad_proof_text">文字凭证</option>
+                <option value="screenshot" data-i18n="ad_proof_screenshot">截图凭证</option>
+              </select>
+              <div class="admin-modal-actions">
+                <button type="button" id="ad-official-cancel" class="admin-secondary-btn" data-i18n="ad_btn_cancel">取消</button>
+                <button type="submit" class="admin-primary-btn" data-i18n="ad_btn_publish">发布</button>
+              </div>
+            </form>
           </div>
         </div>
-        <div class="invite-stats-row">
-          <div class="invite-stat-item">
-            <span id="iv-invite-count" class="invite-stat-num">23 人</span>
-            <span class="invite-stat-label" data-i18n="iv_stat_invites">累计邀请人数</span>
+
+        <div id="ad-cancel-modal" class="admin-modal hidden" aria-hidden="true">
+          <div class="admin-modal-overlay"></div>
+          <div class="admin-modal-card">
+            <h3 class="admin-modal-title" data-i18n="ad_modal_cancel_title">下架任务</h3>
+            <input type="hidden" id="ad-cancel-task-id">
+            <label class="admin-label" data-i18n="ad_label_cancel_reason">下架原因</label>
+            <textarea id="ad-cancel-reason" class="admin-textarea" rows="4" required></textarea>
+            <div class="admin-modal-actions">
+              <button type="button" id="ad-cancel-close" class="admin-secondary-btn" data-i18n="ad_btn_cancel">取消</button>
+              <button type="button" id="ad-cancel-confirm" class="admin-danger-btn" data-i18n="ad_btn_confirm_cancel">确认下架</button>
+            </div>
           </div>
-          <div class="invite-stat-item">
-            <span id="iv-invite-reward" class="invite-stat-num invite-stat-gold">12,500 CRLM</span>
-            <span class="invite-stat-label" data-i18n="iv_stat_reward">累计获得邀请奖励</span>
+        </div>
+
+        <div id="ad-grant-modal" class="admin-modal hidden" aria-hidden="true">
+          <div class="admin-modal-overlay"></div>
+          <div class="admin-modal-card">
+            <h3 class="admin-modal-title" data-i18n="ad_modal_grant_title">发放 CRLM</h3>
+            <input type="hidden" id="ad-grant-user-id">
+            <div class="admin-grant-user-info">
+              <p id="ad-grant-username" class="admin-grant-info-line"></p>
+              <p id="ad-grant-balance" class="admin-grant-info-line"></p>
+            </div>
+            <label class="admin-label" data-i18n="ad_label_grant_amount">发放数量</label>
+            <input type="number" id="ad-grant-amount" class="admin-input" min="1" step="1" required>
+            <label class="admin-label" data-i18n="ad_label_grant_reason">发放原因（可选）</label>
+            <input type="text" id="ad-grant-reason" class="admin-input" data-i18n-placeholder="ad_ph_grant_reason" placeholder="请输入发放原因">
+            <div class="admin-modal-actions">
+              <button type="button" id="ad-grant-cancel" class="admin-secondary-btn" data-i18n="ad_btn_cancel">取消</button>
+              <button type="button" id="ad-grant-confirm" class="admin-primary-btn" data-i18n="ad_btn_grant_confirm">确认发放</button>
+            </div>
           </div>
         </div>
       </div>
+    </div>
 
-      <!-- 分享链接区 -->
-      <div class="invite-share-card">
-        <h2 class="invite-card-title" data-i18n="iv_share_title">分享你的专属链接</h2>
-        <div class="invite-link-row">
-          <input type="text" id="iv-invite-link" class="invite-link-input" readonly value="https://coinrealm.pages.dev?ref=CRLM888">
-          <button type="button" id="iv-copy-link-btn" class="invite-copy-link-btn" data-i18n="iv_btn_copy_link">复制链接</button>
-        </div>
-        <div class="invite-share-btns">
-          <button type="button" class="invite-share-btn invite-share-twitter" data-share="twitter">𝕏 Twitter</button>
-          <button type="button" class="invite-share-btn invite-share-telegram" data-share="telegram">✈️ Telegram</button>
-          <button type="button" class="invite-share-btn invite-share-discord" data-share="discord">👾 Discord</button>
+    <!-- 全局 Twitter 用户名绑定弹窗 -->
+    <div id="discord-bind-modal" class="td-twitter-modal hidden" aria-hidden="true">
+      <div class="td-twitter-modal-overlay"></div>
+      <div class="td-twitter-modal-panel">
+        <h3 id="discord-bind-title" class="td-twitter-modal-title" data-i18n="dc_bind_title">绑定 Discord 账号</h3>
+        <p id="discord-bind-desc" class="td-twitter-modal-desc" data-i18n="dc_bind_desc">首次使用需要授权 CoinRealm 访问你的 Discord 账号</p>
+        <p id="discord-bind-error" class="td-twitter-modal-error hidden"></p>
+        <div class="td-twitter-modal-actions">
+          <button type="button" id="discord-bind-cancel" class="td-twitter-modal-btn td-twitter-modal-cancel" data-i18n="dc_bind_cancel">取消</button>
+          <button type="button" id="discord-bind-authorize" class="td-twitter-modal-btn td-twitter-modal-primary td-discord-auth-btn" data-i18n="dc_bind_authorize">去授权</button>
         </div>
       </div>
+    </div>
 
-      <!-- 分红加成进度条 -->
-      <div class="invite-progress-card">
-        <h2 class="invite-card-title" data-i18n="iv_progress_title">分红加成进度</h2>
-        <p id="iv-current-bonus" class="invite-current-bonus">当前：1.5x 加成</p>
-        <div class="invite-progress-bar-wrap">
-          <div id="iv-progress-fill" class="invite-progress-fill"></div>
-        </div>
-        <p id="iv-next-level-text" class="invite-next-level">距下一等级 2.0x 加成还需邀请 27 人</p>
-        <div class="invite-progress-nodes">
-          <span class="invite-node" data-i18n="iv_node_1">1x（5人）</span>
-          <span class="invite-node" data-i18n="iv_node_15">1.5x（20人）</span>
-          <span class="invite-node" data-i18n="iv_node_2">2x（50人）</span>
+    <div id="discord-bind-required-modal" class="td-twitter-modal hidden" aria-hidden="true">
+      <div class="td-twitter-modal-overlay"></div>
+      <div class="td-twitter-modal-panel">
+        <h3 id="discord-bind-required-title" class="td-twitter-modal-title" data-i18n="dc_bind_required_title">需要绑定 Discord</h3>
+        <p id="discord-bind-required-desc" class="td-twitter-modal-desc" data-i18n="dc_bind_required_msg">请先在个人中心绑定 Discord 账号</p>
+        <div class="td-twitter-modal-actions">
+          <button type="button" id="discord-bind-required-cancel" class="td-twitter-modal-btn td-twitter-modal-cancel" data-i18n="dc_bind_cancel">取消</button>
+          <button type="button" id="discord-bind-required-profile" class="td-twitter-modal-btn td-twitter-modal-primary td-discord-auth-btn" data-i18n="dc_bind_required_go">前往个人中心</button>
         </div>
       </div>
+    </div>
 
-      <!-- 我邀请的好友列表 -->
-      <div class="invite-friends-card">
-        <div class="invite-friends-header">
-          <h2 class="invite-card-title" data-i18n="iv_friends_title">我邀请的好友</h2>
-          <span id="iv-friends-count" class="invite-friends-count">共 5 人</span>
-        </div>
-        <div class="invite-sort-tabs">
-          <button type="button" id="iv-sort-time" class="invite-sort-tab invite-sort-active" data-i18n="iv_sort_time">时间</button>
-          <button type="button" id="iv-sort-contribution" class="invite-sort-tab" data-i18n="iv_sort_contribution">贡献</button>
-        </div>
-        <ul id="iv-friends-list" class="invite-friends-list"></ul>
-      </div>
-
-      <!-- 邀请规则说明 -->
-      <div class="invite-rules-card">
-        <button type="button" id="iv-rules-toggle" class="invite-rules-header">
-          <span data-i18n="iv_rules_title">邀请规则</span>
-          <span id="iv-rules-arrow" class="invite-rules-arrow">▼</span>
-        </button>
-        <div id="iv-rules-content" class="invite-rules-content">
-          <p data-i18n="iv_rule_1">锁仓式推荐奖励：好友完成任务你获得 20%，分 12 个月解锁</p>
-          <p data-i18n="iv_rule_2">分红加成规则：持币量 + 有效邀请人数的阶梯加成</p>
-          <p data-i18n="iv_rule_3">有效好友定义：被邀请人必须完成至少 1 个任务，才计入有效邀请</p>
+    <div id="telegram-bind-modal" class="td-twitter-modal hidden" aria-hidden="true">
+      <div class="td-twitter-modal-overlay"></div>
+      <div class="td-twitter-modal-panel">
+        <h3 id="telegram-bind-title" class="td-twitter-modal-title" data-i18n="tg_bind_title">绑定 Telegram 账号</h3>
+        <p id="telegram-bind-desc" class="td-twitter-modal-desc hidden" data-i18n="tg_bind_desc">验证任务需要你的 Telegram 账号信息</p>
+        <input type="text" id="telegram-bind-input" class="td-twitter-token-input" data-placeholder="tg_bind_ph" autocomplete="off">
+        <p id="telegram-bind-error" class="td-twitter-modal-error hidden"></p>
+        <div class="td-twitter-modal-actions">
+          <button type="button" id="telegram-bind-cancel" class="td-twitter-modal-btn td-twitter-modal-cancel" data-i18n="tg_bind_cancel">取消</button>
+          <button type="button" id="telegram-bind-confirm" class="td-twitter-modal-btn td-twitter-modal-primary" data-i18n="tg_bind_confirm">确认绑定</button>
         </div>
       </div>
+    </div>
 
-      <!-- 生成海报 -->
-      <button type="button" id="iv-poster-btn" class="invite-poster-btn" data-i18n="iv_btn_poster">生成专属海报</button>
+    <div id="reward-celebration-modal" class="reward-celebration-modal td-twitter-modal hidden" aria-hidden="true">
+      <div class="td-twitter-modal-overlay reward-celebration-overlay"></div>
+      <div id="reward-confetti-layer" class="reward-confetti-layer" aria-hidden="true"></div>
+      <div class="reward-celebration-panel td-twitter-modal-panel">
+        <p id="reward-celebration-amount" class="reward-celebration-amount">+500 CRLM</p>
+        <p id="reward-celebration-desc" class="reward-celebration-desc" data-i18n="reward_sent_desc">奖励已发送至余额</p>
+        <div class="td-twitter-modal-actions">
+          <button type="button" id="reward-celebration-confirm" class="td-twitter-modal-btn td-twitter-modal-primary reward-celebration-confirm-btn" data-i18n="reward_confirm">确定</button>
+        </div>
+      </div>
+    </div>
 
+    <div id="deposit-modal" class="td-twitter-modal hidden" aria-hidden="true">
+      <div class="td-twitter-modal-overlay"></div>
+      <div class="td-twitter-modal-panel deposit-modal-panel">
+        <h3 id="deposit-modal-title" class="td-twitter-modal-title" data-i18n="pf_deposit_title">充值 CRLM</h3>
+        <p class="deposit-address-label" data-i18n="pf_deposit_address_label">平台充币地址（Polygon）</p>
+        <div class="deposit-qr-wrap">
+          <img id="deposit-qr-image" class="deposit-qr-image" alt="Deposit QR Code" width="160" height="160">
+        </div>
+        <div class="deposit-address-row">
+          <code id="deposit-wallet-address" class="deposit-wallet-address">0x...</code>
+          <button type="button" id="deposit-copy-btn" class="deposit-copy-btn" data-i18n="pf_deposit_copy">复制地址</button>
+        </div>
+        <p id="deposit-hint" class="deposit-hint" data-i18n="pf_deposit_hint">请向上述地址转账 CRLM，到账后自动增加余额。仅支持 Polygon 网络。</p>
+        <p id="deposit-copy-tip" class="deposit-copy-tip hidden" data-i18n="pf_deposit_copy_ok">地址已复制</p>
+        <div class="deposit-records-section">
+          <h4 class="deposit-records-title" data-i18n="pf_deposit_records_title">最近充币记录</h4>
+          <div id="deposit-records-loading" class="deposit-records-loading hidden" data-i18n="pf_ledger_loading">加载中...</div>
+          <div id="deposit-records-empty" class="deposit-records-empty hidden" data-i18n="pf_deposit_records_empty">暂无充币记录</div>
+          <ul id="deposit-records-list" class="deposit-records-list"></ul>
+        </div>
+        <div class="td-twitter-modal-actions">
+          <button type="button" id="deposit-close-btn" class="td-twitter-modal-btn td-twitter-modal-primary" data-i18n="reward_confirm">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="withdraw-modal" class="td-twitter-modal hidden" aria-hidden="true">
+      <div class="td-twitter-modal-overlay"></div>
+      <div class="td-twitter-modal-panel withdraw-modal-panel">
+        <h3 id="withdraw-modal-title" class="td-twitter-modal-title" data-i18n="pf_withdraw_title">提现 CRLM</h3>
+        <div id="withdraw-form-wrap" class="withdraw-form-wrap">
+          <p class="withdraw-balance-line">
+            <span data-i18n="pf_withdraw_balance_label">当前余额</span>：
+            <strong id="withdraw-current-balance">0</strong> CRLM
+          </p>
+          <label class="withdraw-field-label" for="withdraw-amount-input" data-i18n="pf_withdraw_amount_label">提现金额</label>
+          <input type="number" id="withdraw-amount-input" class="td-twitter-token-input withdraw-input" min="10" step="1" inputmode="decimal" autocomplete="off">
+          <label class="withdraw-field-label" for="withdraw-wallet-input" data-i18n="pf_withdraw_wallet_label">接收钱包地址</label>
+          <input type="text" id="withdraw-wallet-input" class="td-twitter-token-input withdraw-input" placeholder="0x..." autocomplete="off" spellcheck="false">
+          <p id="withdraw-hint" class="withdraw-hint">最小提币 10 CRLM，预计几分钟内到账。</p>
+          <p id="withdraw-error" class="td-twitter-modal-error hidden"></p>
+          <div class="td-twitter-modal-actions">
+            <button type="button" id="withdraw-cancel-btn" class="td-twitter-modal-btn td-twitter-modal-cancel" data-i18n="pf_withdraw_cancel">取消</button>
+            <button type="button" id="withdraw-confirm-btn" class="td-twitter-modal-btn td-twitter-modal-primary" data-i18n="pf_withdraw_confirm">确认提币</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="balance-ledger-modal" class="td-twitter-modal hidden" aria-hidden="true">
+      <div class="td-twitter-modal-overlay"></div>
+      <div class="td-twitter-modal-panel balance-ledger-panel">
+        <h3 id="balance-ledger-title" class="td-twitter-modal-title" data-i18n="pf_ledger_title">CRLM 余额明细</h3>
+        <div id="balance-ledger-loading" class="balance-ledger-loading hidden" data-i18n="pf_ledger_loading">加载中...</div>
+        <div id="balance-ledger-empty" class="balance-ledger-empty hidden" data-i18n="pf_ledger_empty">暂无余额变动记录</div>
+        <ul id="balance-ledger-list" class="balance-ledger-list"></ul>
+        <div class="td-twitter-modal-actions">
+          <button type="button" id="balance-ledger-close" class="td-twitter-modal-btn td-twitter-modal-primary" data-i18n="reward_confirm">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="twitter-bind-modal" class="td-twitter-modal hidden" aria-hidden="true">
+      <div class="td-twitter-modal-overlay"></div>
+      <div class="td-twitter-modal-card">
+        <h3 id="twitter-bind-title" class="td-twitter-modal-title" data-i18n="tw_bind_title">绑定 Twitter 账号</h3>
+        <p id="twitter-bind-desc" class="td-twitter-modal-desc hidden" data-i18n="tw_bind_desc">验证任务需要你的 Twitter 账号信息</p>
+        <input type="text" id="twitter-bind-input" class="td-twitter-token-input" data-placeholder="tw_bind_ph" autocomplete="off">
+        <p id="twitter-bind-error" class="td-twitter-modal-error hidden"></p>
+        <div class="td-twitter-modal-actions">
+          <button type="button" id="twitter-bind-cancel" class="td-twitter-modal-btn td-twitter-modal-cancel" data-i18n="tw_bind_cancel">取消</button>
+          <button type="button" id="twitter-bind-confirm" class="td-twitter-modal-btn td-twitter-modal-primary" data-i18n="tw_bind_confirm">确认绑定</button>
+        </div>
+      </div>
     </div>
   </main>
-  <script src="auth.js"></script>
-  <script src="app.js"></script>
+  <script src="js/i18n.js?v=20260717"></script>
+  <script src="auth.js?v=20260717"></script>
+  <script src="js/pages/leaderboard.js?v=20260717"></script>
+  <script src="js/pages/dividends.js?v=20260717"></script>
+  <script src="js/pages/invite.js?v=20260717"></script>
+  <script src="js/pages/admin.js?v=20260717"></script>
+  <script src="js/pages/home.js?v=20260717"></script>
+  <script src="js/pages/publisher.js?v=20260717"></script>
+  <script src="js/pages/task-detail.js?v=20260717"></script>
+  <script src="js/pages/create-task.js?v=20260717"></script>
+  <script src="js/pages/submit-task.js?v=20260717"></script>
+  <script src="js/pages/review.js?v=20260717"></script>
+  <script src="js/pages/profile.js?v=20260717"></script>
+  <script src="js/pages/my-tasks.js?v=20260717"></script>
+  <script src="app.js?v=20260717"></script>
 </body>
 </html>
