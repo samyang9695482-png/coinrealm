@@ -794,8 +794,8 @@
   }
 
   function getSelectedPlatform() {
-    var select = document.getElementById('ct-task-platform');
-    return select ? String(select.value || '').trim() : '';
+    var checked = document.querySelector('input[name="ct-task-platform"]:checked');
+    return checked ? String(checked.value || '').trim() : '';
   }
 
   function getSelectedPlatformAction() {
@@ -1054,12 +1054,12 @@
   }
 
   function resetPlatformFields() {
-    var platformSelect = document.getElementById('ct-task-platform');
+    var twitterRadio = document.querySelector('input[name="ct-task-platform"][value="twitter"]');
     var actionSelect = document.getElementById('ct-task-action');
     var targetInput = document.getElementById('ct-task-target');
     var keywordInput = document.getElementById('ct-task-keyword');
 
-    if (platformSelect) platformSelect.value = '';
+    if (twitterRadio) twitterRadio.checked = true;
     if (actionSelect) {
       actionSelect.innerHTML = '';
       actionSelect.disabled = true;
@@ -1720,7 +1720,7 @@
         applyCreateTaskI18n();
         return;
       }
-      if (target.id === 'ct-task-platform') {
+      if (target.name === 'ct-task-platform') {
         updatePlatformConfigUi();
         applyCreateTaskI18n();
         return;
