@@ -35,6 +35,7 @@
       rv_status_rejected: '已驳回',
       rv_status_submitted: '待审核',
       rv_status_claimed: '待提交凭证',
+      rv_status_expired: '已过期',
       rv_screenshot_summary: '📷 查看截图（{count}张）',
       rv_alert_login: '请先登录',
       rv_alert_reject_reason: '请填写驳回理由',
@@ -60,6 +61,7 @@
       rv_status_rejected: 'Rejected',
       rv_status_submitted: 'Pending review',
       rv_status_claimed: 'Awaiting proof',
+      rv_status_expired: 'Expired',
       rv_screenshot_summary: '📷 View screenshots ({count})',
       rv_alert_login: 'Please sign in first',
       rv_alert_reject_reason: 'Please enter a rejection reason',
@@ -167,6 +169,7 @@
     if (submission.status === 'claimed') return rvT('rv_status_claimed');
     if (submission.status === 'pending') return rvT('rv_status_submitted');
     if (submission.status === 'verifying') return rvT('rv_status_submitted');
+    if (submission.status === 'expired') return rvT('rv_status_expired');
     return submission.status || '-';
   }
 
@@ -275,6 +278,17 @@
         '<div class="rv-actions">' +
           '<button type="button" class="rv-btn-approve" disabled>' + rvT('rv_btn_approve') + '</button>' +
           '<button type="button" class="rv-btn-reject" disabled>' + rvT('rv_status_rejected') + '</button>' +
+        '</div>';
+    } else if (submissionStatus === 'expired') {
+      summaryHtml =
+        '<span class="rv-status-expired">' + escapeHtml(statusLabel) + '</span>';
+      if (submission.review_comment) {
+        summaryHtml += '<div class="rv-reject-reason">' + escapeHtml(submission.review_comment) + '</div>';
+      }
+      actionsHtml =
+        '<div class="rv-actions">' +
+          '<button type="button" class="rv-btn-approve" disabled>' + rvT('rv_status_expired') + '</button>' +
+          '<button type="button" class="rv-btn-reject" disabled>' + rvT('rv_btn_reject') + '</button>' +
         '</div>';
     } else {
       summaryHtml = '<span class="rv-status-submitted">' + escapeHtml(statusLabel) + '</span>';

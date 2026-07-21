@@ -405,6 +405,11 @@
     return isNaN(val) || val < 0 ? 0 : val;
   }
 
+  function getTaskDuration() {
+    var checked = document.querySelector('input[name="ct-duration"]:checked');
+    return checked ? checked.value : '1d';
+  }
+
   function getTaskSlots() {
     var input = document.getElementById('ct-task-slots');
     if (!input || !input.value.trim()) return 0;
@@ -1341,7 +1346,7 @@
       formCard.classList.toggle('create-task-form-simple', simple);
     }
 
-    ['ct-field-images', 'ct-field-reward-type', 'ct-field-proof'].forEach(function (fieldId) {
+    ['ct-field-images', 'ct-field-reward-type', 'ct-field-proof', 'ct-field-duration'].forEach(function (fieldId) {
       var field = document.getElementById(fieldId);
       if (field) field.classList.toggle('hidden', simple);
     });
@@ -1637,6 +1642,8 @@
           return;
         }
 
+        var duration = simpleTask ? null : getTaskDuration();
+
         var insertPayload = buildTaskInsertPayload(userId, {
           title: title,
           type: type,
@@ -1647,6 +1654,7 @@
           feeAmount: feeAmount,
           totalCost: totalCost,
           maxParticipants: maxParticipants,
+          duration: duration,
           deadline: deadline,
           proofType: proofType,
           imageUrl: imageUrl,

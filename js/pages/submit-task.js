@@ -641,7 +641,7 @@
     } else {
       var submissionResult = await window.supabase
         .from('submissions')
-        .select('id, task_id, user_id, status, description, submitted_at, review_comment, screenshot_urls')
+        .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment, screenshot_urls, claimed_at')
         .eq('task_id', activeSubmitContext.taskId)
         .eq('user_id', userId)
         .order('reviewed_at', { ascending: false })
@@ -833,7 +833,7 @@
             } else {
               var fallbackResult = await window.supabase
                 .from('submissions')
-                .select('id, task_id, user_id, status, description, submitted_at, review_comment, screenshot_urls')
+                .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment, screenshot_urls, claimed_at')
                 .eq('task_id', activeSubmitContext.taskId)
                 .eq('user_id', userId)
                 .order('submitted_at', { ascending: false })

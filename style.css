@@ -5681,6 +5681,12 @@ img {
     color: #f0b90b;
 }
 
+.rv-status-expired {
+    font-size: 14px;
+    font-weight: 600;
+    color: #999;
+}
+
 .rv-reject-reason {
     font-size: 13px;
     color: #666;

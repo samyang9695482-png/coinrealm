@@ -692,6 +692,24 @@
           <input type="number" id="ct-task-slots" class="create-task-input" data-placeholder="ct_ph_slots" placeholder="请输入名额（留空则不限）" min="1">
         </div>
 
+        <div id="ct-field-duration" class="create-task-field">
+          <label class="create-task-label" data-i18n="ct_label_duration">任务时限</label>
+          <div class="create-task-radio-group">
+            <label class="create-task-radio-label">
+              <input type="radio" name="ct-duration" value="1h">
+              <span>1小时</span>
+            </label>
+            <label class="create-task-radio-label">
+              <input type="radio" name="ct-duration" value="1d" checked>
+              <span>1天</span>
+            </label>
+            <label class="create-task-radio-label">
+              <input type="radio" name="ct-duration" value="7d">
+              <span>7天</span>
+            </label>
+          </div>
+        </div>
+
         <div class="create-task-field">
           <label class="create-task-label" data-i18n="ct_label_deadline">截止时间</label>
           <input type="date" id="ct-deadline" class="create-task-input">

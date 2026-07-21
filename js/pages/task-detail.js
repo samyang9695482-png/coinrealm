@@ -1713,12 +1713,14 @@
       return;
     }
 
+    var claimedAt = new Date().toISOString();
     var insertResult = await window.supabase
       .from('submissions')
       .insert({
         task_id: taskId,
         user_id: userId,
-        status: 'claimed'
+        status: 'claimed',
+        claimed_at: claimedAt
       })
       .select()
       .single();

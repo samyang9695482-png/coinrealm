@@ -254,6 +254,12 @@ async function getAuthenticatedUserId() {
 }
 
 function buildTaskInsertPayload(userId, fields) {
+    var isSimple = fields.type === 'simple';
+    var maxParticipants = fields.maxParticipants;
+    if (isSimple || maxParticipants === null || maxParticipants === 0) {
+        maxParticipants = null;
+    }
+
     var payload = {
         publisher_id: userId,
         title: fields.title,
@@ -264,7 +270,8 @@ function buildTaskInsertPayload(userId, fields) {
         reward_amount: fields.rewardAmount,
         fee_amount: fields.feeAmount || 0,
         total_cost: fields.totalCost || fields.rewardAmount || 0,
-        max_participants: fields.maxParticipants,
+        max_participants: maxParticipants,
+        duration: fields.duration || (isSimple ? '7d' : '1d'),
         deadline: fields.deadline,
         proof_type: fields.proofType,
         is_official: false
@@ -3885,7 +3892,7 @@ async function loadUserSubmissionForTask(taskId, userId) {
 
     var result = await window.supabase
         .from('submissions')
-        .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment, screenshot_urls')
+        .select('id, task_id, user_id, status, description, submitted_at, reviewed_at, review_comment, screenshot_urls, claimed_at')
         .eq('task_id', taskId)
         .eq('user_id', userId)
         .order('reviewed_at', { ascending: false, nullsFirst: false })
@@ -3909,6 +3916,7 @@ async function loadUserSubmissionForTask(taskId, userId) {
         verifying: 5,
         pending: 4,
         claimed: 3,
+        expired: 2,
         rejected: 2
     };
 
@@ -4172,6 +4180,7 @@ function isSubmissionReadyToSubmitProof(submission) {
     if (submission.status === 'claimed') return true;
     if (submission.status === 'pending' && !submission.submitted_at) return true;
     if (submission.status === 'rejected') return true;
+    if (submission.status === 'expired') return true;
     return false;
 }
 
@@ -4398,6 +4407,176 @@ window.coinrealmUploadProofScreenshotWithProgress = uploadProofScreenshotWithPro
 window.coinrealmSubmitTaskProof = submitTaskProofSubmission;
 window.coinrealmIsSubmissionReadyToSubmitProof = isSubmissionReadyToSubmitProof;
 window.coinrealmIsSubmissionWaitingReviewProof = isSubmissionWaitingReviewProof;
+window.coinrealmProcessTaskTimeouts = processTaskTimeouts;
+
+function getDurationMs(duration) {
+    var d = String(duration || '').toLowerCase();
+    if (d === '1h') return 60 * 60 * 1000;
+    if (d === '1d') return 24 * 60 * 60 * 1000;
+    if (d === '7d') return 7 * 24 * 60 * 60 * 1000;
+    return 24 * 60 * 60 * 1000;
+}
+
+async function handleUserExpiredSubmission(submission, task) {
+    if (!window.supabase || !submission || !task) return false;
+
+    var now = new Date().toISOString();
+    var updateResult = await window.supabase
+        .from('submissions')
+        .update({
+            status: 'expired',
+            reviewed_at: now,
+            review_comment: '任务时限已过，自动过期'
+        })
+        .eq('id', submission.id)
+        .eq('status', 'claimed');
+
+    if (updateResult.error) {
+        console.error('用户超时-更新提交状态失败：', updateResult.error);
+        return false;
+    }
+
+    if (task.max_participants != null && task.max_participants > 0) {
+        var currentP = Number(task.current_participants) || 0;
+        if (currentP > 0) {
+            await window.supabase
+                .from('tasks')
+                .update({ current_participants: currentP - 1 })
+                .eq('id', task.id);
+        }
+    }
+
+    console.log('用户超时-提交已过期：', {
+        submissionId: submission.id,
+        taskId: task.id,
+        userId: submission.user_id
+    });
+
+    return true;
+}
+
+async function handlePublisherExpiredReview(submission, task) {
+    if (!window.supabase || !submission || !task) return false;
+
+    var rewardAmount = Number(task.reward_amount) || 0;
+    var rewardType = String(task.reward_type || 'CRLM').toUpperCase();
+    var balanceField = rewardType === 'USDT' ? 'usdt_balance' : 'crlm_balance';
+    var feeAmount = Number(task.fee_amount) || 0;
+
+    try {
+        if (rewardAmount > 0) {
+            var userResult = await window.supabase
+                .from('users')
+                .select('crlm_balance, usdt_balance')
+                .eq('id', submission.user_id)
+                .maybeSingle();
+
+            if (!userResult.error && userResult.data) {
+                var userCurrentBalance = Number(userResult.data[balanceField]) || 0;
+                var userPatch = {};
+                userPatch[balanceField] = userCurrentBalance + rewardAmount;
+                var userUpdate = await window.supabase.from('users').update(userPatch).eq('id', submission.user_id);
+
+                if (userUpdate.error) {
+                    console.error('发布者超时-用户余额增加失败：', userUpdate.error);
+                    throw userUpdate.error;
+                }
+
+                if (feeAmount > 0) {
+                    await window.supabase
+                        .from('transactions')
+                        .insert({
+                            type: 'burn',
+                            amount: feeAmount,
+                            currency: rewardType,
+                            task_id: task.id,
+                            submission_id: submission.id,
+                            created_at: new Date().toISOString()
+                        });
+                }
+            }
+        }
+
+        var now = new Date().toISOString();
+        var updateResult = await window.supabase
+            .from('submissions')
+            .update({
+                status: 'approved',
+                reviewed_at: now,
+                review_comment: '审核时限已过，自动通过'
+            })
+            .eq('id', submission.id)
+            .eq('status', 'submitted');
+
+        if (updateResult.error) {
+            console.error('发布者超时-更新提交状态失败：', updateResult.error);
+            throw updateResult.error;
+        }
+
+        await window.supabase
+            .from('tasks')
+            .update({ status: 'completed' })
+            .eq('id', task.id);
+
+        console.log('发布者超时-提交已自动通过：', {
+            submissionId: submission.id,
+            taskId: task.id,
+            userId: submission.user_id,
+            rewardAmount: rewardAmount
+        });
+
+        return true;
+    } catch (e) {
+        console.error('发布者超时-处理异常：', e);
+        return false;
+    }
+}
+
+async function processTaskTimeouts() {
+    if (!window.supabase) return;
+
+    var now = new Date().getTime();
+
+    var claimedSubmissions = await window.supabase
+        .from('submissions')
+        .select('id, task_id, user_id, status, claimed_at, tasks(duration, max_participants, current_participants)')
+        .eq('status', 'claimed')
+        .neq('claimed_at', null);
+
+    if (!claimedSubmissions.error && claimedSubmissions.data) {
+        for (var i = 0; i < claimedSubmissions.data.length; i++) {
+            var sub = claimedSubmissions.data[i];
+            var task = sub.tasks;
+            if (!task || !sub.claimed_at) continue;
+
+            var claimedTime = new Date(sub.claimed_at).getTime();
+            var durationMs = getDurationMs(task.duration);
+            if (now - claimedTime > durationMs) {
+                await handleUserExpiredSubmission(sub, task);
+            }
+        }
+    }
+
+    var submittedSubmissions = await window.supabase
+        .from('submissions')
+        .select('id, task_id, user_id, status, submitted_at, tasks(duration, reward_amount, reward_type, fee_amount)')
+        .eq('status', 'submitted')
+        .neq('submitted_at', null);
+
+    if (!submittedSubmissions.error && submittedSubmissions.data) {
+        for (var j = 0; j < submittedSubmissions.data.length; j++) {
+            var sub2 = submittedSubmissions.data[j];
+            var task2 = sub2.tasks;
+            if (!task2 || !sub2.submitted_at) continue;
+
+            var submittedTime = new Date(sub2.submitted_at).getTime();
+            var durationMs2 = getDurationMs(task2.duration);
+            if (now - submittedTime > durationMs2) {
+                await handlePublisherExpiredReview(sub2, task2);
+            }
+        }
+    }
+}
 
 function compareTaskTargetUsername(inputValue, targetValue) {
     var inputNorm = normalizeTwitterUsername(inputValue).toLowerCase();
