@@ -2161,6 +2161,28 @@ img {
     font-size: 14px;
 }
 
+.ct-platform-group {
+    gap: 12px 20px;
+}
+
+.ct-platform-group .create-task-radio-label {
+    font-size: 14px;
+}
+
+.ct-platform-disabled {
+    opacity: 0.5;
+    pointer-events: none;
+    cursor: not-allowed;
+}
+
+.ct-platform-disabled input[type="radio"] {
+    opacity: 0.5;
+}
+
+.ct-platform-disabled span {
+    color: #999;
+}
+
 .create-task-stake-card {
     background-color: #e6f7ff;
     border-radius: 8px;

@@ -541,6 +541,44 @@
           </div>
         </div>
 
+        <div id="ct-field-platform" class="create-task-field hidden">
+          <label class="create-task-label" data-i18n="ct_label_platform">任务平台</label>
+          <div id="ct-task-platform-group" class="create-task-radio-group ct-platform-group">
+            <label class="create-task-radio-label">
+              <input type="radio" name="ct-task-platform" value="twitter" data-i18n="ct_platform_twitter" checked>
+              <span data-i18n="ct_platform_twitter">Twitter (X)</span>
+            </label>
+            <label class="create-task-radio-label">
+              <input type="radio" name="ct-task-platform" value="telegram" data-i18n="ct_platform_telegram">
+              <span data-i18n="ct_platform_telegram">Telegram</span>
+            </label>
+            <label class="create-task-radio-label">
+              <input type="radio" name="ct-task-platform" value="discord" data-i18n="ct_platform_discord">
+              <span data-i18n="ct_platform_discord">Discord</span>
+            </label>
+            <label class="create-task-radio-label ct-platform-disabled">
+              <input type="radio" name="ct-task-platform" value="youtube" data-i18n="ct_platform_youtube" disabled>
+              <span data-i18n="ct_platform_youtube">YouTube</span>
+            </label>
+            <label class="create-task-radio-label ct-platform-disabled">
+              <input type="radio" name="ct-task-platform" value="github" data-i18n="ct_platform_github" disabled>
+              <span data-i18n="ct_platform_github">GitHub</span>
+            </label>
+            <label class="create-task-radio-label ct-platform-disabled">
+              <input type="radio" name="ct-task-platform" value="tiktok" data-i18n="ct_platform_tiktok" disabled>
+              <span data-i18n="ct_platform_tiktok">TikTok</span>
+            </label>
+            <label class="create-task-radio-label ct-platform-disabled">
+              <input type="radio" name="ct-task-platform" value="instagram" data-i18n="ct_platform_instagram" disabled>
+              <span data-i18n="ct_platform_instagram">Instagram</span>
+            </label>
+            <label class="create-task-radio-label ct-platform-disabled">
+              <input type="radio" name="ct-task-platform" value="reddit" data-i18n="ct_platform_reddit" disabled>
+              <span data-i18n="ct_platform_reddit">Reddit</span>
+            </label>
+          </div>
+        </div>
+
         <div class="create-task-field">
           <label class="create-task-label" data-i18n="ct_label_desc">任务描述</label>
           <textarea id="ct-task-desc" class="create-task-textarea" data-placeholder="ct_ph_desc" placeholder="请详细描述任务内容和要求"></textarea>
@@ -569,21 +607,6 @@
             </div>
           </div>
           <button type="button" id="ct-add-req-btn" class="create-task-add-req" data-i18n="ct_add_req">+ 添加要求</button>
-        </div>
-
-        <div id="ct-field-platform" class="create-task-field hidden">
-          <label class="create-task-label" for="ct-task-platform" data-i18n="ct_label_platform">任务平台</label>
-          <select id="ct-task-platform" class="create-task-input">
-            <option value="" data-i18n="ct_platform_select">请选择平台</option>
-            <option value="twitter" data-i18n="ct_platform_twitter">Twitter (X)</option>
-            <option value="telegram" data-i18n="ct_platform_telegram">Telegram</option>
-            <option value="discord" data-i18n="ct_platform_discord">Discord</option>
-            <option value="youtube" data-i18n="ct_platform_youtube">YouTube</option>
-            <option value="github" data-i18n="ct_platform_github">GitHub</option>
-            <option value="tiktok" data-i18n="ct_platform_tiktok">TikTok</option>
-            <option value="instagram" data-i18n="ct_platform_instagram">Instagram</option>
-            <option value="reddit" data-i18n="ct_platform_reddit">Reddit</option>
-          </select>
         </div>
 
         <div id="ct-field-platform-config" class="create-task-platform-config hidden">
