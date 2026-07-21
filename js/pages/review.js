@@ -105,6 +105,13 @@
     return false;
   }
 
+  function isImageUrl(url) {
+    if (!url) return false;
+    var lowerUrl = String(url).toLowerCase().trim();
+    return lowerUrl.match(/\.(png|jpg|jpeg|gif|webp)$/) !== null ||
+           lowerUrl.startsWith('data:image/');
+  }
+
   function getReviewableCount() {
     return getCurrentSubmissions().filter(isReviewable).length;
   }
@@ -205,40 +212,36 @@
     return getUnknownUserLabel();
   }
 
-  function renderScreenshotBlock(submission) {
-    var urls = getScreenshotUrls(submission);
-    if (!urls.length) return '';
+  function renderProofContent(submission) {
+    var proofHtml = '';
+    var description = submission.description || '';
+    var screenshotUrls = getScreenshotUrls(submission);
 
-    var thumbStyle = 'max-width:120px;max-height:80px;border-radius:4px;object-fit:cover;display:block;margin-top:8px;';
-    var linkStyle = 'display:inline-block;margin-right:8px;margin-top:8px;';
-    var galleryStyle = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;';
+    var imageUrls = screenshotUrls.filter(isImageUrl);
+    var nonImageUrls = screenshotUrls.filter(function (url) { return !isImageUrl(url); });
 
-    if (urls.length === 1) {
-      return (
-        '<div class="rv-screenshots">' +
-          '<a class="rv-screenshot-link" href="' + escapeHtml(urls[0]) + '" target="_blank" rel="noopener noreferrer" style="' + linkStyle + '">' +
-            '<img class="rv-screenshot-thumb" src="' + escapeHtml(urls[0]) + '" alt="screenshot" style="' + thumbStyle + '">' +
-          '</a>' +
-        '</div>'
-      );
+    if (imageUrls.length > 0) {
+      proofHtml += '<div class="rv-proof-images">';
+      imageUrls.forEach(function (url) {
+        proofHtml += '<img class="rv-proof-image" src="' + escapeHtml(url) + '" alt="proof" onclick="window.open(\'' + escapeHtml(url) + '\', \'_blank\')">';
+      });
+      proofHtml += '</div>';
     }
 
-    return (
-      '<div class="rv-screenshots">' +
-        '<button type="button" class="rv-screenshot-toggle" data-id="' + escapeHtml(submission.id) + '" style="margin-top:8px;padding:0;border:none;background:none;color:#4f8cff;cursor:pointer;font-size:13px;">' +
-          escapeHtml(rvT('rv_screenshot_summary', { count: urls.length })) +
-        '</button>' +
-        '<div class="rv-screenshot-gallery hidden" id="rv-screenshot-gallery-' + escapeHtml(submission.id) + '" style="' + galleryStyle + '">' +
-          urls.map(function (url, index) {
-            return (
-              '<a class="rv-screenshot-link" href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer" style="' + linkStyle + '">' +
-                '<img class="rv-screenshot-thumb" src="' + escapeHtml(url) + '" alt="screenshot ' + (index + 1) + '" style="' + thumbStyle + '">' +
-              '</a>'
-            );
-          }).join('') +
-        '</div>' +
-      '</div>'
-    );
+    if (nonImageUrls.length > 0) {
+      nonImageUrls.forEach(function (url) {
+        proofHtml += '<div class="rv-proof-text">' + escapeHtml(url) + '</div>';
+      });
+    }
+
+    if (description && !screenshotUrls.length) {
+      proofHtml += '<div class="rv-proof-text">' + escapeHtml(description) + '</div>';
+    }
+
+    if (proofHtml) {
+      return '<div class="rv-proof-content">' + proofHtml + '</div>';
+    }
+    return '';
   }
 
   function renderSubmissionItem(submission) {
@@ -246,7 +249,7 @@
     var summaryHtml = '';
     var statusLabel = getStatusLabel(submission);
     var displayName = getSubmissionDisplayName(submission);
-    var screenshotHtml = renderScreenshotBlock(submission);
+    var proofHtml = renderProofContent(submission);
     var submissionStatus = String(submission.status || '').toLowerCase();
 
     console.log('提交列表-用户名数据：', {
@@ -259,24 +262,22 @@
       summaryHtml = '<span class="rv-status-approved">' + escapeHtml(statusLabel) + '</span>';
       actionsHtml =
         '<div class="rv-actions">' +
-          '<button type="button" class="rv-btn-approve rv-btn-disabled" disabled>' + rvT('rv_btn_approve') + '</button>' +
-          '<button type="button" class="rv-btn-reject rv-btn-disabled" disabled>' + rvT('rv_btn_reject') + '</button>' +
+          '<button type="button" class="rv-btn-approve" disabled>' + rvT('rv_btn_approve') + '</button>' +
+          '<button type="button" class="rv-btn-reject" disabled>' + rvT('rv_btn_reject') + '</button>' +
         '</div>';
     } else if (submissionStatus === 'rejected') {
       summaryHtml =
-        '<span class="rv-status-rejected">' + escapeHtml(statusLabel) + '</span>' +
-        (submission.review_comment
-          ? '<p class="rv-submit-summary">' + escapeHtml(truncateText(submission.review_comment, 50)) + '</p>'
-          : '');
+        '<span class="rv-status-rejected">' + escapeHtml(statusLabel) + '</span>';
+      if (submission.review_comment) {
+        summaryHtml += '<div class="rv-reject-reason">' + escapeHtml(submission.review_comment) + '</div>';
+      }
       actionsHtml =
         '<div class="rv-actions">' +
-          '<button type="button" class="rv-btn-approve rv-btn-disabled" disabled>' + rvT('rv_btn_approve') + '</button>' +
-          '<button type="button" class="rv-btn-reject rv-btn-disabled" disabled>' + rvT('rv_status_rejected') + '</button>' +
+          '<button type="button" class="rv-btn-approve" disabled>' + rvT('rv_btn_approve') + '</button>' +
+          '<button type="button" class="rv-btn-reject" disabled>' + rvT('rv_status_rejected') + '</button>' +
         '</div>';
     } else {
-      summaryHtml =
-        '<p class="rv-submit-summary">' + escapeHtml(getSummaryText(submission)) + '</p>' +
-        '<p class="rv-submit-summary">' + escapeHtml(statusLabel) + '</p>';
+      summaryHtml = '<span class="rv-status-submitted">' + escapeHtml(statusLabel) + '</span>';
       if (isReviewable(submission)) {
         actionsHtml =
           '<div class="rv-actions">' +
@@ -286,8 +287,8 @@
       }
     }
 
-    if (screenshotHtml) {
-      summaryHtml += screenshotHtml;
+    if (proofHtml) {
+      summaryHtml = proofHtml + summaryHtml;
     }
 
     var submitter = submission.submitter || {
@@ -299,29 +300,54 @@
       : '<div class="rv-avatar"></div>';
 
     return (
-      '<li class="review-submission-item" data-id="' + escapeHtml(submission.id) + '">' +
-        '<div class="rv-user-block">' +
+      '<div class="rv-submission-item" data-id="' + escapeHtml(submission.id) + '">' +
+        '<div class="rv-submitter-info">' +
           avatarHtml +
           '<span class="rv-username">' + escapeHtml(displayName) + '</span>' +
         '</div>' +
-        '<div class="rv-content-block">' +
+        '<div class="rv-submission-content">' +
           '<p class="rv-submit-time">' + escapeHtml(formatSubmissionTime(submission.submitted_at)) + '</p>' +
           summaryHtml +
         '</div>' +
         actionsHtml +
-      '</li>'
+      '</div>'
+    );
+  }
+
+  function renderTaskCard(taskInfo, submissions) {
+    var taskTitle = taskInfo.title || '未知任务';
+    var taskDesc = taskInfo.description || '';
+    var rewardAmount = taskInfo.reward_amount || 0;
+    var rewardType = (taskInfo.reward_type || 'CRLM').toUpperCase();
+    var publisherId = taskInfo.publisher_id || '';
+
+    var submissionsHtml = submissions.map(renderSubmissionItem).join('');
+
+    return (
+      '<div class="rv-task-card">' +
+        '<div class="rv-task-header">' +
+          '<h3 class="rv-task-title">' + escapeHtml(taskTitle) + '</h3>' +
+          '<p class="rv-task-desc">' + escapeHtml(taskDesc) + '</p>' +
+          '<div class="rv-task-meta">' +
+            '<span class="rv-task-reward">奖励: ' + rewardAmount + ' ' + rewardType + '</span>' +
+            '<span class="rv-task-publisher">发布者: ' + escapeHtml(publisherId || '未知') + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="rv-task-submissions">' +
+          submissionsHtml +
+        '</div>' +
+      '</div>'
     );
   }
 
   function showReviewEmptyMessage(messageKey) {
-    var listEl = document.getElementById('rv-submission-list');
+    var containerEl = document.getElementById('rv-task-cards-container');
     var emptyEl = document.getElementById('rv-empty-state');
 
     updatePendingCountBadge();
 
-    if (listEl) {
-      listEl.innerHTML = '';
-      listEl.classList.add('hidden');
+    if (containerEl) {
+      containerEl.innerHTML = '';
     }
     if (emptyEl) {
       emptyEl.innerHTML = '<p>' + escapeHtml(rvT(messageKey)) + '</p>';
@@ -566,7 +592,7 @@
 
     var submissionsResult = await window.supabase
       .from('submissions')
-      .select('id, task_id, user_id, status, description, screenshot_urls, submitted_at, users!user_id(username, email, wallet_address)')
+      .select('*, tasks(title, description, reward_amount, reward_type, publisher_id), users!user_id(id, username, email, wallet_address)')
       .eq('task_id', taskId)
       .in('status', statusFilter)
       .order('submitted_at', { ascending: false });
@@ -953,13 +979,13 @@
   }
 
   function renderSubmissionList() {
-    var listEl = document.getElementById('rv-submission-list');
+    var containerEl = document.getElementById('rv-task-cards-container');
     var emptyEl = document.getElementById('rv-empty-state');
     var submissions = getCurrentSubmissions();
 
     updatePendingCountBadge();
 
-    if (!listEl || !emptyEl) return;
+    if (!containerEl || !emptyEl) return;
 
     if (!publisherTasks.length) {
       showReviewEmptyMessage('rv_no_tasks');
@@ -971,11 +997,29 @@
       return;
     }
 
-    listEl.classList.remove('hidden');
     emptyEl.classList.add('hidden');
-    listEl.innerHTML = submissions.map(renderSubmissionItem).join('');
 
-    listEl.onclick = function (event) {
+    var tasksMap = {};
+    submissions.forEach(function (submission) {
+      var taskId = String(submission.task_id);
+      if (!tasksMap[taskId]) {
+        tasksMap[taskId] = {
+          taskInfo: submission.tasks || publisherTasks.find(function (t) { return String(t.id) === taskId; }) || {},
+          submissions: []
+        };
+      }
+      tasksMap[taskId].submissions.push(submission);
+    });
+
+    var cardsHtml = '';
+    Object.keys(tasksMap).forEach(function (taskId) {
+      var taskData = tasksMap[taskId];
+      cardsHtml += renderTaskCard(taskData.taskInfo, taskData.submissions);
+    });
+
+    containerEl.innerHTML = cardsHtml;
+
+    containerEl.onclick = function (event) {
       var target = event.target;
       if (!target) return;
 
@@ -1001,15 +1045,6 @@
         openRejectModal();
       }
     };
-
-    listEl.querySelectorAll('.rv-screenshot-toggle').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var submissionId = btn.getAttribute('data-id');
-        var gallery = document.getElementById('rv-screenshot-gallery-' + submissionId);
-        if (!gallery) return;
-        gallery.classList.toggle('hidden');
-      });
-    });
   }
 
   function openRejectModal() {

@@ -1189,16 +1189,11 @@
         </select>
       </div>
 
-      <!-- 提交列表 -->
-      <div class="review-list-card">
-        <div class="review-list-header">
-          <h2 class="review-list-title" data-i18n="rv_list_title">待审核提交</h2>
-          <span id="rv-pending-count" class="review-pending-count">共 3 条</span>
-        </div>
-        <ul id="rv-submission-list" class="review-submission-list"></ul>
-        <div id="rv-empty-state" class="review-empty-state hidden">
-          <p data-i18n="rv_empty_text">所有提交已审核完毕</p>
-        </div>
+      <!-- 按任务分组的提交列表 -->
+      <div id="rv-task-cards-container" class="rv-task-cards-container"></div>
+
+      <div id="rv-empty-state" class="review-empty-state hidden">
+        <p data-i18n="rv_empty_text">所有提交已审核完毕</p>
       </div>
 
       <!-- 驳回弹窗 -->
