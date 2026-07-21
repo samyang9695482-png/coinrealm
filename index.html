@@ -665,6 +665,26 @@
           <label class="create-task-label" data-i18n="ct_label_reward_amount">奖励金额</label>
           <input type="number" id="ct-reward-amount" class="create-task-input" data-placeholder="ct_ph_reward" placeholder="请输入奖励金额" min="0">
           <p id="ct-unit-price-hint" class="create-task-orange-hint hidden"></p>
+          
+          <div id="ct-fee-breakdown" class="ct-fee-breakdown">
+            <div class="ct-fee-row">
+              <span class="ct-fee-label">奖励金额</span>
+              <span id="ct-fee-reward" class="ct-fee-value">0.00</span>
+            </div>
+            <div class="ct-fee-row">
+              <span class="ct-fee-label">服务费 (15%)</span>
+              <span id="ct-fee-amount" class="ct-fee-value">0.00</span>
+            </div>
+            <div class="ct-fee-divider"></div>
+            <div class="ct-fee-row ct-fee-total">
+              <span class="ct-fee-label">总扣除</span>
+              <span id="ct-fee-total" class="ct-fee-value">0.00</span>
+            </div>
+            <div class="ct-fee-row ct-fee-balance">
+              <span class="ct-fee-label">当前余额</span>
+              <span id="ct-user-balance" class="ct-fee-value">0.00</span>
+            </div>
+          </div>
         </div>
 
         <div class="create-task-field">

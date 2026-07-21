@@ -262,6 +262,8 @@ function buildTaskInsertPayload(userId, fields) {
         requirements: fields.requirements,
         reward_type: fields.rewardType,
         reward_amount: fields.rewardAmount,
+        fee_amount: fields.feeAmount || 0,
+        total_cost: fields.totalCost || fields.rewardAmount || 0,
         max_participants: fields.maxParticipants,
         deadline: fields.deadline,
         proof_type: fields.proofType,

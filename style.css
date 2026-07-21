@@ -2071,6 +2071,54 @@ img {
     color: #666;
 }
 
+.ct-fee-breakdown {
+    margin-top: 12px;
+    padding: 12px;
+    background-color: #fafafa;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.ct-fee-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+}
+
+.ct-fee-label {
+    color: #666;
+}
+
+.ct-fee-value {
+    font-weight: 600;
+    color: #333;
+}
+
+.ct-fee-divider {
+    height: 1px;
+    background-color: #eee;
+    margin: 8px 0;
+}
+
+.ct-fee-total .ct-fee-label {
+    color: #333;
+    font-weight: 600;
+}
+
+.ct-fee-total .ct-fee-value {
+    color: #FF6B35;
+    font-size: 16px;
+}
+
+.ct-fee-balance {
+    color: #999;
+}
+
+.ct-fee-balance .ct-fee-value {
+    color: #52c41a;
+}
+
 .create-task-add-req {
     background: none;
     border: none;

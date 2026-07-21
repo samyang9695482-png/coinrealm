@@ -877,56 +877,7 @@
     if (rewardAmount > 0 && window.supabase) {
       var rewardType = String((taskResult.data && taskResult.data.reward_type) || 'CRLM').toUpperCase();
       var balanceField = rewardType === 'USDT' ? 'usdt_balance' : 'crlm_balance';
-
-      var publisherId = taskResult.data.publisher_id;
-      if (!publisherId) {
-        console.error('审核通过-发布者ID不存在：', { taskId: submission.task_id });
-        alert('发布者信息异常，无法发放奖励');
-        return false;
-      }
-
-      var publisherResult = await window.supabase
-        .from('users')
-        .select('id, ' + balanceField)
-        .eq('id', publisherId)
-        .maybeSingle();
-
-      if (publisherResult.error || !publisherResult.data) {
-        console.error('审核通过-发布者余额查询失败：', publisherResult.error);
-        alert('发布者信息查询失败：' + (publisherResult.error ? publisherResult.error.message : 'not found'));
-        return false;
-      }
-
-      var publisherBalance = Number(publisherResult.data[balanceField]) || 0;
-      if (publisherBalance < rewardAmount) {
-        console.error('审核通过-发布者余额不足：', { publisherId: publisherId, balance: publisherBalance, required: rewardAmount });
-        
-        var rejectResult = await window.supabase
-          .from('submissions')
-          .update({
-            status: 'rejected',
-            review_comment: '发布者余额不足，无法发放奖励',
-            reviewed_at: new Date().toISOString()
-          })
-          .eq('id', submissionId);
-
-        if (!rejectResult.error) {
-          currentSubmissions = currentSubmissions.map(function (item) {
-            if (String(item.id) === String(submissionId)) {
-              return Object.assign({}, item, {
-                status: 'rejected',
-                review_comment: '发布者余额不足，无法发放奖励',
-                reviewed_at: new Date().toISOString()
-              });
-            }
-            return item;
-          });
-          renderSubmissionList();
-        }
-        
-        alert('发布者余额不足，无法发放奖励');
-        return false;
-      }
+      var feeAmount = Number(taskResult.data.fee_amount) || 0;
 
       try {
         var userResult = await window.supabase
@@ -938,34 +889,35 @@
         if (!userResult.error && userResult.data) {
           var userCurrentBalance = Number(userResult.data[balanceField]) || 0;
           
-          var publisherPatch = {};
-          publisherPatch[balanceField] = publisherBalance - rewardAmount;
-          var publisherUpdate = await window.supabase.from('users').update(publisherPatch).eq('id', publisherId);
-          
-          if (publisherUpdate.error) {
-            console.error('审核通过-发布者余额扣减失败：', publisherUpdate.error);
-            alert('发布者余额扣减失败，请重试');
-            return false;
-          }
-
           var userPatch = {};
           userPatch[balanceField] = userCurrentBalance + rewardAmount;
           var userUpdate = await window.supabase.from('users').update(userPatch).eq('id', submission.user_id);
           
           if (userUpdate.error) {
             console.error('审核通过-用户余额增加失败：', userUpdate.error);
-            var rollbackPatch = {};
-            rollbackPatch[balanceField] = publisherBalance;
-            await window.supabase.from('users').update(rollbackPatch).eq('id', publisherId);
-            alert('用户余额增加失败，已回滚发布者余额');
+            alert('用户余额增加失败，请重试');
             return false;
+          }
+
+          if (feeAmount > 0) {
+            await window.supabase
+              .from('transactions')
+              .insert({
+                type: 'burn',
+                amount: feeAmount,
+                currency: rewardType,
+                task_id: submission.task_id,
+                submission_id: submissionId,
+                created_at: new Date().toISOString()
+              });
           }
 
           console.log('人工审核发奖成功：', {
             submissionId: submissionId,
             userId: submission.user_id,
             rewardAmount: rewardAmount,
-            publisherId: publisherId
+            feeAmount: feeAmount,
+            publisherId: taskResult.data.publisher_id
           });
         }
       } catch (e) {
@@ -1020,6 +972,52 @@
     if (!userId) {
       alert(rvT('rv_alert_login'));
       return false;
+    }
+
+    var submissionResult = await window.supabase
+      .from('submissions')
+      .select('*, tasks(reward_amount, reward_type, publisher_id)')
+      .eq('id', submissionId)
+      .maybeSingle();
+
+    if (submissionResult.error || !submissionResult.data) {
+      console.error('驳回-查询提交失败：', submissionResult.error);
+      alert('查询提交信息失败：' + (submissionResult.error ? submissionResult.error.message : 'not found'));
+      return false;
+    }
+
+    var submission = submissionResult.data;
+    var task = submission.tasks;
+    var rewardAmount = Number(task.reward_amount) || 0;
+    var rewardType = String(task.reward_type || 'CRLM').toUpperCase();
+    var publisherId = task.publisher_id;
+    var balanceField = rewardType === 'USDT' ? 'usdt_balance' : 'crlm_balance';
+
+    if (rewardAmount > 0 && publisherId) {
+      var publisherResult = await window.supabase
+        .from('users')
+        .select('id, ' + balanceField)
+        .eq('id', publisherId)
+        .maybeSingle();
+
+      if (!publisherResult.error && publisherResult.data) {
+        var publisherCurrentBalance = Number(publisherResult.data[balanceField]) || 0;
+        var publisherPatch = {};
+        publisherPatch[balanceField] = publisherCurrentBalance + rewardAmount;
+        
+        var publisherUpdate = await window.supabase.from('users').update(publisherPatch).eq('id', publisherId);
+        if (publisherUpdate.error) {
+          console.error('驳回-发布者余额退还失败：', publisherUpdate.error);
+          alert('发布者余额退还失败，请重试');
+          return false;
+        }
+
+        console.log('驳回-奖励金额已退还发布者：', {
+          submissionId: submissionId,
+          publisherId: publisherId,
+          rewardAmount: rewardAmount
+        });
+      }
     }
 
     var updateResult = await window.supabase

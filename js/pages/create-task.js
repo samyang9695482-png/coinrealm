@@ -587,6 +587,31 @@
     hintEl.textContent = ctT(key, { amount: amountStr });
   }
 
+  function calcFeeAmount(reward) {
+    return reward * CT_PLATFORM_COMMISSION;
+  }
+
+  function calcTotalCost(reward) {
+    return reward + calcFeeAmount(reward);
+  }
+
+  function updateFeeBreakdown() {
+    var reward = getRewardAmount();
+    var rewardType = getRewardType();
+    var feeAmount = calcFeeAmount(reward);
+    var totalCost = calcTotalCost(reward);
+
+    var rewardEl = document.getElementById('ct-fee-reward');
+    var feeEl = document.getElementById('ct-fee-amount');
+    var totalEl = document.getElementById('ct-fee-total');
+    var balanceEl = document.getElementById('ct-user-balance');
+
+    if (rewardEl) rewardEl.textContent = formatCtAmount(reward) + ' ' + rewardType;
+    if (feeEl) feeEl.textContent = formatCtAmount(feeAmount) + ' ' + rewardType;
+    if (totalEl) totalEl.textContent = formatCtAmount(totalCost) + ' ' + rewardType;
+    if (balanceEl) balanceEl.textContent = formatCtAmount(userBalance) + ' ' + rewardType;
+  }
+
   function updateSubmitButtonState() {
     var btn = document.getElementById('ct-submit-btn');
     if (!btn) return;
@@ -601,8 +626,8 @@
       return;
     }
 
-    var reward = getRewardAmount();
-    if (reward > userBalance) {
+    var totalCost = calcTotalCost(getRewardAmount());
+    if (totalCost > userBalance) {
       btn.classList.add('ct-btn-disabled');
       btn.disabled = true;
       btn.textContent = ctT('ct_btn_balance');
@@ -1590,6 +1615,28 @@
         var imageUrl = simpleTask ? null : (ctUploadedImages.length ? ctUploadedImages[0].url : null);
         var platformFields = simpleTask ? getSimpleTaskPlatformFields() : null;
 
+        var feeAmount = calcFeeAmount(rewardAmount);
+        var totalCost = calcTotalCost(rewardAmount);
+
+        var balanceField = rewardType === 'USDT' ? 'usdt_balance' : 'crlm_balance';
+
+        var balanceResult = await window.supabase
+          .from('users')
+          .select(balanceField)
+          .eq('id', userId)
+          .maybeSingle();
+
+        if (balanceResult.error || !balanceResult.data) {
+          alert('获取余额失败：' + (balanceResult.error ? balanceResult.error.message : 'not found'));
+          return;
+        }
+
+        var currentBalance = Number(balanceResult.data[balanceField]) || 0;
+        if (currentBalance < totalCost) {
+          alert('余额不足，无法发布任务');
+          return;
+        }
+
         var insertPayload = buildTaskInsertPayload(userId, {
           title: title,
           type: type,
@@ -1597,6 +1644,8 @@
           requirements: requirements,
           rewardType: rewardType,
           rewardAmount: rewardAmount,
+          feeAmount: feeAmount,
+          totalCost: totalCost,
           maxParticipants: maxParticipants,
           deadline: deadline,
           proofType: proofType,
@@ -1608,15 +1657,37 @@
           taskKeyword: simpleTask && platformFields ? platformFields.taskKeyword : null
         });
 
-        var insertResult = await window.supabase
-          .from('tasks')
-          .insert(insertPayload);
+        var balancePatch = {};
+        balancePatch[balanceField] = currentBalance - totalCost;
 
-        if (insertResult.error) throw insertResult.error;
+        try {
+          var balanceUpdate = await window.supabase
+            .from('users')
+            .update(balancePatch)
+            .eq('id', userId);
 
-        alert('任务发布成功！');
-        resetCreateTaskForm();
-        goToHomeAndRefreshTasks();
+          if (balanceUpdate.error) {
+            throw balanceUpdate.error;
+          }
+
+          var insertResult = await window.supabase
+            .from('tasks')
+            .insert(insertPayload);
+
+          if (insertResult.error) {
+            var rollbackPatch = {};
+            rollbackPatch[balanceField] = currentBalance;
+            await window.supabase.from('users').update(rollbackPatch).eq('id', userId);
+            throw insertResult.error;
+          }
+
+          alert('任务发布成功！');
+          resetCreateTaskForm();
+          goToHomeAndRefreshTasks();
+        } catch (error) {
+          console.error('发布任务失败', error);
+          alert('发布失败：' + (error && error.message ? error.message : String(error)));
+        }
       } catch (error) {
         console.error('发布任务失败', error);
         alert('发布失败：' + (error && error.message ? error.message : String(error)));
@@ -1659,6 +1730,7 @@
         rewardInput.addEventListener('input', function () {
             updateStakeHint();
             updateUnitPriceHint();
+            updateFeeBreakdown();
             updateSubmitButtonState();
         });
     }
@@ -1672,6 +1744,7 @@
         radio.addEventListener('change', function () {
             updateStakeHint();
             updateUnitPriceHint();
+            updateFeeBreakdown();
             updateSubmitButtonState();
         });
     });
@@ -1755,6 +1828,7 @@
     applyUsdtRewardVisibility();
     updateProofTextRequirementVisibility();
     updateUnitPriceHint();
+    updateFeeBreakdown();
     updateSubmitButtonState();
   }
 
