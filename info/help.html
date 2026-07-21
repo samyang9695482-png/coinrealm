@@ -73,6 +73,23 @@
             background: #FF6B35;
             color: #fff;
         }
+        .header-nav {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .header-nav-link {
+            color: #666;
+            text-decoration: none;
+            font-size: 14px;
+            transition: color 0.2s;
+        }
+        .header-nav-link:hover {
+            color: #FF6B35;
+        }
+        .header-nav-sep {
+            color: #ccc;
+        }
 
         /* 主内容左右布局 */
         .main-wrap {
@@ -217,6 +234,11 @@
     <header>
         <div class="page-title zh">帮助中心</div>
         <div class="page-title en">Help Center</div>
+        <nav class="header-nav">
+            <a href="/" class="header-nav-link">首页</a>
+            <span class="header-nav-sep">|</span>
+            <a href="/#invite" class="header-nav-link">空投</a>
+        </nav>
         <button class="lang-switch" id="langBtn">中文</button>
     </header>
 
@@ -490,16 +512,16 @@
     <footer>
         <div class="footer-links">
             <span class="zh">
-                <a href="about.html">关于我们</a> |
-                <a href="help.html">帮助中心</a> |
-                <a href="whitepaper.html">白皮书</a> |
-                <a href="terms.html">服务条款</a>
+                <a href="/info/about.html">关于我们</a> |
+                <a href="/info/help.html">帮助中心</a> |
+                <a href="/info/whitepaper.html">白皮书</a> |
+                <a href="/info/terms.html">服务条款</a>
             </span>
             <span class="en">
-                <a href="about.html">About Us</a> |
-                <a href="help.html">Help Center</a> |
-                <a href="whitepaper.html">Whitepaper</a> |
-                <a href="terms.html">Terms of Service</a>
+                <a href="/info/about.html">About Us</a> |
+                <a href="/info/help.html">Help Center</a> |
+                <a href="/info/whitepaper.html">Whitepaper</a> |
+                <a href="/info/terms.html">Terms of Service</a>
             </span>
         </div>
         <div class="copyright">© 2026 CoinRealm. All rights reserved.</div>
