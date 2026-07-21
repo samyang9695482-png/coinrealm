@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Help Center - CoinRealm</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        body {
+            background: #ffffff;
+            color: #333;
+            line-height: 1.75;
+            min-height: 100vh;
+            padding-bottom: 80px;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* 全局固定全屏CRLM斜向水印 滚动永久铺满 */
+        body::before {
+            content: "CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM CRLM";
+            position: fixed;
+            top: -100%;
+            left: -100%;
+            width: 300%;
+            height: 300%;
+            font-size: 90px;
+            font-weight: 600;
+            color: #999;
+            opacity: 0.04;
+            z-index: -1;
+            white-space: pre-wrap;
+            word-spacing: 60px;
+            line-height: 140px;
+            transform: rotate(-45deg);
+            pointer-events: none;
+        }
+
+        /* 顶部导航栏 */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            background: #fff;
+            border-bottom: 1px solid #eee;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .page-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #FF6B35;
+        }
+        .lang-switch {
+            padding: 6px 12px;
+            border: 1px solid #FF6B35;
+            border-radius: 6px;
+            background: #fff;
+            color: #FF6B35;
+            cursor: pointer;
+            font-size: 14px;
+            transition: 0.2s ease;
+        }
+        .lang-switch:hover {
+            background: #FF6B35;
+            color: #fff;
+        }
+
+        /* 主内容左右布局 */
+        .main-wrap {
+            max-width: 1100px;
+            margin: 40px auto;
+            padding: 0 20px;
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 30px;
+        }
+
+        /* 左侧侧边菜单 */
+        .sidebar-menu {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            padding: 24px;
+            height: fit-content;
+            position: sticky;
+            top: 90px;
+        }
+        .sidebar-menu h2 {
+            font-size: 20px;
+            color: #222;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        .menu-item {
+            margin-bottom: 8px;
+        }
+        .menu-title {
+            width: 100%;
+            padding: 12px 14px;
+            background: #f9f9f9;
+            border: none;
+            border-radius: 8px;
+            text-align: left;
+            font-size: 15px;
+            cursor: pointer;
+            transition: 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .menu-title.active {
+            background: #FF6B35;
+            color: #fff;
+        }
+        .menu-title:hover:not(.active) {
+            background: #f2f2f2;
+        }
+
+        /* 右侧内容卡片 */
+        .content-box {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            padding: 36px;
+        }
+        .content-panel {
+            display: none;
+        }
+        .content-panel.show {
+            display: block;
+        }
+        .content-panel h3 {
+            font-size: 22px;
+            color: #222;
+            margin-bottom: 24px;
+            border-left: 4px solid #FF6B35;
+            padding-left: 12px;
+        }
+        .qa-block {
+            margin-bottom: 22px;
+        }
+        .qa-block h4 {
+            font-size: 16px;
+            color: #FF6B35;
+            margin-bottom: 8px;
+        }
+        .qa-block p {
+            font-size: 15px;
+            color: #444;
+            padding-left: 4px;
+        }
+
+        /* 页脚区域 */
+        footer {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 24px;
+            text-align: center;
+            border-top: 1px solid #eee;
+        }
+        .footer-links {
+            margin-bottom: 12px;
+        }
+        .footer-links a {
+            color: #666;
+            text-decoration: none;
+            margin: 0 8px;
+            font-size: 14px;
+        }
+        .footer-links a:hover {
+            color: #FF6B35;
+        }
+        .copyright {
+            font-size: 13px;
+            color: #888;
+        }
+
+        /* 全局双语切换核心样式：默认英文开启 */
+        .zh { display: none; }
+        .en { display: block; }
+        body.chinese .zh { display: block !important; }
+        body.chinese .en { display: none !important; }
+
+        /* 移动端适配 */
+        @media (max-width: 768px) {
+            .main-wrap {
+                grid-template-columns: 1fr;
+            }
+            .sidebar-menu {
+                position: static;
+            }
+            .content-box {
+                padding: 24px 18px;
+            }
+            body::before {
+                font-size: 70px;
+                line-height: 110px;
+            }
+        }
+    </style>
+</head>
+<!-- 默认加载英文 -->
+<body class="english">
+    <!-- 顶部导航 -->
+    <header>
+        <div class="page-title zh">帮助中心</div>
+        <div class="page-title en">Help Center</div>
+        <button class="lang-switch" id="langBtn">中文</button>
+    </header>
+
+    <div class="main-wrap">
+        <!-- 左侧导航菜单 -->
+        <aside class="sidebar-menu">
+            <h2 class="zh">目录导航</h2>
+            <h2 class="en">Navigation Menu</h2>
+
+            <div class="menu-item">
+                <button class="menu-title" data-target="panel1">
+                    <span class="zh">新手入门</span>
+                    <span class="en">Getting Started</span>
+                    <span>+</span>
+                </button>
+            </div>
+            <div class="menu-item">
+                <button class="menu-title" data-target="panel2">
+                    <span class="zh">任务相关</span>
+                    <span class="en">Tasks</span>
+                    <span>+</span>
+                </button>
+            </div>
+            <div class="menu-item">
+                <button class="menu-title" data-target="panel3">
+                    <span class="zh">邀请奖励</span>
+                    <span class="en">Referral Rewards</span>
+                    <span>+</span>
+                </button>
+            </div>
+            <div class="menu-item">
+                <button class="menu-title" data-target="panel4">
+                    <span class="zh">空投与挖矿</span>
+                    <span class="en">Airdrop & Mining</span>
+                    <span>+</span>
+                </button>
+            </div>
+            <div class="menu-item">
+                <button class="menu-title" data-target="panel5">
+                    <span class="zh">提现与充币</span>
+                    <span class="en">Deposit & Withdraw</span>
+                    <span>+</span>
+                </button>
+            </div>
+            <div class="menu-item">
+                <button class="menu-title" data-target="panel6">
+                    <span class="zh">常见问题FAQ</span>
+                    <span class="en">FAQ</span>
+                    <span>+</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- 右侧正文内容 -->
+        <section class="content-box">
+            <!-- 新手入门 -->
+            <div class="content-panel" id="panel1">
+                <div class="zh">
+                    <h3>新手入门</h3>
+                    <div class="qa-block">
+                        <h4>如何注册账号？</h4>
+                        <p>CoinRealm 支持通过加密钱包直接登录，无需手机号、邮箱注册。点击连接钱包，授权签名即可一键进入平台。</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>如何绑定钱包？</h4>
+                        <p>首页点击「连接钱包」，选择你的钱包类型完成授权绑定，钱包地址将作为你的唯一平台账户身份。</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>如何完成第一个任务？</h4>
+                        <p>进入任务大厅领取简单任务，按照要求操作完毕后提交凭证，审核通过就能领取CRLM奖励。</p>
+                    </div>
+                </div>
+                <div class="en">
+                    <h3>Getting Started</h3>
+                    <div class="qa-block">
+                        <h4>How to register?</h4>
+                        <p>Login directly via crypto wallet without phone/email registration. Connect wallet and sign to access the platform.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>How to bind wallet?</h4>
+                        <p>Click Connect Wallet on homepage, select your wallet and authorize binding. Wallet address is your unique account ID.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>How to finish first task?</h4>
+                        <p>Claim easy tasks in task hall, submit proof after completion, get CRLM rewards once approved.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 任务相关 -->
+            <div class="content-panel" id="panel2">
+                <div class="zh">
+                    <h3>任务相关</h3>
+                    <div class="qa-block">
+                        <h4>如何领取任务？</h4>
+                        <p>登录后打开任务大厅，浏览所有可参与任务，查看奖励与规则后点击领取即可。</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>如何提交凭证？</h4>
+                        <p>任务完成后进入任务详情页，上传截图、交易哈希等材料提交审核。</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>任务审核需要多久？</h4>
+                        <p>普通任务5-30分钟；链上交互类任务1~2小时。</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>任务被驳回怎么办？</h4>
+                        <p>查看驳回原因，补齐材料重新提交；有异议可通过社群联系客服申诉。</p>
+                    </div>
+                </div>
+                <div class="en">
+                    <h3>Tasks Guide</h3>
+                    <div class="qa-block">
+                        <h4>How to claim tasks?</h4>
+                        <p>Enter task hall after login, check rewards & rules then claim available tasks.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>How to submit proof?</h4>
+                        <p>Upload screenshots, tx hash or other materials on task detail page for review.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>Review duration?</h4>
+                        <p>5-30 mins for normal tasks; 1-2 hours for on-chain interaction tasks.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>Task rejected solution?</h4>
+                        <p>Check rejection reason, resubmit materials or appeal via official community support.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 邀请奖励 -->
+            <div class="content-panel" id="panel3">
+                <div class="zh">
+                    <h3>邀请奖励</h3>
+                    <div class="qa-block">
+                        <h4>如何邀请好友？</h4>
+                        <p>个人中心复制专属邀请链接/邀请码，分享出去，好友通过链接注册即绑定上下级关系。</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>一级奖励和二级奖励有什么区别？</h4>
+                        <p>一级：直推好友完成一个任务后产生奖励；二级：好友邀请的下级用户完成一个任务后产生奖励，两级收益均可领取。</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>邀请奖励多久到账？</h4>
+                        <p>下级任务审核通过后，奖励实时发放至你的资产账户。</p>
+                    </div>
+                </div>
+                <div class="en">
+                    <h3>Referral Rewards</h3>
+                    <div class="qa-block">
+                        <h4>Invite friends steps?</h4>
+                        <p>Copy your exclusive referral link in profile, share it, friends register via link to bind relationship.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>Difference between L1 & L2 commission?</h4>
+                        <p>Level 1: You get rewards when your direct friends complete a task; Level 2: You receive rewards when users invited by your subordinates finish tasks. Earnings from both tiers are withdrawable.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>Rewards arrival time?</h4>
+                        <p>Funds will be credited instantly once your subordinate's task is approved.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 空投与挖矿 -->
+            <div class="content-panel" id="panel4">
+                <div class="zh">
+                    <h3>空投与挖矿</h3>
+                    <div class="qa-block">
+                        <h4>什么是每日空投？</h4>
+                        <p>平台每日活跃福利，满足活跃度条件即可免费领取CRLM代币。</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>如何解锁空投资格？</h4>
+                        <p>每日完成任意任务即可解锁当日空投资格。</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>挖矿收益如何计算？</h4>
+                        <p>根据持有CRLM数量、质押时长计算，持仓越多、质押越久每日挖矿收益越高。</p>
+                    </div>
+                </div>
+                <div class="en">
+                    <h3>Airdrop & Mining</h3>
+                    <div class="qa-block">
+                        <h4>What is daily airdrop?</h4>
+                        <p>Daily activity bonus, you can claim free CRLM tokens after meeting activity requirements.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>How to unlock airdrop eligibility?</h4>
+                        <p>Complete any daily task to unlock the daily airdrop qualification.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>How mining rewards are calculated?</h4>
+                        <p>Rewards are calculated based on your CRLM holdings and staking period. More tokens and longer staking time bring higher daily income.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 提现充币 -->
+            <div class="content-panel" id="panel5">
+                <div class="zh">
+                    <h3>提现与充币</h3>
+                    <div class="qa-block">
+                        <h4>如何提现 CRLM？</h4>
+                        <p>资产页面选择CRLM，填写接收钱包地址、提现数量，提交提现申请。</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>提现需要多久？</h4>
+                        <p>平台审核秒过，最终到账速度取决于区块链网络拥堵状态。</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>充币地址在哪里？</h4>
+                        <p>资产页点击充币，即可查看专属充币收款地址，务必核对公链网络一致。</p>
+                    </div>
+                </div>
+                <div class="en">
+                    <h3>Deposit & Withdraw</h3>
+                    <div class="qa-block">
+                        <h4>How to withdraw CRLM?</h4>
+                        <p>Go to Assets page, fill in receiving wallet address and amount, then submit withdrawal application.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>How long does withdrawal take?</h4>
+                        <p>Platform review is instant; arrival time depends on blockchain network congestion.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>Where can I get deposit address?</h4>
+                        <p>Click Deposit on Assets page to get your exclusive deposit address, confirm the blockchain network before transferring funds.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- FAQ -->
+            <div class="content-panel" id="panel6">
+                <div class="zh">
+                    <h3>常见问题（FAQ）</h3>
+                    <div class="qa-block">
+                        <h4>为什么我的任务显示“已结束”？</h4>
+                        <p>任务名额耗尽、有效期截止或发布方提前关闭任务，可选择其他未完结任务参与。</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>账号被锁定了怎么办？</h4>
+                        <p>多开刷奖励、作弊违规会触发账号冻结，前往官方社群提交申诉工单等待人工审核。</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>遇到问题如何联系客服？</h4>
+                        <p>可通过X推特、Telegram社群、Discord服务器随时联系官方客服。</p>
+                    </div>
+                </div>
+                <div class="en">
+                    <h3>Frequently Asked Questions</h3>
+                    <div class="qa-block">
+                        <h4>Why does the task show ended?</h4>
+                        <p>The task quota is full, expired, or closed in advance by the publisher. You can choose other ongoing tasks.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>What to do if my account is locked?</h4>
+                        <p>Accounts will be frozen for multi-account farming and cheating. Submit an appeal ticket in official communities for manual review.</p>
+                    </div>
+                    <div class="qa-block">
+                        <h4>How to contact customer service?</h4>
+                        <p>You can reach official support via X, Telegram Group and Discord Server anytime.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- 页脚（双语切换） -->
+    <footer>
+        <div class="footer-links">
+            <span class="zh">
+                <a href="about.html">关于我们</a> |
+                <a href="help.html">帮助中心</a> |
+                <a href="whitepaper.html">白皮书</a> |
+                <a href="terms.html">服务条款</a>
+            </span>
+            <span class="en">
+                <a href="about.html">About Us</a> |
+                <a href="help.html">Help Center</a> |
+                <a href="whitepaper.html">Whitepaper</a> |
+                <a href="terms.html">Terms of Service</a>
+            </span>
+        </div>
+        <div class="copyright">© 2026 CoinRealm. All rights reserved.</div>
+    </footer>
+
+    <script>
+        // 侧边菜单手风琴切换内容
+        const menuBtns = document.querySelectorAll('.menu-title');
+        const panels = document.querySelectorAll('.content-panel');
+        menuBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                menuBtns.forEach(b => {
+                    b.classList.remove('active');
+                    b.lastElementChild.textContent = '+';
+                })
+                panels.forEach(p => p.classList.remove('show'));
+                btn.classList.add('active');
+                btn.lastElementChild.textContent = '-';
+                document.getElementById(btn.dataset.target).classList.add('show');
+            })
+        })
+        menuBtns[0].click();
+
+        // 语言切换：默认英文，点击切换中文
+        const langBtn = document.getElementById('langBtn');
+        let isEn = true;
+        langBtn.onclick = () => {
+            isEn = !isEn;
+            if(isEn){
+                document.body.classList.remove('chinese');
+                document.body.classList.add('english');
+                langBtn.textContent = '中文';
+                document.documentElement.lang = 'en';
+            }else{
+                document.body.classList.remove('english');
+                document.body.classList.add('chinese');
+                langBtn.textContent = 'English';
+                document.documentElement.lang = 'zh-CN';
+            }
+        }
+    </script>
+</body>
+</html>
