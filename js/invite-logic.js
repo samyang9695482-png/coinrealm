@@ -449,6 +449,89 @@ async function activateInviteRewards(userId) {
 
       successCount++;
       console.log('[ActivateInvite] ✅ 第', i + 1, '条' + levelLabel + '奖励发放成功');
+
+      // 一级奖励发放成功后，追溯上级，发放二级奖励
+      if (level === 1) {
+        console.log('[ActivateInvite] --- 追溯上级，检查是否有二级奖励 ---');
+        try {
+          var parentInviteResult = await window.supabase
+            .from('invites')
+            .select('id, inviter_id, is_activated')
+            .eq('invitee_id', inviterId)
+            .eq('level', 1)
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+          console.log('[ActivateInvite] 上级邀请查询：', parentInviteResult.error ? '失败' : ('找到 ' + (parentInviteResult.data ? 1 : 0) + ' 条'));
+
+          if (!parentInviteResult.error && parentInviteResult.data && parentInviteResult.data.inviter_id) {
+            var grandParentId = parentInviteResult.data.inviter_id;
+            var parentInviteId = parentInviteResult.data.id;
+            console.log('[ActivateInvite] 找到上级（grandparent）：', grandParentId);
+
+            // 防重复：检查 grandParent 是否已经从这个 invitee 获得过二级奖励
+            // 即检查是否有 inviter_id = grandParentId, invitee_id = userId, level = 2 的记录已激活
+            var level2Check = await window.supabase
+              .from('invites')
+              .select('id, is_activated')
+              .eq('inviter_id', grandParentId)
+              .eq('invitee_id', userId)
+              .eq('level', 2)
+              .limit(1)
+              .maybeSingle();
+
+            var level2InviteId = null;
+            var level2AlreadyActivated = false;
+
+            if (!level2Check.error && level2Check.data) {
+              level2InviteId = level2Check.data.id;
+              level2AlreadyActivated = level2Check.data.is_activated === true;
+              console.log('[ActivateInvite] 二级邀请记录已存在：id=' + level2InviteId + ' 已激活=' + level2AlreadyActivated);
+            } else {
+              console.log('[ActivateInvite] 二级邀请记录不存在，需要创建');
+            }
+
+            // 防重复：检查 deposit_records
+            if (level2InviteId) {
+              var dup2Check = await window.supabase
+                .from('deposit_records')
+                .select('id')
+                .eq('related_id', level2InviteId)
+                .eq('type', 'invite_reward')
+                .limit(1);
+
+              if (!dup2Check.error && dup2Check.data && dup2Check.data.length > 0) {
+                console.log('[ActivateInvite] 跳过二级 - deposit_records 已有记录');
+                if (!level2AlreadyActivated) {
+                  await window.supabase.from('invites').update({ is_activated: true }).eq('id', level2InviteId);
+                }
+                // 继续下一条主循环记录
+              } else {
+                // 需要发放二级奖励
+                await grantLevel2Reward({
+                  grandParentId: grandParentId,
+                  inviteeUserId: userId,
+                  level2Reward: level2Reward,
+                  existingInviteId: level2InviteId
+                });
+              }
+            } else {
+              // 没有记录，创建并发放
+              await grantLevel2Reward({
+                grandParentId: grandParentId,
+                inviteeUserId: userId,
+                level2Reward: level2Reward,
+                existingInviteId: null
+              });
+            }
+          } else {
+            console.log('[ActivateInvite] 邀请人没有上级，无二级奖励');
+          }
+        } catch (parentErr) {
+          console.warn('[ActivateInvite] 追溯上级异常:', parentErr);
+        }
+      }
     }
 
     console.log('[ActivateInvite] ====== 全部完成：成功 ' + successCount + ' / 跳过 ' + skipCount + ' / 共 ' + result.data.length + ' 条 ======');
@@ -500,6 +583,151 @@ async function recordInviteRewardTransaction(params) {
     return true;
   } catch (recordErr) {
     console.warn('[InviteReward] deposit_records 插入异常:', recordErr);
+    return false;
+  }
+}
+
+// 发放二级邀请奖励（追溯上级方式）
+async function grantLevel2Reward(params) {
+  var grandParentId = params.grandParentId;
+  var inviteeUserId = params.inviteeUserId;
+  var level2Reward = params.level2Reward;
+  var existingInviteId = params.existingInviteId;
+
+  if (!grandParentId || !inviteeUserId || !window.supabase) {
+    console.log('[Level2Reward] 跳过 - 参数不足');
+    return false;
+  }
+
+  try {
+    console.log('[Level2Reward] 开始发放二级奖励：grandParent=' + grandParentId + ' invitee=' + inviteeUserId + ' amount=' + level2Reward);
+
+    // 获取上级用户信息
+    var gpResult = await window.supabase
+      .from('users')
+      .select('id, username, crlm_balance')
+      .eq('id', grandParentId)
+      .maybeSingle();
+
+    if (gpResult.error || !gpResult.data) {
+      console.warn('[Level2Reward] 获取上级用户信息失败:', gpResult.error);
+      return false;
+    }
+
+    var grandParent = gpResult.data;
+    console.log('[Level2Reward] 上级用户：username=' + grandParent.username + ' 当前余额=' + grandParent.crlm_balance);
+
+    var inviteId = existingInviteId;
+
+    // 如果没有现有记录，先创建 invites 记录（level=2）
+    if (!inviteId) {
+      var insertResult = await window.supabase
+        .from('invites')
+        .insert({
+          inviter_id: grandParentId,
+          invitee_id: inviteeUserId,
+          level: 2,
+          reward_amount: level2Reward,
+          is_activated: false,
+          created_at: new Date().toISOString()
+        })
+        .select('id')
+        .maybeSingle();
+
+      if (insertResult.error) {
+        var errMsg = String(insertResult.error.message || '').toLowerCase();
+        var errCode = insertResult.error.code || '';
+
+        // 已存在（唯一约束冲突），查询一下获取 id
+        if (errCode === '23505' || errMsg.indexOf('duplicate') !== -1) {
+          console.log('[Level2Reward] invites 记录已存在（冲突），查询获取id');
+          var existResult = await window.supabase
+            .from('invites')
+            .select('id, is_activated')
+            .eq('inviter_id', grandParentId)
+            .eq('invitee_id', inviteeUserId)
+            .eq('level', 2)
+            .limit(1)
+            .maybeSingle();
+
+          if (!existResult.error && existResult.data) {
+            inviteId = existResult.data.id;
+            if (existResult.data.is_activated) {
+              console.log('[Level2Reward] 已激活，跳过');
+              return false;
+            }
+          }
+        } else {
+          console.warn('[Level2Reward] 创建 invites 记录失败:', insertResult.error);
+          return false;
+        }
+      } else if (insertResult.data) {
+        inviteId = insertResult.data.id;
+        console.log('[Level2Reward] 创建 invites 记录成功，id=' + inviteId);
+      }
+    }
+
+    if (!inviteId) {
+      console.warn('[Level2Reward] 无法获取邀请记录ID，跳过');
+      return false;
+    }
+
+    // 先发奖励（更新余额）
+    var newBalance = (Number(grandParent.crlm_balance) || 0) + Number(level2Reward);
+    var updateBalanceResult = await window.supabase
+      .from('users')
+      .update({ crlm_balance: newBalance })
+      .eq('id', grandParentId);
+
+    if (updateBalanceResult.error) {
+      console.warn('[Level2Reward] ❌ 更新上级余额失败：', updateBalanceResult.error);
+      return false;
+    }
+
+    console.log('[Level2Reward] ✅ 上级余额已更新 +' + level2Reward + ' CRLM');
+
+    // 记录交易明细
+    var recordOk = await recordInviteRewardTransaction({
+      userId: grandParentId,
+      amount: level2Reward,
+      level: 2,
+      inviteId: inviteId,
+      inviteeId: inviteeUserId,
+      inviterUsername: grandParent.username
+    });
+
+    if (recordOk) {
+      console.log('[Level2Reward] ✅ 交易明细已记录');
+    }
+
+    // 标记 is_activated = true
+    var updateInviteResult = await window.supabase
+      .from('invites')
+      .update({ is_activated: true })
+      .eq('id', inviteId);
+
+    if (updateInviteResult.error) {
+      console.warn('[Level2Reward] ⚠️ is_activated 标记失败:', updateInviteResult.error);
+    } else {
+      console.log('[Level2Reward] ✅ is_activated 已标记为 true');
+    }
+
+    // 发送通知
+    var notifTitle = '恭喜你获得二级邀请奖励 +' + level2Reward + ' CRLM（你的好友的好友完成任务）';
+    if (typeof writeInviteNotification === 'function') {
+      await writeInviteNotification(grandParentId, notifTitle, 'invite', inviteeUserId);
+      console.log('[Level2Reward] ✅ 通知已发送');
+    }
+
+    // 广播
+    if (typeof writeInviteBroadcast === 'function') {
+      writeInviteBroadcast(grandParentId, '你的二级邀请关系产生了奖励', level2Reward);
+    }
+
+    console.log('[Level2Reward] ✅ 二级奖励发放完成');
+    return true;
+  } catch (level2Err) {
+    console.warn('[Level2Reward] 异常:', level2Err);
     return false;
   }
 }
