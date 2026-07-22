@@ -871,8 +871,8 @@
     updateInviteRecordsTabsUI();
     updateAirdropHint();
 
-    if (typeof processPendingInviteRegistration === 'function') {
-      processPendingInviteRegistration();
+    if (typeof window.coinrealmProcessPendingInvite === 'function') {
+      window.coinrealmProcessPendingInvite();
     }
 
     refreshMiningButtonState().then(function () {
