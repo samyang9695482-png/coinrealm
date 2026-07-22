@@ -43,10 +43,10 @@
       iv_invite_count: '{count} 人',
       iv_total_reward: '{amount} CRLM',
       iv_btn_copy_link: '复制链接',
-      iv_friends_title: '我邀请的好友',
-      iv_rewards_title: '邀请奖励记录',
+      iv_friends_title: '一级邀请记录',
+      iv_rewards_title: '二级邀请记录',
       iv_reward_amount: '+{amount} CRLM',
-      iv_reward_pending: '奖励发放中',
+      iv_reward_pending: '未激活',
       iv_level_tag: 'L{level}',
       iv_alert_copied: '已复制！',
       iv_alert_share: '已复制链接，即将跳转...',
@@ -87,10 +87,10 @@
       iv_invite_count: '{count}',
       iv_total_reward: '{amount} CRLM',
       iv_btn_copy_link: 'Copy link',
-      iv_friends_title: 'My invites',
-      iv_rewards_title: 'Reward history',
+      iv_friends_title: 'Level 1 Invites',
+      iv_rewards_title: 'Level 2 Invites',
       iv_reward_amount: '+{amount} CRLM',
-      iv_reward_pending: 'Reward pending',
+      iv_reward_pending: 'Not activated',
       iv_level_tag: 'L{level}',
       iv_alert_copied: 'Copied!',
       iv_alert_share: 'Link copied, redirecting...',
@@ -441,13 +441,13 @@
 
         return Promise.all([
           window.supabase.from('users').select('invite_count').eq('id', userId).single(),
-          window.supabase.from('invites').select('*').eq('inviter_id', userId).order('created_at', { ascending: false }),
+          window.supabase.from('users').select('id, username, email, created_at').eq('inviter_id', userId).order('created_at', { ascending: false }),
           window.supabase.from('checkins').select('*').eq('user_id', userId).order('checkin_date', { ascending: false }).limit(50),
           fetchInviteLeaderboard(50),
           fetchMyInviteRank(userId)
         ]).then(function (pageResults) {
           var userResult = pageResults[0];
-          var invitesResult = pageResults[1];
+          var level1UsersResult = pageResults[1];
           var checkinsResult = pageResults[2];
           var leaderboard = pageResults[3];
           var myRank = pageResults[4];
@@ -456,77 +456,78 @@
             return { loggedIn: false, settings: settings, showInviteLeaderboard: showInviteLeaderboard };
           }
 
-          var inviteRows = invitesResult.error ? [] : (invitesResult.data || []);
-          var level1Rows = inviteRows.filter(function (row) { return Number(row.level) === 1; });
-          var inviteeIds = level1Rows.map(function (row) { return row.invitee_id; }).filter(Boolean);
-          var uniqueIds = inviteeIds.filter(function (id, index) { return inviteeIds.indexOf(id) === index; });
+          var level1Users = level1UsersResult.error ? [] : (level1UsersResult.data || []);
+          var level1UserIds = level1Users.map(function (u) { return u.id; }).filter(Boolean);
+          var uniqueLevel1Ids = level1UserIds.filter(function (id, index) { return level1UserIds.indexOf(id) === index; });
 
-            var buildData = function (userMap) {
-              var friends = level1Rows.map(function (row) {
-                var user = userMap[row.invitee_id] || {};
+          return Promise.all([
+            window.supabase.from('submissions').select('user_id').eq('status', 'approved').in('user_id', uniqueLevel1Ids),
+            window.supabase.from('users').select('id, username, email, created_at').in('inviter_id', uniqueLevel1Ids).order('created_at', { ascending: false })
+          ]).then(function (extraResults) {
+            var level1ApprovedResult = extraResults[0];
+            var level2UsersResult = extraResults[1];
+
+            var approvedUserIds = {};
+            if (!level1ApprovedResult.error && level1ApprovedResult.data) {
+              level1ApprovedResult.data.forEach(function (row) {
+                approvedUserIds[row.user_id] = true;
+              });
+            }
+
+            var level1Records = level1Users.map(function (user) {
+              var isActivated = approvedUserIds[user.id] || false;
+              return {
+                id: user.id,
+                username: user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'Unknown'),
+                registeredAt: user.created_at ? String(user.created_at).slice(0, 10) : '—',
+                isActivated: isActivated,
+                reward: isActivated ? (Number(settings.invite_level1_reward) || INVITE_SETTINGS_DEFAULTS.invite_level1_reward) : 0
+              };
+            });
+
+            var level2Users = level2UsersResult.error ? [] : (level2UsersResult.data || []);
+            var level2UserIds = level2Users.map(function (u) { return u.id; }).filter(Boolean);
+
+            return window.supabase.from('submissions').select('user_id').eq('status', 'approved').in('user_id', level2UserIds).then(function (level2ApprovedResult) {
+              var level2ApprovedIds = {};
+              if (!level2ApprovedResult.error && level2ApprovedResult.data) {
+                level2ApprovedResult.data.forEach(function (row) {
+                  level2ApprovedIds[row.user_id] = true;
+                });
+              }
+
+              var level2Records = level2Users.map(function (user) {
+                var isActivated = level2ApprovedIds[user.id] || false;
                 return {
+                  id: user.id,
                   username: user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'Unknown'),
-                  registeredAt: row.created_at ? String(row.created_at).slice(0, 10) : '—',
-                  reward: Number(row.reward_amount) || 0,
-                  isActivated: Boolean(row.is_activated) // 新增：激活状态
+                  registeredAt: user.created_at ? String(user.created_at).slice(0, 10) : '—',
+                  isActivated: isActivated,
+                  reward: isActivated ? (Number(settings.invite_level2_reward) || INVITE_SETTINGS_DEFAULTS.invite_level2_reward) : 0
                 };
               });
 
-              var rewardRecords = inviteRows.map(function (row) {
-                var user = userMap[row.invitee_id] || {};
-                return {
-                  level: Number(row.level) || 1,
-                  username: user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'User'),
-                  reward: Number(row.reward_amount) || 0,
-                  createdAt: row.created_at ? String(row.created_at).slice(0, 16).replace('T', ' ') : '—',
-                  isActivated: Boolean(row.is_activated) // 新增：激活状态
-                };
-              });
-
-              // 新增：计算各级别的已激活人数
-              var level1ActivatedCount = inviteRows.filter(function (row) {
-                return Number(row.level) === 1 && Boolean(row.is_activated);
-              }).length;
-              var level2ActivatedCount = inviteRows.filter(function (row) {
-                return Number(row.level) === 2 && Boolean(row.is_activated);
-              }).length;
+              var level1ActivatedCount = level1Records.filter(function (r) { return r.isActivated; }).length;
+              var level2ActivatedCount = level2Records.filter(function (r) { return r.isActivated; }).length;
+              var totalReward = level1Records.reduce(function (sum, r) { return sum + r.reward; }, 0) + level2Records.reduce(function (sum, r) { return sum + r.reward; }, 0);
 
               return {
                 loggedIn: true,
                 userId: userId,
                 settings: settings,
                 showInviteLeaderboard: showInviteLeaderboard,
-                inviteCount: Number(userResult.data.invite_count) || friends.length,
-                totalReward: inviteRows.reduce(function (sum, row) {
-                  return sum + (Number(row.reward_amount) || 0);
-                }, 0),
-                level1ActivatedCount: level1ActivatedCount, // 新增：一级已激活人数
-                level2ActivatedCount: level2ActivatedCount, // 新增：二级已激活人数
-                friends: friends,
-                rewardRecords: rewardRecords,
+                inviteCount: Number(userResult.data.invite_count) || level1Records.length,
+                totalReward: totalReward,
+                level1ActivatedCount: level1ActivatedCount,
+                level2ActivatedCount: level2ActivatedCount,
+                friends: level1Records,
+                rewardRecords: level2Records,
                 miningRecords: checkinsResult.error ? [] : (checkinsResult.data || []),
                 leaderboard: leaderboard || [],
                 myRank: myRank
               };
-            };
-
-          if (!uniqueIds.length) {
-            return buildData({});
-          }
-
-          return window.supabase
-            .from('users')
-            .select('id, username, email')
-            .in('id', uniqueIds)
-            .then(function (usersResult) {
-              var userMap = {};
-              if (!usersResult.error && usersResult.data) {
-                usersResult.data.forEach(function (user) {
-                  userMap[user.id] = user;
-                });
-              }
-              return buildData(userMap);
             });
+          });
         });
       })
       .catch(function (err) {
@@ -762,15 +763,24 @@
 
     listEl.innerHTML = rewards.map(function (record) {
       var safeName = typeof escapeHtml === 'function' ? escapeHtml(record.username) : record.username;
-      var levelClass = record.level === 2 ? 'iv-record-level-2' : 'iv-record-level-1';
+      var rewardText;
+      var rewardClass;
+      
+      if (record.isActivated) {
+        rewardText = ivT('iv_reward_amount', { amount: formatNumber(record.reward) });
+        rewardClass = 'iv-record-reward iv-record-reward-activated';
+      } else {
+        rewardText = ivT('iv_reward_pending');
+        rewardClass = 'iv-record-reward iv-record-reward-pending';
+      }
+      
       return (
         '<li class="invite-record-item">' +
-          '<span class="iv-record-level ' + levelClass + '">' + ivT('iv_level_tag', { level: record.level }) + '</span>' +
           '<div class="iv-lb-info">' +
             '<span class="iv-lb-name">' + safeName + '</span>' +
-            '<span class="iv-lb-meta">' + record.createdAt + '</span>' +
+            '<span class="iv-lb-meta">' + record.registeredAt + '</span>' +
           '</div>' +
-          '<span class="iv-record-reward">' + ivT('iv_reward_amount', { amount: formatNumber(record.reward) }) + '</span>' +
+          '<span class="' + rewardClass + '">' + rewardText + '</span>' +
         '</li>'
       );
     }).join('');
