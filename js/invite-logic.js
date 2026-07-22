@@ -284,7 +284,7 @@ async function activateInviteRewards(userId) {
     console.log('[ActivateInvite] ====== 开始激活检查 ======');
     console.log('[ActivateInvite] userId =', userId);
 
-    // 先检查用户是否有已审核通过的提交（只有完成任务才激活邀请奖励）
+    // 步骤1：检查用户是否有已审核通过的提交（只有完成任务才激活邀请奖励）
     var approvedResult = await window.supabase
       .from('submissions')
       .select('id')
@@ -304,15 +304,13 @@ async function activateInviteRewards(userId) {
       return;
     }
 
-    console.log('[ActivateInvite] 步骤2：用户有已通过的提交，检查待激活的邀请记录');
-
+    // 步骤2：查询该用户的所有邀请记录（不限制 is_activated，以便补救未发奖的记录）
     var result = await window.supabase
       .from('invites')
       .select('*')
-      .eq('invitee_id', userId)
-      .eq('is_activated', false);
+      .eq('invitee_id', userId);
 
-    console.log('[ActivateInvite] 步骤3：待激活邀请记录查询 =', result.error ? '失败' : ('找到 ' + (result.data ? result.data.length : 0) + ' 条'));
+    console.log('[ActivateInvite] 步骤2：邀请记录查询 =', result.error ? '失败' : ('找到 ' + (result.data ? result.data.length : 0) + ' 条'));
 
     if (result.error) {
       console.warn('[ActivateInvite] ❌ 查询邀请记录失败！');
@@ -325,11 +323,11 @@ async function activateInviteRewards(userId) {
     }
 
     if (!result.data || !result.data.length) {
-      console.log('[ActivateInvite] 没有需要激活的邀请记录（可能已经全部激活了）');
+      console.log('[ActivateInvite] 没有邀请记录');
       return;
     }
 
-    console.log('[ActivateInvite] 步骤4：找到', result.data.length, '条需要激活的邀请记录');
+    console.log('[ActivateInvite] 步骤3：找到', result.data.length, '条邀请记录，开始逐条处理');
 
     var settings = await fetchInviteSettings();
     var level1Reward = Number(settings.invite_level1_reward) || INVITE_SETTINGS_DEFAULTS.invite_level1_reward;
@@ -338,14 +336,40 @@ async function activateInviteRewards(userId) {
     console.log('[ActivateInvite] 奖励配置：一级 =', level1Reward, '二级 =', level2Reward);
 
     var successCount = 0;
+    var skipCount = 0;
+
     for (var i = 0; i < result.data.length; i++) {
       var invite = result.data[i];
       var inviterId = invite.inviter_id;
       var level = invite.level;
       var rewardAmount = level === 1 ? level1Reward : level2Reward;
+      var levelLabel = level === 1 ? '一级' : '二级';
 
-      console.log('[ActivateInvite] 处理第 ' + (i + 1) + '/' + result.data.length + ' 条：id=' + invite.id + ' 级别=' + level + ' 邀请人=' + inviterId);
+      console.log('[ActivateInvite] --- 处理第 ' + (i + 1) + '/' + result.data.length + ' 条：id=' + invite.id + ' ' + levelLabel + ' 邀请人=' + inviterId + ' 已激活=' + invite.is_activated + ' ---');
 
+      // 防重复：检查 deposit_records 是否已有该邀请的奖励记录
+      var dupCheck = await window.supabase
+        .from('deposit_records')
+        .select('id')
+        .eq('related_id', invite.id)
+        .eq('type', 'invite_reward')
+        .limit(1);
+
+      if (!dupCheck.error && dupCheck.data && dupCheck.data.length > 0) {
+        console.log('[ActivateInvite] 跳过 - deposit_records 已有记录（奖励已发放过）');
+        // 确保 is_activated 标记为 true（补救之前可能只发了奖没标记的情况）
+        if (!invite.is_activated) {
+          await window.supabase.from('invites').update({ is_activated: true }).eq('id', invite.id);
+        }
+        skipCount++;
+        continue;
+      }
+
+      if (dupCheck.error) {
+        console.log('[ActivateInvite] deposit_records 查询失败（可能表不存在），继续发放:', dupCheck.error.message);
+      }
+
+      // 获取邀请人信息
       var inviterResult = await window.supabase
         .from('users')
         .select('id, crlm_balance, invite_count, username')
@@ -358,23 +382,10 @@ async function activateInviteRewards(userId) {
       }
 
       var inviter = inviterResult.data;
+      console.log('[ActivateInvite] 邀请人信息：username=' + inviter.username + ' 当前余额=' + inviter.crlm_balance);
 
-      // 先更新邀请记录为已激活
-      var updateResult = await window.supabase
-        .from('invites')
-        .update({ is_activated: true })
-        .eq('id', invite.id);
-
-      if (updateResult.error) {
-        console.warn('[ActivateInvite] ❌ 更新邀请记录为已激活失败！', updateResult.error);
-        console.warn('[ActivateInvite] 这很可能是 RLS 策略问题，请添加：');
-        console.warn('[ActivateInvite] CREATE POLICY IF NOT EXISTS "invites_update_invitee" ON invites FOR UPDATE TO authenticated USING (invitee_id = auth.uid());');
-        continue;
-      }
-
-      console.log('[ActivateInvite] 邀请记录已更新为已激活');
-
-      // 给邀请人发奖励
+      // ★ 关键修复：先发奖励（更新余额），成功后再标记 is_activated = true
+      // 这样如果余额更新失败，is_activated 仍为 false，下次可以重试
       var newBalance = (Number(inviter.crlm_balance) || 0) + rewardAmount;
       var patchPayload = { crlm_balance: newBalance };
 
@@ -382,18 +393,53 @@ async function activateInviteRewards(userId) {
         patchPayload.invite_count = (Number(inviter.invite_count) || 0) + 1;
       }
 
+      console.log('[ActivateInvite] 更新邀请人余额：' + inviter.crlm_balance + ' + ' + rewardAmount + ' = ' + newBalance);
+
       var updateUserResult = await window.supabase
         .from('users')
         .update(patchPayload)
         .eq('id', inviter.id);
 
       if (updateUserResult.error) {
-        console.warn('[ActivateInvite] 更新邀请人奖励失败:', updateUserResult.error);
+        console.warn('[ActivateInvite] ❌ 更新邀请人余额失败！', updateUserResult.error);
+        console.warn('[ActivateInvite] 这很可能是 users 表 RLS 策略阻止了更新他人余额');
+        console.warn('[ActivateInvite] 请在 Supabase SQL Editor 执行：');
+        console.warn('[ActivateInvite] CREATE POLICY IF NOT EXISTS "users_update_balance" ON users FOR UPDATE TO authenticated USING (true) WITH CHECK (true);');
+        // 不标记 is_activated，下次重试
         continue;
       }
 
-      console.log('[ActivateInvite] 邀请人余额已更新 +' + rewardAmount + ' CRLM');
+      console.log('[ActivateInvite] ✅ 邀请人余额已更新 +' + rewardAmount + ' CRLM');
 
+      // 记录交易明细到 deposit_records
+      var recordResult = await recordInviteRewardTransaction({
+        userId: inviter.id,
+        amount: rewardAmount,
+        level: level,
+        inviteId: invite.id,
+        inviteeId: userId,
+        inviterUsername: inviter.username
+      });
+
+      if (recordResult) {
+        console.log('[ActivateInvite] ✅ 交易明细已记录到 deposit_records');
+      } else {
+        console.warn('[ActivateInvite] ⚠️ 交易明细记录失败（余额已更新，但明细未记录）');
+      }
+
+      // 余额更新成功后，标记 is_activated = true
+      var updateResult = await window.supabase
+        .from('invites')
+        .update({ is_activated: true })
+        .eq('id', invite.id);
+
+      if (updateResult.error) {
+        console.warn('[ActivateInvite] ⚠️ 余额已更新但 is_activated 标记失败（不影响奖励，下次会跳过）:', updateResult.error);
+      } else {
+        console.log('[ActivateInvite] ✅ is_activated 已标记为 true');
+      }
+
+      // 发送通知
       var title = level === 1 ? '你成功邀请了一位新用户，获得一级邀请奖励' : '你成功邀请的一位好友进一步扩展了邀请网络，获得二级邀请奖励';
       await writeInviteNotification(inviter.id, title, 'invite', userId);
 
@@ -401,12 +447,59 @@ async function activateInviteRewards(userId) {
       writeInviteBroadcast(inviter.id, description, rewardAmount);
 
       successCount++;
-      console.log('[ActivateInvite] ✅ 第', i + 1, '条激活成功');
+      console.log('[ActivateInvite] ✅ 第', i + 1, '条' + levelLabel + '奖励发放成功');
     }
 
-    console.log('[ActivateInvite] ====== 全部完成，成功激活 ' + successCount + '/' + result.data.length + ' 条 ======');
+    console.log('[ActivateInvite] ====== 全部完成：成功 ' + successCount + ' / 跳过 ' + skipCount + ' / 共 ' + result.data.length + ' 条 ======');
   } catch (activateErr) {
     console.warn('[ActivateInvite] 异常:', activateErr);
+  }
+}
+
+// 记录邀请奖励交易明细到 deposit_records 表
+async function recordInviteRewardTransaction(params) {
+  if (!window.supabase || !params.userId || !params.amount) return false;
+
+  var levelLabel = params.level === 1 ? '一级' : '二级';
+  var description = levelLabel + '邀请奖励 - 用户' + (params.inviterUsername || params.inviteeId) + '完成任务';
+
+  var payload = {
+    user_id: params.userId,
+    amount: params.amount,
+    type: 'invite_reward',
+    description: description,
+    related_id: params.inviteId || null,
+    created_at: new Date().toISOString()
+  };
+
+  try {
+    var result = await window.supabase.from('deposit_records').insert(payload);
+
+    if (result.error) {
+      var errMsg = String(result.error.message || '').toLowerCase();
+
+      // 如果是字段不存在，提示添加字段
+      if (errMsg.indexOf('column') !== -1 && errMsg.indexOf('does not exist') !== -1) {
+        console.warn('[InviteReward] deposit_records 表字段缺失，请执行 SQL：');
+        console.warn('[InviteReward] ALTER TABLE deposit_records ADD COLUMN IF NOT EXISTS type TEXT DEFAULT \'invite_reward\';');
+        console.warn('[InviteReward] ALTER TABLE deposit_records ADD COLUMN IF NOT EXISTS description TEXT;');
+        console.warn('[InviteReward] ALTER TABLE deposit_records ADD COLUMN IF NOT EXISTS related_id UUID;');
+      }
+
+      // 如果是表不存在，提示创建表
+      if (errMsg.indexOf('relation') !== -1 && errMsg.indexOf('does not exist') !== -1) {
+        console.warn('[InviteReward] deposit_records 表不存在，请执行 SQL：');
+        console.warn('[InviteReward] CREATE TABLE IF NOT EXISTS deposit_records (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID REFERENCES users(id), amount NUMERIC NOT NULL, type TEXT DEFAULT \'invite_reward\', description TEXT, related_id UUID, created_at TIMESTAMPTZ DEFAULT NOW());');
+      }
+
+      console.warn('[InviteReward] deposit_records 插入失败:', result.error);
+      return false;
+    }
+
+    return true;
+  } catch (recordErr) {
+    console.warn('[InviteReward] deposit_records 插入异常:', recordErr);
+    return false;
   }
 }
 
