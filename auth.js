@@ -401,18 +401,8 @@
       })
       .then(function (result) {
         if (result.error) throw result.error;
-        console.log('钱包用户同步成功：', result.data);
+        console.log('[auth] 钱包用户同步成功，userId:', result.data.id);
         return result.data.id;
-      })
-      .then(function (userId) {
-        if (userId && typeof window.coinrealmProcessInvite === 'function') {
-          return window.coinrealmProcessInvite(userId).catch(function (inviteErr) {
-            console.warn('钱包登录邀请处理失败', inviteErr);
-          }).then(function () {
-            return userId;
-          });
-        }
-        return userId;
       });
   }
 
@@ -435,6 +425,14 @@
       .then(function (userId) {
         if (userId) {
           sessionStorage.setItem('coinrealm_user_id', userId);
+          if (isWalletAuthUser(currentUser) && typeof window.coinrealmProcessPendingInvite === 'function') {
+            console.log('[auth] syncUserToSupabase-钱包用户同步完成，userId:', userId, '，开始处理邀请');
+            window.coinrealmProcessPendingInvite().then(function () {
+              console.log('[auth] syncUserToSupabase-邀请处理完成');
+            }).catch(function (inviteErr) {
+              console.warn('[auth] syncUserToSupabase-邀请处理失败:', inviteErr);
+            });
+          }
         }
       })
       .catch(function (error) {
@@ -569,8 +567,17 @@
 
           var authUser = result.data && result.data.user ? result.data.user : null;
           if (authUser && authUser.id) {
-            upsertWalletUser(authUser, address).catch(function (syncErr) {
-              console.warn('钱包登录后用户同步失败', syncErr);
+            upsertWalletUser(authUser, address).then(function (syncedUserId) {
+              console.log('[auth] 钱包登录-用户同步完成，userId:', syncedUserId, '，开始处理邀请');
+              if (typeof window.coinrealmProcessPendingInvite === 'function') {
+                return window.coinrealmProcessPendingInvite().then(function () {
+                  console.log('[auth] 钱包登录-邀请处理完成');
+                }).catch(function (inviteErr) {
+                  console.warn('[auth] 钱包登录-邀请处理失败:', inviteErr);
+                });
+              }
+            }).catch(function (syncErr) {
+              console.warn('[auth] 钱包登录后用户同步失败', syncErr);
             });
           }
 
@@ -598,8 +605,17 @@
           localStorage.setItem('coinrealm_user_id', session.user.id);
           sessionStorage.setItem('coinrealm_user_id', session.user.id);
           if (isWalletAuthUser(session.user)) {
-            upsertWalletUser(session.user, getWalletAddressFromUser(session.user)).catch(function (syncErr) {
-              console.warn('恢复钱包会话时用户同步失败', syncErr);
+            upsertWalletUser(session.user, getWalletAddressFromUser(session.user)).then(function (syncedUserId) {
+              console.log('[auth] 恢复会话-钱包用户同步完成，userId:', syncedUserId, '，开始处理邀请');
+              if (typeof window.coinrealmProcessPendingInvite === 'function') {
+                return window.coinrealmProcessPendingInvite().then(function () {
+                  console.log('[auth] 恢复会话-邀请处理完成');
+                }).catch(function (inviteErr) {
+                  console.warn('[auth] 恢复会话-邀请处理失败:', inviteErr);
+                });
+              }
+            }).catch(function (syncErr) {
+              console.warn('[auth] 恢复钱包会话时用户同步失败', syncErr);
             });
           }
           callback();
@@ -1021,16 +1037,8 @@
         localStorage.removeItem('coinrealm_wallet');
       }
       scheduleUserSync();
-      
-      // 处理邀请逻辑
-      if (typeof window.coinrealmProcessPendingInvite === 'function') {
-        console.log('邀请处理-检测到用户登录，准备处理邀请');
-        window.coinrealmProcessPendingInvite().then(function() {
-          console.log('邀请处理-待处理邀请处理完成');
-        }).catch(function(err) {
-          console.warn('邀请处理-待处理邀请处理失败:', err);
-        });
-      }
+      // 邀请处理已移至 upsertWalletUser / syncUserToSupabase 完成后调用，
+      // 避免在用户 ID 尚未就绪时执行导致 inviter_id 被过早清除
     } else {
       walletAddress = null;
       sessionStorage.removeItem('coinrealm_user_id');
