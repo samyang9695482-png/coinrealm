@@ -1,4 +1,33 @@
 /* 邀请逻辑模块 - 独立于 app.js */
+/* ========================================================================
+   🔍 RLS 策略诊断提示
+   如果邀请记录显示"未激活"且无法更新，99% 是 invites 表 RLS 策略问题。
+   
+   请在 Supabase SQL Editor 执行以下 SQL：
+   
+   -- 1. 先检查当前 RLS 策略
+   SELECT * FROM pg_policies WHERE tablename = 'invites';
+   
+   -- 2. 如果没有针对 invitee 的策略，添加以下策略：
+   -- 允许被邀请人查看自己收到的邀请
+   CREATE POLICY IF NOT EXISTS "invites_select_invitee" ON invites
+     FOR SELECT TO authenticated USING (invitee_id = auth.uid());
+   
+   -- 允许被邀请人更新自己收到的邀请（用于激活奖励）
+   CREATE POLICY IF NOT EXISTS "invites_update_invitee" ON invites
+     FOR UPDATE TO authenticated USING (invitee_id = auth.uid());
+   
+   -- 允许邀请人查看自己发出的邀请
+   CREATE POLICY IF NOT EXISTS "invites_select_inviter" ON invites
+     FOR SELECT TO authenticated USING (inviter_id = auth.uid());
+   
+   -- 允许认证用户插入邀请记录
+   CREATE POLICY IF NOT EXISTS "invites_insert_authenticated" ON invites
+     FOR INSERT TO authenticated WITH CHECK (true);
+   
+   -- 3. 如果还是不行，检查 invites 表是否启用了 RLS
+   ALTER TABLE invites ENABLE ROW LEVEL SECURITY;
+   ======================================================================== */
 
 var INVITE_SETTINGS_DEFAULTS = {
   invite_level1_reward: 50,
@@ -252,7 +281,8 @@ async function activateInviteRewards(userId) {
   }
 
   try {
-    console.log('[ActivateInvite] 开始，userId =', userId);
+    console.log('[ActivateInvite] ====== 开始激活检查 ======');
+    console.log('[ActivateInvite] userId =', userId);
 
     // 先检查用户是否有已审核通过的提交（只有完成任务才激活邀请奖励）
     var approvedResult = await window.supabase
@@ -262,7 +292,7 @@ async function activateInviteRewards(userId) {
       .eq('status', 'approved')
       .limit(1);
 
-    console.log('[ActivateInvite] 已通过提交查询 =', approvedResult.error ? '失败' : approvedResult.data);
+    console.log('[ActivateInvite] 步骤1：已通过提交查询 =', approvedResult.error ? '失败' : ('找到 ' + (approvedResult.data ? approvedResult.data.length : 0) + ' 条'));
 
     if (approvedResult.error) {
       console.warn('[ActivateInvite] 查询已通过提交失败:', approvedResult.error);
@@ -274,7 +304,7 @@ async function activateInviteRewards(userId) {
       return;
     }
 
-    console.log('[ActivateInvite] 用户有已通过的提交，检查待激活的邀请记录');
+    console.log('[ActivateInvite] 步骤2：用户有已通过的提交，检查待激活的邀请记录');
 
     var result = await window.supabase
       .from('invites')
@@ -282,31 +312,39 @@ async function activateInviteRewards(userId) {
       .eq('invitee_id', userId)
       .eq('is_activated', false);
 
-    console.log('[ActivateInvite] 待激活邀请记录查询 =', result.error ? '失败' : result.data);
+    console.log('[ActivateInvite] 步骤3：待激活邀请记录查询 =', result.error ? '失败' : ('找到 ' + (result.data ? result.data.length : 0) + ' 条'));
 
     if (result.error) {
-      console.warn('[ActivateInvite] 查询邀请记录失败（可能是 RLS 策略阻止）:', result.error);
+      console.warn('[ActivateInvite] ❌ 查询邀请记录失败！');
+      console.warn('[ActivateInvite] 错误详情:', result.error);
+      console.warn('[ActivateInvite] 这很可能是 RLS 策略问题！');
+      console.warn('[ActivateInvite] 请在 Supabase SQL Editor 执行：');
+      console.warn('[ActivateInvite] CREATE POLICY IF NOT EXISTS "invites_select_invitee" ON invites FOR SELECT TO authenticated USING (invitee_id = auth.uid());');
+      console.warn('[ActivateInvite] CREATE POLICY IF NOT EXISTS "invites_update_invitee" ON invites FOR UPDATE TO authenticated USING (invitee_id = auth.uid());');
       return;
     }
 
     if (!result.data || !result.data.length) {
-      console.log('[ActivateInvite] 没有需要激活的邀请记录');
+      console.log('[ActivateInvite] 没有需要激活的邀请记录（可能已经全部激活了）');
       return;
     }
 
-    console.log('[ActivateInvite] 找到', result.data.length, '条需要激活的邀请记录');
+    console.log('[ActivateInvite] 步骤4：找到', result.data.length, '条需要激活的邀请记录');
 
     var settings = await fetchInviteSettings();
     var level1Reward = Number(settings.invite_level1_reward) || INVITE_SETTINGS_DEFAULTS.invite_level1_reward;
     var level2Reward = Number(settings.invite_level2_reward) || INVITE_SETTINGS_DEFAULTS.invite_level2_reward;
 
+    console.log('[ActivateInvite] 奖励配置：一级 =', level1Reward, '二级 =', level2Reward);
+
+    var successCount = 0;
     for (var i = 0; i < result.data.length; i++) {
       var invite = result.data[i];
       var inviterId = invite.inviter_id;
       var level = invite.level;
       var rewardAmount = level === 1 ? level1Reward : level2Reward;
 
-      console.log('[ActivateInvite] 激活邀请记录:', invite.id, '邀请人:', inviterId, '级别:', level, '奖励:', rewardAmount);
+      console.log('[ActivateInvite] 处理第 ' + (i + 1) + '/' + result.data.length + ' 条：id=' + invite.id + ' 级别=' + level + ' 邀请人=' + inviterId);
 
       var inviterResult = await window.supabase
         .from('users')
@@ -321,18 +359,22 @@ async function activateInviteRewards(userId) {
 
       var inviter = inviterResult.data;
 
+      // 先更新邀请记录为已激活
       var updateResult = await window.supabase
         .from('invites')
         .update({ is_activated: true })
         .eq('id', invite.id);
 
       if (updateResult.error) {
-        console.warn('[ActivateInvite] 更新邀请记录为已激活失败:', updateResult.error);
+        console.warn('[ActivateInvite] ❌ 更新邀请记录为已激活失败！', updateResult.error);
+        console.warn('[ActivateInvite] 这很可能是 RLS 策略问题，请添加：');
+        console.warn('[ActivateInvite] CREATE POLICY IF NOT EXISTS "invites_update_invitee" ON invites FOR UPDATE TO authenticated USING (invitee_id = auth.uid());');
         continue;
       }
 
       console.log('[ActivateInvite] 邀请记录已更新为已激活');
 
+      // 给邀请人发奖励
       var newBalance = (Number(inviter.crlm_balance) || 0) + rewardAmount;
       var patchPayload = { crlm_balance: newBalance };
 
@@ -350,7 +392,7 @@ async function activateInviteRewards(userId) {
         continue;
       }
 
-      console.log('[ActivateInvite] 邀请人余额已更新，级别:', level, '奖励:', rewardAmount);
+      console.log('[ActivateInvite] 邀请人余额已更新 +' + rewardAmount + ' CRLM');
 
       var title = level === 1 ? '你成功邀请了一位新用户，获得一级邀请奖励' : '你成功邀请的一位好友进一步扩展了邀请网络，获得二级邀请奖励';
       await writeInviteNotification(inviter.id, title, 'invite', userId);
@@ -358,10 +400,13 @@ async function activateInviteRewards(userId) {
       var description = level === 1 ? '你成功邀请了一位新用户，获得一级邀请奖励' : '你的二级邀请关系产生了奖励';
       writeInviteBroadcast(inviter.id, description, rewardAmount);
 
-      console.log('[ActivateInvite] 邀请激活成功，邀请人:', inviterId, '获得奖励:', rewardAmount);
+      successCount++;
+      console.log('[ActivateInvite] ✅ 第', i + 1, '条激活成功');
     }
+
+    console.log('[ActivateInvite] ====== 全部完成，成功激活 ' + successCount + '/' + result.data.length + ' 条 ======');
   } catch (activateErr) {
-    console.warn('[ActivateInvite] 检查并激活邀请失败:', activateErr);
+    console.warn('[ActivateInvite] 异常:', activateErr);
   }
 }
 
@@ -548,3 +593,49 @@ window.coinrealmProcessPendingInvite = processPendingInviteRegistration;
 window.coinrealmActivateInviteRewards = activateInviteRewards;
 window.coinrealmFetchInviteSettings = fetchInviteSettings;
 window.coinrealmInviteSettingsDefaults = INVITE_SETTINGS_DEFAULTS;
+window.coinrealmDiagnoseInviteRLS = diagnoseInviteRLS;
+
+// RLS 快速自检：在控制台运行 window.coinrealmDiagnoseInviteRLS() 查看诊断结果
+async function diagnoseInviteRLS() {
+  if (!window.supabase) {
+    console.log('[InviteRLS] supabase 未就绪');
+    return;
+  }
+
+  var sessionResult = await window.supabase.auth.getSession();
+  var userId = sessionResult.data && sessionResult.data.session && sessionResult.data.session.user && sessionResult.data.session.user.id;
+
+  console.log('[InviteRLS] 当前用户ID:', userId);
+  if (!userId) {
+    console.log('[InviteRLS] 未登录，跳过');
+    return;
+  }
+
+  console.log('[InviteRLS] ====== 开始自检 ======');
+
+  // 测试1：作为邀请人查询（inviter_id = 自己）
+  var test1 = await window.supabase.from('invites').select('id').eq('inviter_id', userId).limit(1);
+  console.log('[InviteRLS] 测试1 - 查询自己发出的邀请:', test1.error ? '❌ 失败（' + (test1.error.message || test1.error.code) + ')' : ('✅ 成功（找到 ' + (test1.data ? test1.data.length : 0 + ' 条)');
+
+  // 测试2：作为被邀请人查询（invitee_id = 自己）
+  var test2 = await window.supabase.from('invites').select('id').eq('invitee_id', userId).limit(1);
+  console.log('[InviteRLS] 测试2 - 查询自己收到的邀请:', test2.error ? '❌ 失败（' + (test2.error.message || test2.error.code) + '）【需要添加 invites_select_invitee 策略】' : ('✅ 成功（找到 ' + (test2.data ? test2.data.length : 0) + ' 条)'));
+
+  // 测试3：插入测试（如果有记录可以尝试更新）
+  if (test2.data && test2.data.length > 0) {
+    var testId = test2.data[0].id;
+    var test3 = await window.supabase.from('invites').update({ _rls_test: new Date().toISOString() }).eq('id', testId);
+    console.log('[InviteRLS] 测试3 - 更新自己收到的邀请:', test3.error ? '❌ 失败（' + (test3.error.message || test3.error.code) + '）【需要添加 invites_update_invitee 策略】' : '✅ 成功');
+  } else {
+    console.log('[InviteRLS] 测试3 - 跳过（没有可更新的记录）');
+  }
+
+  console.log('[InviteRLS] ====== 自检完成 ======');
+
+  // 如果测试2/3 失败，给出修复方案
+  if (test2.error) {
+    console.log('[InviteRLS] 🚨 请在 Supabase SQL Editor 执行以下 SQL 修复：');
+    console.log('[InviteRLS] CREATE POLICY IF NOT EXISTS "invites_select_invitee" ON invites FOR SELECT TO authenticated USING (invitee_id = auth.uid());');
+    console.log('[InviteRLS] CREATE POLICY IF NOT EXISTS "invites_update_invitee" ON invites FOR UPDATE TO authenticated USING (invitee_id = auth.uid());');
+  }
+}
