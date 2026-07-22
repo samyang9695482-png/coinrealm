@@ -441,93 +441,95 @@
 
         return Promise.all([
           window.supabase.from('users').select('invite_count').eq('id', userId).single(),
-          window.supabase.from('users').select('id, username, email, created_at').eq('inviter_id', userId).order('created_at', { ascending: false }),
+          window.supabase.from('invites').select('id, inviter_id, invitee_id, level, reward_amount, is_activated, created_at').eq('inviter_id', userId).eq('level', 1).order('created_at', { ascending: false }),
+          window.supabase.from('invites').select('id, inviter_id, invitee_id, level, reward_amount, is_activated, created_at').eq('inviter_id', userId).eq('level', 2).order('created_at', { ascending: false }),
           window.supabase.from('checkins').select('*').eq('user_id', userId).order('checkin_date', { ascending: false }).limit(50),
           fetchInviteLeaderboard(50),
           fetchMyInviteRank(userId)
         ]).then(function (pageResults) {
           var userResult = pageResults[0];
-          var level1UsersResult = pageResults[1];
-          var checkinsResult = pageResults[2];
-          var leaderboard = pageResults[3];
-          var myRank = pageResults[4];
+          var level1InvitesResult = pageResults[1];
+          var level2InvitesResult = pageResults[2];
+          var checkinsResult = pageResults[3];
+          var leaderboard = pageResults[4];
+          var myRank = pageResults[5];
 
           if (userResult.error || !userResult.data) {
             return { loggedIn: false, settings: settings, showInviteLeaderboard: showInviteLeaderboard };
           }
 
-          var level1Users = level1UsersResult.error ? [] : (level1UsersResult.data || []);
-          var level1UserIds = level1Users.map(function (u) { return u.id; }).filter(Boolean);
-          var uniqueLevel1Ids = level1UserIds.filter(function (id, index) { return level1UserIds.indexOf(id) === index; });
+          var level1Invites = level1InvitesResult.error ? [] : (level1InvitesResult.data || []);
+          var level2Invites = level2InvitesResult.error ? [] : (level2InvitesResult.data || []);
 
-          return Promise.all([
-            window.supabase.from('submissions').select('user_id').eq('status', 'approved').in('user_id', uniqueLevel1Ids),
-            window.supabase.from('users').select('id, username, email, created_at').in('inviter_id', uniqueLevel1Ids).order('created_at', { ascending: false })
-          ]).then(function (extraResults) {
-            var level1ApprovedResult = extraResults[0];
-            var level2UsersResult = extraResults[1];
+          // 收集所有被邀请人ID，用于关联 users 表获取 username
+          var allInviteeIds = [];
+          level1Invites.forEach(function (row) { if (row.invitee_id) allInviteeIds.push(row.invitee_id); });
+          level2Invites.forEach(function (row) { if (row.invitee_id) allInviteeIds.push(row.invitee_id); });
+          var uniqueInviteeIds = allInviteeIds.filter(function (id, index) { return allInviteeIds.indexOf(id) === index; });
 
-            var approvedUserIds = {};
-            if (!level1ApprovedResult.error && level1ApprovedResult.data) {
-              level1ApprovedResult.data.forEach(function (row) {
-                approvedUserIds[row.user_id] = true;
-              });
-            }
-
-            var level1Records = level1Users.map(function (user) {
-              var isActivated = approvedUserIds[user.id] || false;
+          var buildData = function (userMap) {
+            var level1Records = level1Invites.map(function (row) {
+              var user = userMap[row.invitee_id] || {};
+              var isActivated = Boolean(row.is_activated);
               return {
-                id: user.id,
+                id: row.invitee_id,
                 username: user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'Unknown'),
-                registeredAt: user.created_at ? String(user.created_at).slice(0, 10) : '—',
+                registeredAt: row.created_at ? String(row.created_at).slice(0, 10) : '—',
                 isActivated: isActivated,
-                reward: isActivated ? (Number(settings.invite_level1_reward) || INVITE_SETTINGS_DEFAULTS.invite_level1_reward) : 0
+                reward: isActivated ? (Number(row.reward_amount) || Number(settings.invite_level1_reward) || INVITE_SETTINGS_DEFAULTS.invite_level1_reward) : 0
               };
             });
 
-            var level2Users = level2UsersResult.error ? [] : (level2UsersResult.data || []);
-            var level2UserIds = level2Users.map(function (u) { return u.id; }).filter(Boolean);
+            var level2Records = level2Invites.map(function (row) {
+              var user = userMap[row.invitee_id] || {};
+              var isActivated = Boolean(row.is_activated);
+              return {
+                id: row.invitee_id,
+                username: user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'Unknown'),
+                registeredAt: row.created_at ? String(row.created_at).slice(0, 10) : '—',
+                isActivated: isActivated,
+                reward: isActivated ? (Number(row.reward_amount) || Number(settings.invite_level2_reward) || INVITE_SETTINGS_DEFAULTS.invite_level2_reward) : 0
+              };
+            });
 
-            return window.supabase.from('submissions').select('user_id').eq('status', 'approved').in('user_id', level2UserIds).then(function (level2ApprovedResult) {
-              var level2ApprovedIds = {};
-              if (!level2ApprovedResult.error && level2ApprovedResult.data) {
-                level2ApprovedResult.data.forEach(function (row) {
-                  level2ApprovedIds[row.user_id] = true;
+            var level1ActivatedCount = level1Records.filter(function (r) { return r.isActivated; }).length;
+            var level2ActivatedCount = level2Records.filter(function (r) { return r.isActivated; }).length;
+            var totalReward = level1Records.reduce(function (sum, r) { return sum + r.reward; }, 0) + level2Records.reduce(function (sum, r) { return sum + r.reward; }, 0);
+
+            return {
+              loggedIn: true,
+              userId: userId,
+              settings: settings,
+              showInviteLeaderboard: showInviteLeaderboard,
+              inviteCount: Number(userResult.data.invite_count) || level1Records.length,
+              totalReward: totalReward,
+              level1ActivatedCount: level1ActivatedCount,
+              level2ActivatedCount: level2ActivatedCount,
+              friends: level1Records,
+              rewardRecords: level2Records,
+              miningRecords: checkinsResult.error ? [] : (checkinsResult.data || []),
+              leaderboard: leaderboard || [],
+              myRank: myRank
+            };
+          };
+
+          if (!uniqueInviteeIds.length) {
+            return buildData({});
+          }
+
+          return window.supabase
+            .from('users')
+            .select('id, username, email')
+            .in('id', uniqueInviteeIds)
+            .then(function (usersResult) {
+              var userMap = {};
+              if (!usersResult.error && usersResult.data) {
+                usersResult.data.forEach(function (user) {
+                  userMap[user.id] = user;
                 });
               }
-
-              var level2Records = level2Users.map(function (user) {
-                var isActivated = level2ApprovedIds[user.id] || false;
-                return {
-                  id: user.id,
-                  username: user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'Unknown'),
-                  registeredAt: user.created_at ? String(user.created_at).slice(0, 10) : '—',
-                  isActivated: isActivated,
-                  reward: isActivated ? (Number(settings.invite_level2_reward) || INVITE_SETTINGS_DEFAULTS.invite_level2_reward) : 0
-                };
-              });
-
-              var level1ActivatedCount = level1Records.filter(function (r) { return r.isActivated; }).length;
-              var level2ActivatedCount = level2Records.filter(function (r) { return r.isActivated; }).length;
-              var totalReward = level1Records.reduce(function (sum, r) { return sum + r.reward; }, 0) + level2Records.reduce(function (sum, r) { return sum + r.reward; }, 0);
-
-              return {
-                loggedIn: true,
-                userId: userId,
-                settings: settings,
-                showInviteLeaderboard: showInviteLeaderboard,
-                inviteCount: Number(userResult.data.invite_count) || level1Records.length,
-                totalReward: totalReward,
-                level1ActivatedCount: level1ActivatedCount,
-                level2ActivatedCount: level2ActivatedCount,
-                friends: level1Records,
-                rewardRecords: level2Records,
-                miningRecords: checkinsResult.error ? [] : (checkinsResult.data || []),
-                leaderboard: leaderboard || [],
-                myRank: myRank
-              };
+              return buildData(userMap);
             });
-          });
         });
       })
       .catch(function (err) {
