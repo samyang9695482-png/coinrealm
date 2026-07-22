@@ -957,6 +957,8 @@ window.invalidateAdsConfigCache = invalidateAdsConfigCache;
   }
 })();
 
+window.coinrealmCaptureInviteRef = captureInviteRefFromUrl;
+
 // 页面加载时检查 localStorage 中的邀请信息
 (function checkInviteInfoOnLoad() {
   try {
@@ -1235,13 +1237,11 @@ async function processInvite(newUserId) {
   
   if (!inviterId) {
     console.log('无邀请人信息，跳过邀请');
-    clearStoredInviterId();
     return false;
   }
 
   if (String(inviterId) === String(newUserId)) {
     console.log('邀请处理-processInvite 失败：不能邀请自己');
-    clearStoredInviterId();
     return false;
   }
 
@@ -1332,7 +1332,6 @@ async function processPendingInviteRegistration() {
   
   if (!window.supabase) {
     console.log('邀请处理-processPendingInviteRegistration 失败：没有 supabase');
-    clearStoredInviterId();
     return;
   }
 
@@ -1341,7 +1340,6 @@ async function processPendingInviteRegistration() {
   
   if (!inviterId) {
     console.log('无邀请人信息，跳过邀请');
-    clearStoredInviterId();
     return;
   }
 
@@ -1350,7 +1348,6 @@ async function processPendingInviteRegistration() {
   
   if (!userId) {
     console.log('邀请处理-processPendingInviteRegistry 失败：没有找到当前用户ID');
-    clearStoredInviterId();
     return;
   }
 
@@ -1363,7 +1360,6 @@ async function processPendingInviteRegistration() {
 
     if (!existingResult.error && existingResult.data && existingResult.data.length) {
       console.log('邀请处理-processPendingInviteRegistry：用户已经有邀请关系');
-      clearStoredInviterId();
       return;
     }
 
@@ -1372,18 +1368,14 @@ async function processPendingInviteRegistration() {
     
     if (!inviter || inviter.id === userId) {
       console.log('邀请处理-processPendingInviteRegistry：邀请者无效或不能邀请自己');
-      clearStoredInviterId();
       return;
     }
 
     console.log('邀请处理-processPendingInviteRegistry 开始调用 processInvite');
     await processInvite(userId);
     console.log('邀请处理-processPendingInviteRegistry processInvite 完成');
-    clearStoredInviterId();
   } catch (pendingErr) {
     console.warn('处理待处理邀请失败:', pendingErr);
-    // 无论成功或失败，都清除 localStorage 中的 inviter_id，避免重复处理
-    clearStoredInviterId();
   }
 }
 
