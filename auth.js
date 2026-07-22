@@ -426,11 +426,11 @@
         if (userId) {
           sessionStorage.setItem('coinrealm_user_id', userId);
           if (isWalletAuthUser(currentUser) && typeof window.coinrealmProcessPendingInvite === 'function') {
-            console.log('[auth] syncUserToSupabase-钱包用户同步完成，userId:', userId, '，开始处理邀请');
+            console.log('[DIAG] 步骤4：邀请处理调用（syncUserToSupabase）- 钱包用户同步完成，userId =', userId, '，开始 coinrealmProcessPendingInvite');
             window.coinrealmProcessPendingInvite().then(function () {
-              console.log('[auth] syncUserToSupabase-邀请处理完成');
+              console.log('[DIAG] 步骤4：邀请处理调用（syncUserToSupabase）- 完成');
             }).catch(function (inviteErr) {
-              console.warn('[auth] syncUserToSupabase-邀请处理失败:', inviteErr);
+              console.warn('[DIAG] 步骤4：邀请处理调用（syncUserToSupabase）- 失败:', inviteErr);
             });
           }
         }
@@ -546,6 +546,7 @@
         });
       })
       .then(function (data) {
+        console.log('[DIAG] 步骤3：钱包登录 - Worker 认证成功，准备 setSession | user_id =', data.user_id, '| user =', data.user);
         return window.supabase.auth.setSession({
           access_token: data.access_token,
           refresh_token: data.refresh_token
@@ -559,26 +560,34 @@
             (data.user && data.user.id) ||
             (result.data && result.data.user && result.data.user.id) ||
             null;
+          console.log('[DIAG] 步骤3：钱包登录用户ID - 解析到 userId =', userId);
 
           if (userId) {
             localStorage.setItem('coinrealm_user_id', userId);
             sessionStorage.setItem('coinrealm_user_id', userId);
+            console.log('[DIAG] 步骤3：钱包登录用户ID - 已写入 localStorage/sessionStorage | coinrealm_user_id =', localStorage.getItem('coinrealm_user_id'));
           }
 
           var authUser = result.data && result.data.user ? result.data.user : null;
+          console.log('[DIAG] 步骤3：钱包登录 - authUser =', authUser ? { id: authUser.id, email: authUser.email } : null);
           if (authUser && authUser.id) {
+            console.log('[DIAG] 步骤4：邀请处理调用 - 开始 upsertWalletUser，完成后将处理邀请');
             upsertWalletUser(authUser, address).then(function (syncedUserId) {
-              console.log('[auth] 钱包登录-用户同步完成，userId:', syncedUserId, '，开始处理邀请');
+              console.log('[DIAG] 步骤4：邀请处理调用 - upsertWalletUser 完成，syncedUserId =', syncedUserId, '，开始 coinrealmProcessPendingInvite');
               if (typeof window.coinrealmProcessPendingInvite === 'function') {
                 return window.coinrealmProcessPendingInvite().then(function () {
-                  console.log('[auth] 钱包登录-邀请处理完成');
+                  console.log('[DIAG] 步骤4：邀请处理调用 - coinrealmProcessPendingInvite 完成');
                 }).catch(function (inviteErr) {
-                  console.warn('[auth] 钱包登录-邀请处理失败:', inviteErr);
+                  console.warn('[DIAG] 步骤4：邀请处理调用 - coinrealmProcessPendingInvite 失败:', inviteErr);
                 });
+              } else {
+                console.warn('[DIAG] 步骤4：邀请处理调用 - window.coinrealmProcessPendingInvite 不存在');
               }
             }).catch(function (syncErr) {
-              console.warn('[auth] 钱包登录后用户同步失败', syncErr);
+              console.warn('[DIAG] 步骤4：邀请处理调用 - upsertWalletUser 失败:', syncErr);
             });
+          } else {
+            console.warn('[DIAG] 步骤4：邀请处理调用 - 跳过（authUser 或 authUser.id 为空）');
           }
 
           updateUI(authUser);
@@ -605,17 +614,18 @@
           localStorage.setItem('coinrealm_user_id', session.user.id);
           sessionStorage.setItem('coinrealm_user_id', session.user.id);
           if (isWalletAuthUser(session.user)) {
+            console.log('[DIAG] 步骤4：邀请处理调用（恢复会话）- 开始 upsertWalletUser');
             upsertWalletUser(session.user, getWalletAddressFromUser(session.user)).then(function (syncedUserId) {
-              console.log('[auth] 恢复会话-钱包用户同步完成，userId:', syncedUserId, '，开始处理邀请');
+              console.log('[DIAG] 步骤4：邀请处理调用（恢复会话）- upsertWalletUser 完成，syncedUserId =', syncedUserId, '，开始 coinrealmProcessPendingInvite');
               if (typeof window.coinrealmProcessPendingInvite === 'function') {
                 return window.coinrealmProcessPendingInvite().then(function () {
-                  console.log('[auth] 恢复会话-邀请处理完成');
+                  console.log('[DIAG] 步骤4：邀请处理调用（恢复会话）- coinrealmProcessPendingInvite 完成');
                 }).catch(function (inviteErr) {
-                  console.warn('[auth] 恢复会话-邀请处理失败:', inviteErr);
+                  console.warn('[DIAG] 步骤4：邀请处理调用（恢复会话）- 失败:', inviteErr);
                 });
               }
             }).catch(function (syncErr) {
-              console.warn('[auth] 恢复钱包会话时用户同步失败', syncErr);
+              console.warn('[DIAG] 步骤4：邀请处理调用（恢复会话）- upsertWalletUser 失败:', syncErr);
             });
           }
           callback();

@@ -7,14 +7,16 @@
       try {
         var urlParams = new URLSearchParams(window.location.search);
         var refParam = urlParams.get('ref');
+        console.log('[DIAG] 步骤1：URL 参数捕获 - ref =', refParam, '| full search =', window.location.search);
         if (refParam) {
           localStorage.setItem('inviter_id', refParam);
           localStorage.setItem('coinrealm_invite_ref', refParam);
-          console.log('页面加载-检测到 ref 参数：', refParam);
-          console.log('页面加载-已存入 localStorage：', localStorage.getItem('inviter_id'));
+          console.log('[DIAG] 步骤2：localStorage 存储 - inviter_id =', localStorage.getItem('inviter_id'), '| coinrealm_invite_ref =', localStorage.getItem('coinrealm_invite_ref'));
+        } else {
+          console.log('[DIAG] 步骤2：localStorage 存储 - 跳过（URL 无 ref 参数）| 现有 inviter_id =', localStorage.getItem('inviter_id'));
         }
       } catch (e) {
-        console.warn('捕获 ref 参数失败:', e);
+        console.warn('[DIAG] 步骤1/2：捕获 ref 参数失败:', e);
       }
     })();
   </script>

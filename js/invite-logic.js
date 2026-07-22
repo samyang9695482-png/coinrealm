@@ -80,17 +80,17 @@ function captureInviteRefFromUrl() {
   try {
     var params = new URLSearchParams(window.location.search);
     var ref = params.get('ref');
+    console.log('[DIAG] 步骤1：URL 参数捕获（invite-logic.js）- ref =', ref);
     if (ref) {
       var inviterId = String(ref).trim();
       localStorage.setItem('inviter_id', inviterId);
       localStorage.setItem('coinrealm_invite_ref', inviterId);
-      console.log('invite-logic.js-捕获邀请 ref 参数：', inviterId);
-      console.log('invite-logic.js-已存入 localStorage inviter_id：', localStorage.getItem('inviter_id'));
+      console.log('[DIAG] 步骤2：localStorage 存储（invite-logic.js）- inviter_id =', localStorage.getItem('inviter_id'));
     } else {
-      console.log('invite-logic.js-URL 中未检测到 ref 参数');
+      console.log('[DIAG] 步骤2：localStorage 存储（invite-logic.js）- 跳过（URL 无 ref）');
     }
   } catch (captureErr) {
-    console.warn('捕获邀请 ref 失败:', captureErr);
+    console.warn('[DIAG] 步骤1/2：捕获邀请 ref 失败:', captureErr);
   }
 }
 captureInviteRefFromUrl();
@@ -115,70 +115,86 @@ function getStoredInviterId() {
   try {
     var inviterId = localStorage.getItem('inviter_id');
     if (inviterId) {
-      console.log('invite-logic.js-从 localStorage 读取到 inviter_id：', inviterId);
+      console.log('[DIAG] getStoredInviterId - 从 localStorage 读取到 inviter_id =', inviterId);
       return String(inviterId).trim();
     }
   } catch (storageErr) {
-    console.warn('读取邀请人 ID 失败:', storageErr);
+    console.warn('[DIAG] getStoredInviterId - 读取失败:', storageErr);
   }
 
   try {
     var fallback = localStorage.getItem('coinrealm_invite_ref');
     if (fallback) {
-      console.log('invite-logic.js-从备用键读取到 coinrealm_invite_ref：', fallback);
+      console.log('[DIAG] getStoredInviterId - 从备用键读取到 coinrealm_invite_ref =', fallback);
       return String(fallback).trim();
     }
   } catch (fallbackErr) {
-    console.warn('读取历史邀请 ref 失败:', fallbackErr);
+    console.warn('[DIAG] getStoredInviterId - 备用键读取失败:', fallbackErr);
   }
 
-  console.log('invite-logic.js-未在 localStorage 中找到任何邀请信息');
+  console.log('[DIAG] getStoredInviterId - 未找到任何邀请信息，返回空字符串');
   return '';
 }
 
 function clearStoredInviterId() {
+  console.log('[DIAG] clearStoredInviterId 被调用 - 清除前 inviter_id =', localStorage.getItem('inviter_id'));
   try {
     localStorage.removeItem('inviter_id');
     localStorage.removeItem('coinrealm_invite_ref');
+    console.log('[DIAG] clearStoredInviterId 完成 - 清除后 inviter_id =', localStorage.getItem('inviter_id'));
   } catch (storageErr) {
-    console.warn('清理邀请缓存失败:', storageErr);
+    console.warn('[DIAG] clearStoredInviterId - 清除失败:', storageErr);
   }
 }
 
 async function grantInviteReward(inviter, inviteeId, level, amount) {
-  if (!inviter || !inviteeId || amount <= 0 || !window.supabase) return false;
+  console.log('[DIAG] 步骤5：数据库写入尝试 - grantInviteReward 开始', {
+    inviterId: inviter && inviter.id,
+    inviteeId: inviteeId,
+    level: level,
+    amount: amount,
+    supabaseReady: !!window.supabase
+  });
+  if (!inviter || !inviteeId || amount <= 0 || !window.supabase) {
+    console.log('[DIAG] 步骤5：数据库写入跳过 - 参数不足');
+    return false;
+  }
 
   try {
-    var insertResult = await window.supabase.from('invites').insert({
+    var insertPayload = {
       inviter_id: inviter.id,
       invitee_id: inviteeId,
       level: level,
       reward_amount: amount,
       is_activated: false,
       created_at: new Date().toISOString()
-    });
+    };
+    console.log('[DIAG] 步骤5：数据库写入尝试 - INSERT invites 表，payload =', insertPayload);
+
+    var insertResult = await window.supabase.from('invites').insert(insertPayload);
+
+    console.log('[DIAG] 步骤5：数据库写入结果 -', insertResult.error ? '失败' : '成功', insertResult.error || insertResult.data);
 
     if (insertResult.error) {
       var errMsg = String(insertResult.error.message || insertResult.error.details || '').toLowerCase();
       var errCode = insertResult.error.code || '';
+      console.log('[DIAG] 步骤5：数据库写入错误详情 - code =', errCode, '| message =', insertResult.error.message);
       
       if (errCode === '23505' || errMsg.indexOf('duplicate') !== -1 || errMsg.indexOf('conflict') !== -1) {
-        console.log('邀请记录已存在（409冲突），说明邀请关系已建立，视为成功');
+        console.log('[DIAG] 步骤5：邀请记录已存在（409冲突），视为成功');
         return true;
       }
       
       if (errMsg.indexOf('column') !== -1 && errMsg.indexOf('does not exist') !== -1) {
-        console.warn('邀请表字段缺失，请先执行 SQL：ALTER TABLE invites ADD COLUMN IF NOT EXISTS reward_amount NUMERIC DEFAULT 0; ALTER TABLE invites ADD COLUMN IF NOT EXISTS is_activated BOOLEAN DEFAULT FALSE; ALTER TABLE invites ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();');
-      } else {
-        console.warn('插入邀请记录失败:', insertResult.error);
+        console.warn('[DIAG] 步骤5：邀请表字段缺失，请执行 SQL：ALTER TABLE invites ADD COLUMN IF NOT EXISTS reward_amount NUMERIC DEFAULT 0; ALTER TABLE invites ADD COLUMN IF NOT EXISTS is_activated BOOLEAN DEFAULT FALSE; ALTER TABLE invites ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();');
       }
       return false;
     }
 
-    console.log('邀请记录创建成功，等待被邀请人激活（is_activated=false）');
+    console.log('[DIAG] 步骤5：数据库写入成功 - 邀请记录已创建（is_activated=false）');
     return true;
   } catch (grantErr) {
-    console.warn('创建邀请记录失败:', grantErr);
+    console.warn('[DIAG] 步骤5：数据库写入异常:', grantErr);
     return false;
   }
 }
@@ -314,62 +330,72 @@ async function activateInviteRewards(userId) {
 }
 
 async function processInvite(newUserId) {
-  console.log('邀请处理-processInvite 开始，用户ID:', newUserId);
+  console.log('[DIAG] 步骤4：邀请处理调用 - processInvite 开始，newUserId =', newUserId);
   
   if (!newUserId || !window.supabase) {
-    console.log('邀请处理-processInvite 失败：缺少用户ID或supabase');
+    console.log('[DIAG] 步骤4：processInvite 失败 - 缺少用户ID或supabase | newUserId =', newUserId, '| supabase =', !!window.supabase);
     return false;
   }
 
   var inviterId = getStoredInviterId();
-  console.log('邀请处理-检测到 inviter_id：', inviterId);
+  console.log('[DIAG] 步骤4：processInvite - 读取到 inviterId =', inviterId);
   
   if (!inviterId) {
-    console.log('无邀请人信息，跳过邀请');
+    console.log('[DIAG] 步骤4：processInvite 跳过 - 无邀请人信息（inviter_id 为空）');
     clearStoredInviterId();
     return false;
   }
 
   if (String(inviterId) === String(newUserId)) {
-    console.log('邀请处理-processInvite 失败：不能邀请自己');
+    console.log('[DIAG] 步骤4：processInvite 跳过 - 不能邀请自己 | inviterId =', inviterId, '| newUserId =', newUserId);
     clearStoredInviterId();
     return false;
   }
 
   try {
+    console.log('[DIAG] 步骤4：processInvite - 检查是否已有邀请记录（invitee_id =', newUserId, '）');
     var existingResult = await window.supabase
       .from('invites')
       .select('id')
       .eq('invitee_id', newUserId)
       .limit(1);
 
+    console.log('[DIAG] 步骤4：processInvite - 已有邀请记录查询结果 =', existingResult.error ? '查询失败' : existingResult.data);
+
     if (!existingResult.error && existingResult.data && existingResult.data.length) {
-      console.log('邀请处理-用户已经有邀请关系，返回成功但不清除 inviter_id');
+      console.log('[DIAG] 步骤4：processInvite - 用户已有邀请关系，跳过');
       return true;
     }
 
     var settings = await fetchInviteSettings();
     var level1Reward = Number(settings.invite_level1_reward) || INVITE_SETTINGS_DEFAULTS.invite_level1_reward;
     var level2Reward = Number(settings.invite_level2_reward) || INVITE_SETTINGS_DEFAULTS.invite_level2_reward;
+    console.log('[DIAG] 步骤4：processInvite - 奖励配置 level1 =', level1Reward, '| level2 =', level2Reward);
 
+    console.log('[DIAG] 步骤4：processInvite - 查询邀请人信息（inviterId =', inviterId, '）');
     var inviterResult = await window.supabase
       .from('users')
       .select('id, crlm_balance, invite_count, username')
       .eq('id', inviterId)
       .maybeSingle();
 
+    console.log('[DIAG] 步骤4：processInvite - 邀请人查询结果 =', inviterResult.error ? '失败' : inviterResult.data);
+
     if (inviterResult.error || !inviterResult.data) {
-      console.log('邀请处理-邀请者信息查询失败，保留 inviter_id 以便重试');
+      console.log('[DIAG] 步骤4：processInvite 失败 - 邀请者信息查询失败，保留 inviter_id 以便重试');
       return false;
     }
 
     var inviter = inviterResult.data;
+    console.log('[DIAG] 步骤4：processInvite - 开始发放一级奖励');
     var level1Done = await grantInviteReward(inviter, newUserId, 1, level1Reward);
+    console.log('[DIAG] 步骤4：processInvite - 一级奖励结果 =', level1Done);
     if (!level1Done) {
-      console.log('邀请处理-一级奖励发放失败，保留 inviter_id 以便重试');
+      console.log('[DIAG] 步骤4：processInvite 失败 - 一级奖励发放失败，保留 inviter_id');
       return false;
     }
 
+    console.log('[DIAG] 步骤4：processInvite - 查询二级邀请人（inviter 的上级）');
     var parentResult = await window.supabase
       .from('invites')
       .select('inviter_id')
@@ -378,6 +404,8 @@ async function processInvite(newUserId) {
       .order('created_at', { ascending: true })
       .limit(1)
       .maybeSingle();
+
+    console.log('[DIAG] 步骤4：processInvite - 二级邀请人查询结果 =', parentResult.error ? '失败' : parentResult.data);
 
     if (!parentResult.error && parentResult.data && parentResult.data.inviter_id) {
       var parentInviterId = parentResult.data.inviter_id;
@@ -390,37 +418,39 @@ async function processInvite(newUserId) {
 
         if (!parentUserResult.error && parentUserResult.data) {
           var parentInviter = parentUserResult.data;
+          console.log('[DIAG] 步骤4：processInvite - 开始发放二级奖励');
           var level2Done = await grantInviteReward(parentInviter, newUserId, 2, level2Reward);
+          console.log('[DIAG] 步骤4：processInvite - 二级奖励结果 =', level2Done);
         }
       }
     }
 
-    console.log('邀请处理-成功完成，清除 localStorage 中的 inviter_id');
+    console.log('[DIAG] 步骤4：processInvite - 成功完成，清除 inviter_id');
     clearStoredInviterId();
     if (typeof window.coinrealmRefreshInvitePageData === 'function') {
       window.coinrealmRefreshInvitePageData();
     }
     return true;
   } catch (inviteErr) {
-    console.warn('处理邀请关系失败，保留 inviter_id 以便重试:', inviteErr);
+    console.warn('[DIAG] 步骤4：processInvite 异常 - 保留 inviter_id:', inviteErr);
     return false;
   }
 }
 
 async function processPendingInviteRegistration() {
-  console.log('邀请处理-processPendingInviteRegistration 开始');
+  console.log('[DIAG] 步骤4：邀请处理调用 - processPendingInviteRegistration 开始');
   
   if (!window.supabase) {
-    console.log('邀请处理-processPendingInviteRegistration 失败：没有 supabase');
+    console.log('[DIAG] 步骤4：processPendingInviteRegistration 失败 - 没有 supabase');
     clearStoredInviterId();
     return;
   }
 
   var inviterId = getStoredInviterId();
-  console.log('邀请处理-processPendingInviteRegistration 检测到 inviter_id：', inviterId);
+  console.log('[DIAG] 步骤4：processPendingInviteRegistration - inviter_id =', inviterId);
   
   if (!inviterId) {
-    console.log('无邀请人信息，跳过邀请');
+    console.log('[DIAG] 步骤4：processPendingInviteRegistration 跳过 - 无邀请人信息');
     clearStoredInviterId();
     return;
   }
@@ -431,42 +461,46 @@ async function processPendingInviteRegistration() {
   } else if (typeof getCurrentUserId === 'function') {
     userId = await getCurrentUserId();
   }
-  console.log('邀请处理-processPendingInviteRegistration 当前用户ID：', userId);
+  console.log('[DIAG] 步骤3：钱包登录用户ID（processPendingInviteRegistration 读取）- userId =', userId);
   
   if (!userId) {
-    console.log('邀请处理-processPendingInviteRegistry 失败：没有找到当前用户ID');
+    console.log('[DIAG] 步骤4：processPendingInviteRegistration 失败 - 没有找到当前用户ID，将清除 inviter_id');
     clearStoredInviterId();
     return;
   }
 
   try {
+    console.log('[DIAG] 步骤4：processPendingInviteRegistration - 检查是否已有邀请记录');
     var existingResult = await window.supabase
       .from('invites')
       .select('id')
       .eq('invitee_id', userId)
       .limit(1);
 
+    console.log('[DIAG] 步骤4：processPendingInviteRegistration - 已有邀请记录查询结果 =', existingResult.error ? '查询失败' : existingResult.data);
+
     if (!existingResult.error && existingResult.data && existingResult.data.length) {
-      console.log('邀请处理-processPendingInviteRegistry：用户已经有邀请关系');
+      console.log('[DIAG] 步骤4：processPendingInviteRegistration - 用户已有邀请关系，清除 inviter_id');
       clearStoredInviterId();
       return;
     }
 
+    console.log('[DIAG] 步骤4：processPendingInviteRegistration - 查找邀请人（findInviterByRef）');
     var inviter = await findInviterByRef(inviterId);
-    console.log('邀请处理-processPendingInviteRegistry 找到邀请者：', inviter);
+    console.log('[DIAG] 步骤4：processPendingInviteRegistration - 邀请人查找结果 =', inviter);
     
     if (!inviter || inviter.id === userId) {
-      console.log('邀请处理-processPendingInviteRegistry：邀请者无效或不能邀请自己');
+      console.log('[DIAG] 步骤4：processPendingInviteRegistration 失败 - 邀请者无效或不能邀请自己');
       clearStoredInviterId();
       return;
     }
 
-    console.log('邀请处理-processPendingInviteRegistry 开始调用 processInvite');
+    console.log('[DIAG] 步骤4：processPendingInviteRegistration - 开始调用 processInvite');
     await processInvite(userId);
-    console.log('邀请处理-processPendingInviteRegistry processInvite 完成');
+    console.log('[DIAG] 步骤4：processPendingInviteRegistration - processInvite 完成');
     clearStoredInviterId();
   } catch (pendingErr) {
-    console.warn('处理待处理邀请失败:', pendingErr);
+    console.warn('[DIAG] 步骤4：processPendingInviteRegistration 异常:', pendingErr);
     clearStoredInviterId();
   }
 }
