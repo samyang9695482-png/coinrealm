@@ -439,9 +439,10 @@ async function activateInviteRewards(userId) {
         console.log('[ActivateInvite] ✅ is_activated 已标记为 true');
       }
 
-      // 发送通知
-      var title = level === 1 ? '你成功邀请了一位新用户，获得一级邀请奖励' : '你成功邀请的一位好友进一步扩展了邀请网络，获得二级邀请奖励';
-      await writeInviteNotification(inviter.id, title, 'invite', userId);
+      // 发送通知（格式：恭喜你获得X级邀请奖励 +XXX CRLM（用户XXX完成任务））
+      var levelLabel = level === 1 ? '一级' : '二级';
+      var notifTitle = '恭喜你获得' + levelLabel + '邀请奖励 +' + rewardAmount + ' CRLM（你的好友完成任务）';
+      await writeInviteNotification(inviter.id, notifTitle, 'invite', userId);
 
       var description = level === 1 ? '你成功邀请了一位新用户，获得一级邀请奖励' : '你的二级邀请关系产生了奖励';
       writeInviteBroadcast(inviter.id, description, rewardAmount);
