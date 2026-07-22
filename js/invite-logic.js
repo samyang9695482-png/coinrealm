@@ -76,7 +76,7 @@ async function findInviterByRef(ref) {
   return null;
 }
 
-(function captureInviteRefFromUrl() {
+function captureInviteRefFromUrl() {
   try {
     var params = new URLSearchParams(window.location.search);
     var ref = params.get('ref');
@@ -92,7 +92,8 @@ async function findInviterByRef(ref) {
   } catch (captureErr) {
     console.warn('捕获邀请 ref 失败:', captureErr);
   }
-})();
+}
+captureInviteRefFromUrl();
 
 (function checkInviteInfoOnLoad() {
   try {
