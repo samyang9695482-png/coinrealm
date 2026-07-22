@@ -976,6 +976,18 @@
       });
     }
 
+    // 审核通过后激活邀请奖励（一级 + 二级）
+    if (typeof window.coinrealmActivateInviteRewards === 'function') {
+      console.log('[审核通过] 开始激活邀请奖励，被邀请用户ID:', submission.user_id);
+      window.coinrealmActivateInviteRewards(submission.user_id).then(function () {
+        console.log('[审核通过] 邀请奖励激活完成，被邀请用户ID:', submission.user_id);
+      }).catch(function (inviteErr) {
+        console.warn('[审核通过] 邀请奖励激活失败:', inviteErr);
+      });
+    } else {
+      console.warn('[审核通过] window.coinrealmActivateInviteRewards 不存在，跳过邀请奖励激活');
+    }
+
     return true;
   }
 
