@@ -4365,21 +4365,43 @@ async function submitTaskProofSubmission(options) {
     var requireDescription = options.requireDescription !== false;
     var path = options.path || 'submit-task-proof';
 
+    console.log('[SubmitProof] ===== 开始提交凭证(submitTaskProofSubmission) =====');
+    console.log('[SubmitProof] taskId:', taskId);
+    console.log('[SubmitProof] userId:', userId);
+    console.log('[SubmitProof] submission:', submission ? JSON.stringify(submission) : 'null');
+    console.log('[SubmitProof] submission.id:', submission ? submission.id : 'N/A');
+    console.log('[SubmitProof] submission.status:', submission ? submission.status : 'N/A');
+    console.log('[SubmitProof] window.supabase:', !!window.supabase);
+
     if (!window.supabase || !taskId || !userId || !submission || !submission.id) {
+        console.log('[SubmitProof] 条件判断：缺少必要参数');
+        console.log('[SubmitProof]   - window.supabase:', !!window.supabase);
+        console.log('[SubmitProof]   - taskId:', !!taskId);
+        console.log('[SubmitProof]   - userId:', !!userId);
+        console.log('[SubmitProof]   - submission:', !!submission);
+        console.log('[SubmitProof]   - submission.id:', submission ? submission.id : 'N/A');
         return { ok: false, error: 'missing_params' };
     }
 
     var proofType = options.proofType || 'screenshot';
+    console.log('[SubmitProof] proofType:', proofType);
+    console.log('[SubmitProof] requireDescription:', requireDescription);
+    console.log('[SubmitProof] description:', description ? '有内容' : '空');
+    console.log('[SubmitProof] screenshotUrls.length:', screenshotUrls.length);
 
     if (proofType === 'text') {
+        console.log('[SubmitProof] 条件判断：文本类型需要描述');
         if (!description) {
+            console.log('[SubmitProof] 条件判断：文本类型但描述为空');
             return { ok: false, error: 'description_required' };
         }
     } else if (requireDescription && !description) {
+        console.log('[SubmitProof] 条件判断：需要描述但描述为空');
         return { ok: false, error: 'description_required' };
     }
 
     if (proofType === 'screenshot' && !screenshotUrls.length) {
+        console.log('[SubmitProof] 条件判断：截图类型但没有上传截图');
         return { ok: false, error: 'screenshot_required' };
     }
 
@@ -4387,18 +4409,32 @@ async function submitTaskProofSubmission(options) {
         description = '（详情页提交凭证）';
     }
 
+    console.log('[SubmitProof] 条件判断：submission.status === "approved"', submission.status === 'approved');
+
     if (submission.status === 'approved') {
+        console.log('[SubmitProof] 条件判断：已通过审核，禁止重复提交');
         return { ok: false, error: 'already_approved' };
     }
 
+    console.log('[SubmitProof] 条件判断：submission.status === "submitted"', submission.status === 'submitted');
+
     if (submission.status === 'submitted') {
+        console.log('[SubmitProof] 条件判断：已提交等待审核，禁止重复提交');
         return { ok: false, error: 'already_submitted', submissionStatus: 'submitted' };
     }
 
+    console.log('[SubmitProof] 条件判断：isSubmissionReadyToSubmitProof()', isSubmissionReadyToSubmitProof(submission));
+    console.log('[SubmitProof] 条件判断：isSubmissionWaitingReviewProof()', isSubmissionWaitingReviewProof(submission));
+
     if (!isSubmissionReadyToSubmitProof(submission)) {
+        console.log('[SubmitProof] 条件判断：提交状态不允许提交');
+        console.log('[SubmitProof]   - submission.status:', submission.status);
+        console.log('[SubmitProof]   - submission.submitted_at:', submission.submitted_at);
         if (isSubmissionWaitingReviewProof(submission)) {
+            console.log('[SubmitProof]   - 原因：正在等待审核');
             return { ok: false, error: 'waiting_review', submissionStatus: submission.status };
         }
+        console.log('[SubmitProof]   - 原因：状态不可提交');
         return { ok: false, error: 'not_ready' };
     }
 
