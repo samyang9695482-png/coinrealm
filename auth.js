@@ -433,6 +433,15 @@
               console.warn('[DIAG] 步骤4：邀请处理调用（syncUserToSupabase）- 失败:', inviteErr);
             });
           }
+          // 从被邀请者自己的客户端触发邀请奖励激活（避免 RLS 策略阻止发布者访问被邀请者的邀请记录）
+          if (typeof window.coinrealmActivateInviteRewards === 'function') {
+            console.log('[ActivateInvite] 页面加载-检查并激活邀请奖励，userId =', userId);
+            window.coinrealmActivateInviteRewards(userId).then(function () {
+              console.log('[ActivateInvite] 页面加载-邀请奖励激活检查完成');
+            }).catch(function (activateErr) {
+              console.warn('[ActivateInvite] 页面加载-邀请奖励激活失败:', activateErr);
+            });
+          }
         }
       })
       .catch(function (error) {
