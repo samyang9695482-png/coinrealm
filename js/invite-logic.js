@@ -424,6 +424,11 @@ async function processInvite(newUserId) {
     }
 
     console.log('[DIAG] 步骤4：processInvite - 成功完成，清除 inviter_id');
+    
+    // 邀请关系建立后，通知邀请人
+    console.log('[DIAG] 步骤4：processInvite - 发送邀请成功通知给邀请人:', inviter.id);
+    await writeInviteNotification(inviter.id, '你邀请的新用户已注册，待其完成任务后你将获得邀请奖励', 'invite', newUserId);
+    
     clearStoredInviterId();
     if (typeof window.coinrealmRefreshInvitePageData === 'function') {
       window.coinrealmRefreshInvitePageData();
