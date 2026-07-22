@@ -333,7 +333,7 @@ async function processInvite(newUserId) {
   console.log('[DIAG] 步骤4：邀请处理调用 - processInvite 开始，newUserId =', newUserId);
   
   if (!newUserId || !window.supabase) {
-    console.log('[DIAG] 步骤4：processInvite 失败 - 缺少用户ID或supabase | newUserId =', newUserId, '| supabase =', !!window.supabase);
+    console.log('[DIAG] 步骤4：processInvite 失败 - 缺少用户ID或supabase | newUserId =', newUserId, '| supabase =', !!window.supabase, '，保留 inviter_id 以便重试');
     return false;
   }
 
@@ -342,7 +342,6 @@ async function processInvite(newUserId) {
   
   if (!inviterId) {
     console.log('[DIAG] 步骤4：processInvite 跳过 - 无邀请人信息（inviter_id 为空）');
-    clearStoredInviterId();
     return false;
   }
 
@@ -385,7 +384,6 @@ async function processInvite(newUserId) {
       console.log('[DIAG] 步骤4：processInvite 失败 - 邀请者信息查询失败，保留 inviter_id 以便重试');
       return false;
     }
-
     var inviter = inviterResult.data;
     console.log('[DIAG] 步骤4：processInvite - 开始发放一级奖励');
     var level1Done = await grantInviteReward(inviter, newUserId, 1, level1Reward);
@@ -441,8 +439,7 @@ async function processPendingInviteRegistration() {
   console.log('[DIAG] 步骤4：邀请处理调用 - processPendingInviteRegistration 开始');
   
   if (!window.supabase) {
-    console.log('[DIAG] 步骤4：processPendingInviteRegistration 失败 - 没有 supabase');
-    clearStoredInviterId();
+    console.log('[DIAG] 步骤4：processPendingInviteRegistration 失败 - 没有 supabase，保留 inviter_id 以便重试');
     return;
   }
 
@@ -450,8 +447,7 @@ async function processPendingInviteRegistration() {
   console.log('[DIAG] 步骤4：processPendingInviteRegistration - inviter_id =', inviterId);
   
   if (!inviterId) {
-    console.log('[DIAG] 步骤4：processPendingInviteRegistration 跳过 - 无邀请人信息');
-    clearStoredInviterId();
+    console.log('[DIAG] 步骤4：processPendingInviteRegistration 跳过 - 无邀请人信息（inviter_id 为空）');
     return;
   }
 
@@ -464,8 +460,7 @@ async function processPendingInviteRegistration() {
   console.log('[DIAG] 步骤3：钱包登录用户ID（processPendingInviteRegistration 读取）- userId =', userId);
   
   if (!userId) {
-    console.log('[DIAG] 步骤4：processPendingInviteRegistration 失败 - 没有找到当前用户ID，将清除 inviter_id');
-    clearStoredInviterId();
+    console.log('[DIAG] 步骤4：processPendingInviteRegistration 跳过 - 没有找到当前用户ID，保留 inviter_id 以便重试');
     return;
   }
 
@@ -490,18 +485,19 @@ async function processPendingInviteRegistration() {
     console.log('[DIAG] 步骤4：processPendingInviteRegistration - 邀请人查找结果 =', inviter);
     
     if (!inviter || inviter.id === userId) {
-      console.log('[DIAG] 步骤4：processPendingInviteRegistration 失败 - 邀请者无效或不能邀请自己');
+      console.log('[DIAG] 步骤4：processPendingInviteRegistration 失败 - 邀请者无效或不能邀请自己，清除 inviter_id');
       clearStoredInviterId();
       return;
     }
 
     console.log('[DIAG] 步骤4：processPendingInviteRegistration - 开始调用 processInvite');
-    await processInvite(userId);
-    console.log('[DIAG] 步骤4：processPendingInviteRegistration - processInvite 完成');
-    clearStoredInviterId();
+    var inviteResult = await processInvite(userId);
+    console.log('[DIAG] 步骤4：processPendingInviteRegistration - processInvite 完成，结果 =', inviteResult);
+    if (inviteResult) {
+      clearStoredInviterId();
+    }
   } catch (pendingErr) {
-    console.warn('[DIAG] 步骤4：processPendingInviteRegistration 异常:', pendingErr);
-    clearStoredInviterId();
+    console.warn('[DIAG] 步骤4：processPendingInviteRegistration 异常 - 保留 inviter_id 以便重试:', pendingErr);
   }
 }
 
