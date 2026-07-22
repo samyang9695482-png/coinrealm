@@ -930,8 +930,19 @@ window.invalidateAdsConfigCache = invalidateAdsConfigCache;
 
 (function captureInviteRefFromUrl() {
   try {
+    var ref = null;
+    
     var params = new URLSearchParams(window.location.search);
-    var ref = params.get('ref');
+    ref = params.get('ref');
+    
+    if (!ref) {
+      var hashParts = window.location.hash.replace(/^#/, '').split('?');
+      if (hashParts.length > 1) {
+        var hashQueryParams = new URLSearchParams(hashParts[1]);
+        ref = hashQueryParams.get('ref');
+      }
+    }
+    
     if (ref) {
       var inviterId = String(ref).trim();
       localStorage.setItem('inviter_id', inviterId);
