@@ -420,8 +420,8 @@
 
     inviteDataLoading = true;
 
-    // 使用 window 对象引用 app.js 中暴露的函数
-    var appFetchInviteSettings = window.coinrealmFetchInviteSettings || fetchInviteSettings;
+    // 使用 window 对象引用 invite-logic.js 中暴露的函数
+    var appFetchInviteSettings = window.coinrealmFetchInviteSettings;
 
     return Promise.all([
       appFetchInviteSettings(),

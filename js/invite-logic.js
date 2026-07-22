@@ -615,7 +615,7 @@ async function diagnoseInviteRLS() {
 
   // 测试1：作为邀请人查询（inviter_id = 自己）
   var test1 = await window.supabase.from('invites').select('id').eq('inviter_id', userId).limit(1);
-  console.log('[InviteRLS] 测试1 - 查询自己发出的邀请:', test1.error ? '❌ 失败（' + (test1.error.message || test1.error.code) + ')' : ('✅ 成功（找到 ' + (test1.data ? test1.data.length : 0 + ' 条)');
+  console.log('[InviteRLS] 测试1 - 查询自己发出的邀请:', test1.error ? '❌ 失败（' + (test1.error.message || test1.error.code) + ')' : ('✅ 成功（找到 ' + (test1.data ? test1.data.length : 0) + ' 条)'));
 
   // 测试2：作为被邀请人查询（invitee_id = 自己）
   var test2 = await window.supabase.from('invites').select('id').eq('invitee_id', userId).limit(1);
