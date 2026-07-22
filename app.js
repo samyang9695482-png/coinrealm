@@ -4601,6 +4601,7 @@ window.coinrealmValidateProofScreenshotFile = validateProofScreenshotFile;
 window.coinrealmUploadProofScreenshot = uploadProofScreenshot;
 window.coinrealmUploadProofScreenshotWithProgress = uploadProofScreenshotWithProgress;
 window.coinrealmSubmitTaskProof = submitTaskProofSubmission;
+console.log('[app.js] coinrealmSubmitTaskProof exposed:', typeof window.coinrealmSubmitTaskProof);
 window.coinrealmIsSubmissionReadyToSubmitProof = isSubmissionReadyToSubmitProof;
 window.coinrealmIsSubmissionWaitingReviewProof = isSubmissionWaitingReviewProof;
 window.coinrealmProcessTaskTimeouts = processTaskTimeouts;

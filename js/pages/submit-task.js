@@ -914,17 +914,49 @@
 
           if (targetSubmission.status === 'rejected') {
             console.log('[Submit] 执行重新提交逻辑');
-            submitResult = await resubmitRegularTaskProof({
-              taskId: activeSubmitContext.taskId,
-              userId: userId,
-              description: desc,
-              screenshotUrls: screenshotUrls,
-              submission: targetSubmission,
-              taskTitle: activeSubmitContext.title || '',
-              taskReward: activeSubmitContext.reward || 0,
-              proofType: proofType,
-              path: 'submit-task-page-resubmit'
-            });
+            if (typeof resubmitRegularTaskProof === 'function') {
+              submitResult = await resubmitRegularTaskProof({
+                taskId: activeSubmitContext.taskId,
+                userId: userId,
+                description: desc,
+                screenshotUrls: screenshotUrls,
+                submission: targetSubmission,
+                taskTitle: activeSubmitContext.title || '',
+                taskReward: activeSubmitContext.reward || 0,
+                proofType: proofType,
+                path: 'submit-task-page-resubmit'
+              });
+            } else {
+              console.log('[Submit] 重新提交函数不存在，使用首次提交函数');
+              if (typeof window.coinrealmSubmitTaskProof === 'function') {
+                submitResult = await window.coinrealmSubmitTaskProof({
+                  taskId: activeSubmitContext.taskId,
+                  userId: userId,
+                  description: desc,
+                  screenshotUrls: screenshotUrls,
+                  submission: targetSubmission,
+                  taskTitle: activeSubmitContext.title || '',
+                  taskReward: activeSubmitContext.reward || 0,
+                  requireDescription: proofType === 'text',
+                  proofType: proofType,
+                  path: 'submit-task-page-resubmit'
+                });
+              } else if (typeof submitTaskProofSubmission === 'function') {
+                console.log('[Submit] 使用备用提交函数 submitTaskProofSubmission');
+                submitResult = await submitTaskProofSubmission({
+                  taskId: activeSubmitContext.taskId,
+                  userId: userId,
+                  description: desc,
+                  screenshotUrls: screenshotUrls,
+                  submission: targetSubmission,
+                  taskTitle: activeSubmitContext.title || '',
+                  taskReward: activeSubmitContext.reward || 0,
+                  requireDescription: proofType === 'text',
+                  proofType: proofType,
+                  path: 'submit-task-page-resubmit'
+                });
+              }
+            }
           } else if (typeof window.coinrealmSubmitTaskProof === 'function') {
             console.log('[Submit] 执行首次提交逻辑');
             submitResult = await window.coinrealmSubmitTaskProof({
@@ -939,8 +971,24 @@
               proofType: proofType,
               path: 'submit-task-page'
             });
+          } else if (typeof submitTaskProofSubmission === 'function') {
+            console.log('[Submit] 执行首次提交逻辑（备用：submitTaskProofSubmission）');
+            submitResult = await submitTaskProofSubmission({
+              taskId: activeSubmitContext.taskId,
+              userId: userId,
+              description: desc,
+              screenshotUrls: screenshotUrls,
+              submission: targetSubmission,
+              taskTitle: activeSubmitContext.title || '',
+              taskReward: activeSubmitContext.reward || 0,
+              requireDescription: proofType === 'text',
+              proofType: proofType,
+              path: 'submit-task-page'
+            });
           } else {
-            console.log('[Submit] 条件判断：submit unavailable - window.coinrealmSubmitTaskProof 不存在');
+            console.log('[Submit] 条件判断：submit unavailable - 提交函数不存在');
+            console.log('[Submit]   - window.coinrealmSubmitTaskProof:', typeof window.coinrealmSubmitTaskProof);
+            console.log('[Submit]   - submitTaskProofSubmission:', typeof submitTaskProofSubmission);
             alert(stT('st_alert_submit_fail') + 'submit unavailable');
             return;
           }
