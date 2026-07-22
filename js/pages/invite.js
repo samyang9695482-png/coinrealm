@@ -43,8 +43,8 @@
       iv_invite_count: '{count} 人',
       iv_total_reward: '{amount} CRLM',
       iv_btn_copy_link: '复制链接',
-      iv_friends_title: '一级邀请记录',
-      iv_rewards_title: '二级邀请记录',
+      iv_friends_title: '我邀请的好友',
+      iv_rewards_title: '邀请奖励记录',
       iv_reward_amount: '+{amount} CRLM',
       iv_reward_pending: '奖励发放中',
       iv_level_tag: 'L{level}',
@@ -87,8 +87,8 @@
       iv_invite_count: '{count}',
       iv_total_reward: '{amount} CRLM',
       iv_btn_copy_link: 'Copy link',
-      iv_friends_title: 'Level 1 Invites',
-      iv_rewards_title: 'Level 2 Invites',
+      iv_friends_title: 'My invites',
+      iv_rewards_title: 'Reward history',
       iv_reward_amount: '+{amount} CRLM',
       iv_reward_pending: 'Reward pending',
       iv_level_tag: 'L{level}',
@@ -440,134 +440,93 @@
         }
 
         return Promise.all([
-            window.supabase.from('users').select('invite_count').eq('id', userId).single(),
-            window.supabase.from('users').select('id, username, email, created_at').eq('inviter_id', userId).order('created_at', { ascending: false }),
-            window.supabase.from('checkins').select('*').eq('user_id', userId).order('checkin_date', { ascending: false }).limit(50),
-            fetchInviteLeaderboard(50),
-            fetchMyInviteRank(userId)
-          ]).then(function (pageResults) {
-            var userResult = pageResults[0];
-            var level1UsersResult = pageResults[1];
-            var checkinsResult = pageResults[2];
-            var leaderboard = pageResults[3];
-            var myRank = pageResults[4];
+          window.supabase.from('users').select('invite_count').eq('id', userId).single(),
+          window.supabase.from('invites').select('*').eq('inviter_id', userId).order('created_at', { ascending: false }),
+          window.supabase.from('checkins').select('*').eq('user_id', userId).order('checkin_date', { ascending: false }).limit(50),
+          fetchInviteLeaderboard(50),
+          fetchMyInviteRank(userId)
+        ]).then(function (pageResults) {
+          var userResult = pageResults[0];
+          var invitesResult = pageResults[1];
+          var checkinsResult = pageResults[2];
+          var leaderboard = pageResults[3];
+          var myRank = pageResults[4];
 
-            if (userResult.error || !userResult.data) {
-              return { loggedIn: false, settings: settings, showInviteLeaderboard: showInviteLeaderboard };
-            }
+          if (userResult.error || !userResult.data) {
+            return { loggedIn: false, settings: settings, showInviteLeaderboard: showInviteLeaderboard };
+          }
 
-            var level1Users = level1UsersResult.error ? [] : (level1UsersResult.data || []);
-            var level1UserIds = level1Users.map(function (u) { return u.id; }).filter(Boolean);
+          var inviteRows = invitesResult.error ? [] : (invitesResult.data || []);
+          var level1Rows = inviteRows.filter(function (row) { return Number(row.level) === 1; });
+          var inviteeIds = level1Rows.map(function (row) { return row.invitee_id; }).filter(Boolean);
+          var uniqueIds = inviteeIds.filter(function (id, index) { return inviteeIds.indexOf(id) === index; });
 
-            var buildInviteData = async function () {
-              console.log('[Invite] 开始构建邀请数据');
-              
-              var level1ApprovedMap = {};
-              if (level1UserIds.length) {
-                console.log('[Invite] 查询一级邀请用户的approved记录, userIds:', level1UserIds);
-                var level1Submissions = await window.supabase
-                  .from('submissions')
-                  .select('user_id')
-                  .in('user_id', level1UserIds)
-                  .eq('status', 'approved');
-                
-                if (!level1Submissions.error && level1Submissions.data) {
-                  level1Submissions.data.forEach(function (s) {
-                    level1ApprovedMap[s.user_id] = true;
-                  });
-                  console.log('[Invite] 一级邀请用户approved记录查询完成, 已激活用户:', Object.keys(level1ApprovedMap));
-                } else {
-                  console.log('[Invite] 一级邀请用户approved记录查询失败:', level1Submissions.error);
-                }
-              } else {
-                console.log('[Invite] 没有一级邀请用户');
-              }
-
-              var level2Users = [];
-              var level2ApprovedMap = {};
-              if (level1UserIds.length) {
-                console.log('[Invite] 查询二级邀请用户, level1UserIds:', level1UserIds);
-                var level2Result = await window.supabase
-                  .from('users')
-                  .select('id, username, email, created_at, inviter_id')
-                  .in('inviter_id', level1UserIds)
-                  .order('created_at', { ascending: false });
-                
-                level2Users = level2Result.error ? [] : (level2Result.data || []);
-                console.log('[Invite] 二级邀请用户查询完成, count:', level2Users.length);
-                
-                var level2UserIds = level2Users.map(function (u) { return u.id; }).filter(Boolean);
-                if (level2UserIds.length) {
-                  console.log('[Invite] 查询二级邀请用户的approved记录, userIds:', level2UserIds);
-                  var level2Submissions = await window.supabase
-                    .from('submissions')
-                    .select('user_id')
-                    .in('user_id', level2UserIds)
-                    .eq('status', 'approved');
-                  
-                  if (!level2Submissions.error && level2Submissions.data) {
-                    level2Submissions.data.forEach(function (s) {
-                      level2ApprovedMap[s.user_id] = true;
-                    });
-                    console.log('[Invite] 二级邀请用户approved记录查询完成, 已激活用户:', Object.keys(level2ApprovedMap));
-                  } else {
-                    console.log('[Invite] 二级邀请用户approved记录查询失败:', level2Submissions.error);
-                  }
-                }
-              } else {
-                console.log('[Invite] 没有一级邀请用户, 跳过二级邀请查询');
-              }
-
-              var level1Reward = Number(settings.invite_level1_reward) || INVITE_SETTINGS_DEFAULTS.invite_level1_reward;
-              var level2Reward = Number(settings.invite_level2_reward) || INVITE_SETTINGS_DEFAULTS.invite_level2_reward;
-              console.log('[Invite] 奖励金额 - 一级:', level1Reward, ', 二级:', level2Reward);
-
-              var level1Records = level1Users.map(function (user) {
-                var isApproved = level1ApprovedMap[user.id];
+            var buildData = function (userMap) {
+              var friends = level1Rows.map(function (row) {
+                var user = userMap[row.invitee_id] || {};
                 return {
-                  id: user.id,
                   username: user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'Unknown'),
-                  registeredAt: user.created_at ? String(user.created_at).slice(0, 10) : '—',
-                  reward: isApproved ? level1Reward : 0,
-                  isActivated: isApproved
+                  registeredAt: row.created_at ? String(row.created_at).slice(0, 10) : '—',
+                  reward: Number(row.reward_amount) || 0,
+                  isActivated: Boolean(row.is_activated) // 新增：激活状态
                 };
               });
 
-              var level2Records = level2Users.map(function (user) {
-                var isApproved = level2ApprovedMap[user.id];
+              var rewardRecords = inviteRows.map(function (row) {
+                var user = userMap[row.invitee_id] || {};
                 return {
-                  id: user.id,
-                  username: user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'Unknown'),
-                  registeredAt: user.created_at ? String(user.created_at).slice(0, 10) : '—',
-                  reward: isApproved ? level2Reward : 0,
-                  isActivated: isApproved
+                  level: Number(row.level) || 1,
+                  username: user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'User'),
+                  reward: Number(row.reward_amount) || 0,
+                  createdAt: row.created_at ? String(row.created_at).slice(0, 16).replace('T', ' ') : '—',
+                  isActivated: Boolean(row.is_activated) // 新增：激活状态
                 };
               });
 
-              console.log('[Invite] 一级邀请记录列表:', JSON.stringify(level1Records));
-              console.log('[Invite] 二级邀请记录列表:', JSON.stringify(level2Records));
-
-              var totalReward = level1Records.reduce(function (sum, r) { return sum + r.reward; }, 0) +
-                               level2Records.reduce(function (sum, r) { return sum + r.reward; }, 0);
+              // 新增：计算各级别的已激活人数
+              var level1ActivatedCount = inviteRows.filter(function (row) {
+                return Number(row.level) === 1 && Boolean(row.is_activated);
+              }).length;
+              var level2ActivatedCount = inviteRows.filter(function (row) {
+                return Number(row.level) === 2 && Boolean(row.is_activated);
+              }).length;
 
               return {
                 loggedIn: true,
                 userId: userId,
                 settings: settings,
                 showInviteLeaderboard: showInviteLeaderboard,
-                inviteCount: Number(userResult.data.invite_count) || level1Users.length,
-                totalReward: totalReward,
-                level1ActivatedCount: level1Records.filter(function (r) { return r.isActivated; }).length,
-                level2ActivatedCount: level2Records.filter(function (r) { return r.isActivated; }).length,
-                level1Records: level1Records,
-                level2Records: level2Records,
+                inviteCount: Number(userResult.data.invite_count) || friends.length,
+                totalReward: inviteRows.reduce(function (sum, row) {
+                  return sum + (Number(row.reward_amount) || 0);
+                }, 0),
+                level1ActivatedCount: level1ActivatedCount, // 新增：一级已激活人数
+                level2ActivatedCount: level2ActivatedCount, // 新增：二级已激活人数
+                friends: friends,
+                rewardRecords: rewardRecords,
                 miningRecords: checkinsResult.error ? [] : (checkinsResult.data || []),
                 leaderboard: leaderboard || [],
                 myRank: myRank
               };
             };
 
-            return buildInviteData();
+          if (!uniqueIds.length) {
+            return buildData({});
+          }
+
+          return window.supabase
+            .from('users')
+            .select('id, username, email')
+            .in('id', uniqueIds)
+            .then(function (usersResult) {
+              var userMap = {};
+              if (!usersResult.error && usersResult.data) {
+                usersResult.data.forEach(function (user) {
+                  userMap[user.id] = user;
+                });
+              }
+              return buildData(userMap);
+            });
         });
       })
       .catch(function (err) {
@@ -761,22 +720,24 @@
     }
 
     if (inviteRecordsTab === 'friends') {
-      var level1Records = inviteData.level1Records || [];
-      if (!level1Records.length) {
+      var friends = inviteData.friends || [];
+      if (!friends.length) {
         listEl.innerHTML = '<li class="invite-empty-hint">' + ivT('iv_no_friends') + '</li>';
         return;
       }
 
-      listEl.innerHTML = level1Records.map(function (record) {
-        var safeName = typeof escapeHtml === 'function' ? escapeHtml(record.username) : record.username;
+      listEl.innerHTML = friends.map(function (friend) {
+        var safeName = typeof escapeHtml === 'function' ? escapeHtml(friend.username) : friend.username;
         var rewardText;
         var rewardClass;
         
-        if (record.isActivated) {
-          rewardText = ivT('iv_reward_amount', { amount: formatNumber(record.reward) });
+        if (friend.isActivated) {
+          // 已激活：显示金色奖励金额
+          rewardText = ivT('iv_reward_amount', { amount: formatNumber(friend.reward) });
           rewardClass = 'iv-record-reward iv-record-reward-activated';
         } else {
-          rewardText = '未激活';
+          // 未激活：显示灰色"奖励发放中"
+          rewardText = ivT('iv_reward_pending');
           rewardClass = 'iv-record-reward iv-record-reward-pending';
         }
         
@@ -784,7 +745,7 @@
           '<li class="invite-record-item">' +
             '<div class="iv-lb-info">' +
               '<span class="iv-lb-name">' + safeName + '</span>' +
-              '<span class="iv-lb-meta">' + record.registeredAt + '</span>' +
+              '<span class="iv-lb-meta">' + friend.registeredAt + '</span>' +
             '</div>' +
             '<span class="' + rewardClass + '">' + rewardText + '</span>' +
           '</li>'
@@ -793,33 +754,23 @@
       return;
     }
 
-    var level2Records = inviteData.level2Records || [];
-    if (!level2Records.length) {
+    var rewards = inviteData.rewardRecords || [];
+    if (!rewards.length) {
       listEl.innerHTML = '<li class="invite-empty-hint">' + ivT('iv_no_rewards') + '</li>';
       return;
     }
 
-    listEl.innerHTML = level2Records.map(function (record) {
+    listEl.innerHTML = rewards.map(function (record) {
       var safeName = typeof escapeHtml === 'function' ? escapeHtml(record.username) : record.username;
-      var rewardText;
-      var rewardClass;
-      
-      if (record.isActivated) {
-        rewardText = ivT('iv_reward_amount', { amount: formatNumber(record.reward) });
-        rewardClass = 'iv-record-reward iv-record-reward-activated';
-      } else {
-        rewardText = '未激活';
-        rewardClass = 'iv-record-reward iv-record-reward-pending';
-      }
-      
+      var levelClass = record.level === 2 ? 'iv-record-level-2' : 'iv-record-level-1';
       return (
         '<li class="invite-record-item">' +
-          '<span class="iv-record-level iv-record-level-2">' + ivT('iv_level_tag', { level: 2 }) + '</span>' +
+          '<span class="iv-record-level ' + levelClass + '">' + ivT('iv_level_tag', { level: record.level }) + '</span>' +
           '<div class="iv-lb-info">' +
             '<span class="iv-lb-name">' + safeName + '</span>' +
-            '<span class="iv-lb-meta">' + record.registeredAt + '</span>' +
+            '<span class="iv-lb-meta">' + record.createdAt + '</span>' +
           '</div>' +
-          '<span class="' + rewardClass + '">' + rewardText + '</span>' +
+          '<span class="iv-record-reward">' + ivT('iv_reward_amount', { amount: formatNumber(record.reward) }) + '</span>' +
         '</li>'
       );
     }).join('');
@@ -1004,167 +955,4 @@
       setTimeout(handleInviteRoute, 0);
     });
   }
-
-  async function createMockInviteData() {
-    if (!window.supabase) {
-      console.error('mock数据创建失败：Supabase未初始化');
-      return;
-    }
-
-    try {
-      var userA = {
-        id: 'mock_user_a_' + Date.now(),
-        username: 'MockUserA',
-        email: 'mock_a@test.com',
-        inviter_id: null,
-        crlm_balance: 1000,
-        level: 2,
-        invite_count: 0,
-        created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
-      };
-
-      var userB = {
-        id: 'mock_user_b_' + Date.now(),
-        username: 'MockUserB',
-        email: 'mock_b@test.com',
-        inviter_id: userA.id,
-        crlm_balance: 500,
-        level: 2,
-        invite_count: 0,
-        created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
-      };
-
-      var userC = {
-        id: 'mock_user_c_' + Date.now(),
-        username: 'MockUserC',
-        email: 'mock_c@test.com',
-        inviter_id: userB.id,
-        crlm_balance: 100,
-        level: 1,
-        invite_count: 0,
-        created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
-      };
-
-      var insertAResult = await window.supabase.from('users').insert([userA]);
-      if (insertAResult.error) {
-        console.error('创建mock用户A失败:', insertAResult.error);
-        return;
-      }
-      console.log('创建mock用户A成功:', userA.id);
-
-      var insertBResult = await window.supabase.from('users').insert([userB]);
-      if (insertBResult.error) {
-        console.error('创建mock用户B失败:', insertBResult.error);
-        return;
-      }
-      console.log('创建mock用户B成功:', userB.id, '(inviter:', userB.inviter_id + ')');
-
-      var insertCResult = await window.supabase.from('users').insert([userC]);
-      if (insertCResult.error) {
-        console.error('创建mock用户C失败:', insertCResult.error);
-        return;
-      }
-      console.log('创建mock用户C成功:', userC.id, '(inviter:', userC.inviter_id + ')');
-
-      var taskResult = await window.supabase.from('tasks').select('id').limit(1).single();
-      var taskId = taskResult.data ? taskResult.data.id : null;
-
-      var submissionC = {
-        id: 'mock_sub_c_' + Date.now(),
-        task_id: taskId,
-        user_id: userC.id,
-        status: 'approved',
-        description: 'mock submission for test',
-        submitted_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
-        reviewed_at: new Date().toISOString(),
-        created_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString()
-      };
-
-      var insertSubResult = await window.supabase.from('submissions').insert([submissionC]);
-      if (insertSubResult.error) {
-        console.error('创建mock提交记录失败:', insertSubResult.error);
-        return;
-      }
-      console.log('创建mock提交记录成功:', submissionC.id, '(user:', userC.id + ', status: approved)');
-
-      console.log('\n=== Mock数据创建完成 ===');
-      console.log('用户A:', userA.id, '-', userA.username);
-      console.log('用户B:', userB.id, '-', userB.username, '(邀请人: A)');
-      console.log('用户C:', userC.id, '-', userC.username, '(邀请人: B)');
-      console.log('C的提交记录:', submissionC.id, '(已审核通过)');
-      console.log('\n下一步测试：调用 testInviteRewards("' + userC.id + '", "' + submissionC.id + '")');
-
-      return {
-        userA: userA,
-        userB: userB,
-        userC: userC,
-        submission: submissionC
-      };
-    } catch (e) {
-      console.error('创建mock数据异常:', e);
-    }
-  }
-
-  async function testInviteRewards(userId, submissionId) {
-    if (!window.supabase) {
-      console.error('测试失败：Supabase未初始化');
-      return;
-    }
-
-    console.log('\n=== 开始测试邀请奖励发放 ===');
-    console.log('测试用户ID:', userId);
-    console.log('提交记录ID:', submissionId);
-
-    var beforeB = await window.supabase.from('users').select('id, username, crlm_balance').eq('id', userId).maybeSingle();
-    if (!beforeB.error && beforeB.data) {
-      console.log('测试用户当前余额:', beforeB.data.username, '-', beforeB.data.crlm_balance, 'CRLM');
-    }
-
-    var inviterResult = await window.supabase.from('users').select('id, username, inviter_id').eq('id', userId).maybeSingle();
-    if (!inviterResult.error && inviterResult.data) {
-      console.log('测试用户的邀请人:', inviterResult.data.inviter_id);
-    }
-
-    if (typeof window.coinrealmProcessInviteRewards === 'function') {
-      await window.coinrealmProcessInviteRewards(submissionId, userId);
-      console.log('邀请奖励发放函数调用完成');
-    } else {
-      console.error('processInviteRewards函数未找到');
-      return;
-    }
-
-    console.log('\n=== 测试结果检查 ===');
-    var userBResult = await window.supabase.from('users').select('id, username, crlm_balance').eq('id', userId).maybeSingle();
-    if (!userBResult.error && userBResult.data) {
-      console.log('测试用户余额:', userBResult.data.username, '-', userBResult.data.crlm_balance, 'CRLM');
-    }
-
-    var inviterId = inviterResult.data ? inviterResult.data.inviter_id : null;
-    if (inviterId) {
-      var userAResult = await window.supabase.from('users').select('id, username, crlm_balance').eq('id', inviterId).maybeSingle();
-      if (!userAResult.error && userAResult.data) {
-        console.log('一级邀请人余额:', userAResult.data.username, '-', userAResult.data.crlm_balance, 'CRLM');
-      }
-
-      var level2InviterResult = await window.supabase.from('users').select('id, username, inviter_id, crlm_balance').eq('id', inviterId).maybeSingle();
-      if (!level2InviterResult.error && level2InviterResult.data && level2InviterResult.data.inviter_id) {
-        var level2Result = await window.supabase.from('users').select('id, username, crlm_balance').eq('id', level2InviterResult.data.inviter_id).maybeSingle();
-        if (!level2Result.error && level2Result.data) {
-          console.log('二级邀请人余额:', level2Result.data.username, '-', level2Result.data.crlm_balance, 'CRLM');
-        }
-      }
-    }
-
-    var inviteRecords = await window.supabase.from('invites').select('*').eq('invitee_id', userId);
-    if (!inviteRecords.error && inviteRecords.data) {
-      console.log('\n邀请奖励记录:');
-      inviteRecords.data.forEach(function (record) {
-        console.log('  Level', record.level, '- Amount:', record.reward_amount, '- Activated:', record.is_activated);
-      });
-    }
-  }
-
-  window.coinrealmCreateMockInviteData = createMockInviteData;
-  window.coinrealmTestInviteRewards = testInviteRewards;
-
 })();

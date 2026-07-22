@@ -930,19 +930,8 @@ window.invalidateAdsConfigCache = invalidateAdsConfigCache;
 
 (function captureInviteRefFromUrl() {
   try {
-    var ref = null;
-    
     var params = new URLSearchParams(window.location.search);
-    ref = params.get('ref');
-    
-    if (!ref) {
-      var hashParts = window.location.hash.replace(/^#/, '').split('?');
-      if (hashParts.length > 1) {
-        var hashQueryParams = new URLSearchParams(hashParts[1]);
-        ref = hashQueryParams.get('ref');
-      }
-    }
-    
+    var ref = params.get('ref');
     if (ref) {
       var inviterId = String(ref).trim();
       localStorage.setItem('inviter_id', inviterId);
@@ -956,8 +945,6 @@ window.invalidateAdsConfigCache = invalidateAdsConfigCache;
     console.warn('捕获邀请 ref 失败:', captureErr);
   }
 })();
-
-window.coinrealmCaptureInviteRef = captureInviteRefFromUrl;
 
 // 页面加载时检查 localStorage 中的邀请信息
 (function checkInviteInfoOnLoad() {
@@ -1237,11 +1224,13 @@ async function processInvite(newUserId) {
   
   if (!inviterId) {
     console.log('无邀请人信息，跳过邀请');
+    clearStoredInviterId();
     return false;
   }
 
   if (String(inviterId) === String(newUserId)) {
     console.log('邀请处理-processInvite 失败：不能邀请自己');
+    clearStoredInviterId();
     return false;
   }
 
@@ -1332,6 +1321,7 @@ async function processPendingInviteRegistration() {
   
   if (!window.supabase) {
     console.log('邀请处理-processPendingInviteRegistration 失败：没有 supabase');
+    clearStoredInviterId();
     return;
   }
 
@@ -1340,6 +1330,7 @@ async function processPendingInviteRegistration() {
   
   if (!inviterId) {
     console.log('无邀请人信息，跳过邀请');
+    clearStoredInviterId();
     return;
   }
 
@@ -1348,6 +1339,7 @@ async function processPendingInviteRegistration() {
   
   if (!userId) {
     console.log('邀请处理-processPendingInviteRegistry 失败：没有找到当前用户ID');
+    clearStoredInviterId();
     return;
   }
 
@@ -1360,6 +1352,7 @@ async function processPendingInviteRegistration() {
 
     if (!existingResult.error && existingResult.data && existingResult.data.length) {
       console.log('邀请处理-processPendingInviteRegistry：用户已经有邀请关系');
+      clearStoredInviterId();
       return;
     }
 
@@ -1368,14 +1361,18 @@ async function processPendingInviteRegistration() {
     
     if (!inviter || inviter.id === userId) {
       console.log('邀请处理-processPendingInviteRegistry：邀请者无效或不能邀请自己');
+      clearStoredInviterId();
       return;
     }
 
     console.log('邀请处理-processPendingInviteRegistry 开始调用 processInvite');
     await processInvite(userId);
     console.log('邀请处理-processPendingInviteRegistry processInvite 完成');
+    clearStoredInviterId();
   } catch (pendingErr) {
     console.warn('处理待处理邀请失败:', pendingErr);
+    // 无论成功或失败，都清除 localStorage 中的 inviter_id，避免重复处理
+    clearStoredInviterId();
   }
 }
 
@@ -3854,163 +3851,6 @@ async function upgradeUserLevelOnTaskApproved(userId) {
     }
 }
 
-async function processInviteRewards(submissionId, userId) {
-    console.log('[InviteReward] ===== 开始处理邀请奖励 =====');
-    console.log('[InviteReward] submissionId:', submissionId);
-    console.log('[InviteReward] userId (被邀请人):', userId);
-
-    if (!window.supabase || !userId) {
-        console.log('[InviteReward] 跳过: Supabase未初始化或userId为空');
-        return;
-    }
-
-    var userResult = await window.supabase
-        .from('users')
-        .select('id, inviter_id')
-        .eq('id', userId)
-        .maybeSingle();
-
-    if (userResult.error || !userResult.data) {
-        console.log('[InviteReward] 跳过: 查询用户信息失败, error:', userResult.error);
-        return;
-    }
-
-    var inviterId = userResult.data.inviter_id;
-    console.log('[InviteReward] 一级邀请人(inviter_id):', inviterId);
-
-    if (!inviterId) {
-        console.log('[InviteReward] 跳过: 用户没有邀请人');
-        return;
-    }
-
-    var alreadyRewardedResult = await window.supabase
-        .from('invites')
-        .select('id')
-        .eq('invitee_id', userId)
-        .eq('level', 1);
-
-    console.log('[InviteReward] 检查一级奖励是否已发放 - 查询结果:', alreadyRewardedResult.data);
-
-    if (!alreadyRewardedResult.error && alreadyRewardedResult.data && alreadyRewardedResult.data.length > 0) {
-        console.log('[InviteReward] 跳过: 一级奖励已发放过');
-        return;
-    }
-
-    console.log('[InviteReward] 一级奖励未发放, 开始发放流程');
-
-    var settings = await fetchInviteSettings();
-    var level1Reward = Number(settings.invite_level1_reward) || INVITE_SETTINGS_DEFAULTS.invite_level1_reward;
-    var level2Reward = Number(settings.invite_level2_reward) || INVITE_SETTINGS_DEFAULTS.invite_level2_reward;
-    console.log('[InviteReward] 奖励金额 - 一级:', level1Reward, ', 二级:', level2Reward);
-
-    var inviterBalanceResult = await window.supabase
-        .from('users')
-        .select('id, username, crlm_balance')
-        .eq('id', inviterId)
-        .maybeSingle();
-
-    if (inviterBalanceResult.error || !inviterBalanceResult.data) {
-        console.error('[InviteReward] 失败: 查询一级邀请人余额失败, error:', inviterBalanceResult.error);
-        return;
-    }
-
-    var inviterUsername = inviterBalanceResult.data.username;
-    var inviterCurrentBalance = Number(inviterBalanceResult.data.crlm_balance) || 0;
-    console.log('[InviteReward] 一级邀请人信息:', inviterUsername, '(', inviterId, '), 当前余额:', inviterCurrentBalance);
-
-    var inviterPatch = { crlm_balance: inviterCurrentBalance + level1Reward };
-    console.log('[InviteReward] 准备增加一级邀请人余额:', inviterCurrentBalance, '+', level1Reward, '=', inviterCurrentBalance + level1Reward);
-    
-    var inviterUpdate = await window.supabase.from('users').update(inviterPatch).eq('id', inviterId);
-    
-    if (inviterUpdate.error) {
-        console.error('[InviteReward] 失败: 增加一级邀请人余额失败:', inviterUpdate.error);
-        return;
-    }
-
-    console.log('[InviteReward] 成功: 一级邀请人余额已更新');
-
-    await window.supabase.from('invites').insert({
-        inviter_id: inviterId,
-        invitee_id: userId,
-        level: 1,
-        reward_amount: level1Reward,
-        is_activated: true,
-        created_at: new Date().toISOString()
-    });
-
-    console.log('[InviteReward] 成功: 一级邀请记录已写入invites表');
-    console.log('[InviteReward] 一级奖励发放完成 - 金额:', level1Reward, ', 邀请人:', inviterUsername);
-
-    var inviterUserResult = await window.supabase
-        .from('users')
-        .select('id, username, inviter_id')
-        .eq('id', inviterId)
-        .maybeSingle();
-
-    if (!inviterUserResult.error && inviterUserResult.data && inviterUserResult.data.inviter_id) {
-        var level2InviterId = inviterUserResult.data.inviter_id;
-        var level2InviterUsername = inviterUserResult.data.username;
-        console.log('[InviteReward] 二级邀请人存在 - id:', level2InviterId, ', username:', level2InviterUsername);
-        
-        var level2AlreadyRewarded = await window.supabase
-            .from('invites')
-            .select('id')
-            .eq('invitee_id', userId)
-            .eq('level', 2);
-
-        console.log('[InviteReward] 检查二级奖励是否已发放 - 查询结果:', level2AlreadyRewarded.data);
-
-        if (!level2AlreadyRewarded.error && (!level2AlreadyRewarded.data || level2AlreadyRewarded.data.length === 0)) {
-            console.log('[InviteReward] 二级奖励未发放, 开始发放流程');
-
-            var level2BalanceResult = await window.supabase
-                .from('users')
-                .select('id, username, crlm_balance')
-                .eq('id', level2InviterId)
-                .maybeSingle();
-
-            if (!level2BalanceResult.error && level2BalanceResult.data) {
-                var level2Username = level2BalanceResult.data.username;
-                var level2CurrentBalance = Number(level2BalanceResult.data.crlm_balance) || 0;
-                console.log('[InviteReward] 二级邀请人信息:', level2Username, '(', level2InviterId, '), 当前余额:', level2CurrentBalance);
-
-                var level2Patch = { crlm_balance: level2CurrentBalance + level2Reward };
-                console.log('[InviteReward] 准备增加二级邀请人余额:', level2CurrentBalance, '+', level2Reward, '=', level2CurrentBalance + level2Reward);
-                
-                var level2Update = await window.supabase.from('users').update(level2Patch).eq('id', level2InviterId);
-                
-                if (!level2Update.error) {
-                    await window.supabase.from('invites').insert({
-                        inviter_id: level2InviterId,
-                        invitee_id: userId,
-                        level: 2,
-                        reward_amount: level2Reward,
-                        is_activated: true,
-                        created_at: new Date().toISOString()
-                    });
-
-                    console.log('[InviteReward] 成功: 二级邀请人余额已更新');
-                    console.log('[InviteReward] 成功: 二级邀请记录已写入invites表');
-                    console.log('[InviteReward] 二级奖励发放完成 - 金额:', level2Reward, ', 邀请人:', level2Username);
-                } else {
-                    console.error('[InviteReward] 失败: 增加二级邀请人余额失败:', level2Update.error);
-                }
-            } else {
-                console.error('[InviteReward] 失败: 查询二级邀请人余额失败:', level2BalanceResult.error);
-            }
-        } else {
-            console.log('[InviteReward] 跳过: 二级奖励已发放过');
-        }
-    } else {
-        console.log('[InviteReward] 跳过: 一级邀请人没有上级, 不发放二级奖励');
-    }
-
-    console.log('[InviteReward] ===== 邀请奖励处理结束 =====');
-}
-
-window.coinrealmProcessInviteRewards = processInviteRewards;
-
 async function checkTaskRewardDuplicate(taskId, userId) {
     if (!window.supabase || !taskId || !userId) {
         return { alreadyRewarded: false };
@@ -4365,43 +4205,21 @@ async function submitTaskProofSubmission(options) {
     var requireDescription = options.requireDescription !== false;
     var path = options.path || 'submit-task-proof';
 
-    console.log('[SubmitProof] ===== 开始提交凭证(submitTaskProofSubmission) =====');
-    console.log('[SubmitProof] taskId:', taskId);
-    console.log('[SubmitProof] userId:', userId);
-    console.log('[SubmitProof] submission:', submission ? JSON.stringify(submission) : 'null');
-    console.log('[SubmitProof] submission.id:', submission ? submission.id : 'N/A');
-    console.log('[SubmitProof] submission.status:', submission ? submission.status : 'N/A');
-    console.log('[SubmitProof] window.supabase:', !!window.supabase);
-
     if (!window.supabase || !taskId || !userId || !submission || !submission.id) {
-        console.log('[SubmitProof] 条件判断：缺少必要参数');
-        console.log('[SubmitProof]   - window.supabase:', !!window.supabase);
-        console.log('[SubmitProof]   - taskId:', !!taskId);
-        console.log('[SubmitProof]   - userId:', !!userId);
-        console.log('[SubmitProof]   - submission:', !!submission);
-        console.log('[SubmitProof]   - submission.id:', submission ? submission.id : 'N/A');
         return { ok: false, error: 'missing_params' };
     }
 
     var proofType = options.proofType || 'screenshot';
-    console.log('[SubmitProof] proofType:', proofType);
-    console.log('[SubmitProof] requireDescription:', requireDescription);
-    console.log('[SubmitProof] description:', description ? '有内容' : '空');
-    console.log('[SubmitProof] screenshotUrls.length:', screenshotUrls.length);
 
     if (proofType === 'text') {
-        console.log('[SubmitProof] 条件判断：文本类型需要描述');
         if (!description) {
-            console.log('[SubmitProof] 条件判断：文本类型但描述为空');
             return { ok: false, error: 'description_required' };
         }
     } else if (requireDescription && !description) {
-        console.log('[SubmitProof] 条件判断：需要描述但描述为空');
         return { ok: false, error: 'description_required' };
     }
 
     if (proofType === 'screenshot' && !screenshotUrls.length) {
-        console.log('[SubmitProof] 条件判断：截图类型但没有上传截图');
         return { ok: false, error: 'screenshot_required' };
     }
 
@@ -4409,32 +4227,18 @@ async function submitTaskProofSubmission(options) {
         description = '（详情页提交凭证）';
     }
 
-    console.log('[SubmitProof] 条件判断：submission.status === "approved"', submission.status === 'approved');
-
     if (submission.status === 'approved') {
-        console.log('[SubmitProof] 条件判断：已通过审核，禁止重复提交');
         return { ok: false, error: 'already_approved' };
     }
 
-    console.log('[SubmitProof] 条件判断：submission.status === "submitted"', submission.status === 'submitted');
-
     if (submission.status === 'submitted') {
-        console.log('[SubmitProof] 条件判断：已提交等待审核，禁止重复提交');
         return { ok: false, error: 'already_submitted', submissionStatus: 'submitted' };
     }
 
-    console.log('[SubmitProof] 条件判断：isSubmissionReadyToSubmitProof()', isSubmissionReadyToSubmitProof(submission));
-    console.log('[SubmitProof] 条件判断：isSubmissionWaitingReviewProof()', isSubmissionWaitingReviewProof(submission));
-
     if (!isSubmissionReadyToSubmitProof(submission)) {
-        console.log('[SubmitProof] 条件判断：提交状态不允许提交');
-        console.log('[SubmitProof]   - submission.status:', submission.status);
-        console.log('[SubmitProof]   - submission.submitted_at:', submission.submitted_at);
         if (isSubmissionWaitingReviewProof(submission)) {
-            console.log('[SubmitProof]   - 原因：正在等待审核');
             return { ok: false, error: 'waiting_review', submissionStatus: submission.status };
         }
-        console.log('[SubmitProof]   - 原因：状态不可提交');
         return { ok: false, error: 'not_ready' };
     }
 
@@ -4601,7 +4405,6 @@ window.coinrealmValidateProofScreenshotFile = validateProofScreenshotFile;
 window.coinrealmUploadProofScreenshot = uploadProofScreenshot;
 window.coinrealmUploadProofScreenshotWithProgress = uploadProofScreenshotWithProgress;
 window.coinrealmSubmitTaskProof = submitTaskProofSubmission;
-console.log('[app.js] coinrealmSubmitTaskProof exposed:', typeof window.coinrealmSubmitTaskProof);
 window.coinrealmIsSubmissionReadyToSubmitProof = isSubmissionReadyToSubmitProof;
 window.coinrealmIsSubmissionWaitingReviewProof = isSubmissionWaitingReviewProof;
 window.coinrealmProcessTaskTimeouts = processTaskTimeouts;

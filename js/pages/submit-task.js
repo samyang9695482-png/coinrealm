@@ -826,13 +826,6 @@
             return;
           }
 
-          console.log('[Submit] ===== 开始提交凭证 =====');
-          console.log('[Submit] 当前用户ID:', userId);
-          console.log('[Submit] 任务ID:', activeSubmitContext.taskId);
-          console.log('[Submit] 当前提交记录:', currentSubmissionRecord ? JSON.stringify(currentSubmissionRecord) : 'null');
-          console.log('[Submit] 提交记录是否存在:', !!currentSubmissionRecord);
-          console.log('[Submit] 提交记录状态:', currentSubmissionRecord ? currentSubmissionRecord.status : 'N/A');
-
           var targetSubmission = currentSubmissionRecord;
           if (!targetSubmission || String(targetSubmission.task_id) !== String(activeSubmitContext.taskId)) {
             if (typeof window.coinrealmLoadUserSubmissionForTask === 'function') {
@@ -862,7 +855,6 @@
           }
 
           if (targetSubmission.status === 'approved') {
-            console.log('[Submit] 条件判断：已通过审核，禁止重复提交');
             alert(stT('st_alert_already_rewarded'));
             submitState = 'completed';
             updatePageStateUI();
@@ -870,24 +862,24 @@
           }
 
           if (targetSubmission.status === 'submitted') {
-            console.log('[Submit] 条件判断：已提交等待审核，禁止重复提交');
-            console.log('[Submit]   - taskId:', activeSubmitContext.taskId);
-            console.log('[Submit]   - userId:', userId);
-            console.log('[Submit]   - submissionId:', targetSubmission.id);
+            console.log('提交页：已提交等待审核，禁止重复提交', {
+              taskId: activeSubmitContext.taskId,
+              userId: userId,
+              submissionId: targetSubmission.id,
+              status: 'submitted'
+            });
             currentSubmissionRecord = targetSubmission;
             submitState = 'waiting';
             updatePageStateUI();
             return;
           }
 
-          console.log('[Submit] 条件判断：isSubmissionReadyToSubmit()', isSubmissionReadyToSubmit(targetSubmission));
-          console.log('[Submit] 条件判断：isSubmissionWaitingReview()', isSubmissionWaitingReview(targetSubmission));
-
           if (!isSubmissionReadyToSubmit(targetSubmission)) {
-            console.log('[Submit] 当前状态不可提交，原因：');
-            console.log('[Submit]   - submission.status:', targetSubmission.status);
-            console.log('[Submit]   - submission.submitted_at:', targetSubmission.submitted_at);
-            console.log('[Submit]   - 是否等待审核:', isSubmissionWaitingReview(targetSubmission));
+            console.log('提交页：当前状态不可提交', {
+              taskId: activeSubmitContext.taskId,
+              userId: userId,
+              submission: targetSubmission
+            });
             if (isSubmissionWaitingReview(targetSubmission)) {
               submitState = 'waiting';
               currentSubmissionRecord = targetSubmission;
@@ -903,62 +895,24 @@
           });
 
           if (proofType === 'screenshot' && !screenshotUrls.length) {
-            console.log('[Submit] 条件判断：截图类型但没有上传截图');
             alert(stT('st_alert_need_image') || '请至少上传一张截图');
             return;
           }
 
           var submitResult;
-          console.log('[Submit] 条件判断：targetSubmission.status === "rejected"', targetSubmission.status === 'rejected');
-          console.log('[Submit] 条件判断：window.coinrealmSubmitTaskProof 存在', typeof window.coinrealmSubmitTaskProof === 'function');
-
           if (targetSubmission.status === 'rejected') {
-            console.log('[Submit] 执行重新提交逻辑');
-            if (typeof resubmitRegularTaskProof === 'function') {
-              submitResult = await resubmitRegularTaskProof({
-                taskId: activeSubmitContext.taskId,
-                userId: userId,
-                description: desc,
-                screenshotUrls: screenshotUrls,
-                submission: targetSubmission,
-                taskTitle: activeSubmitContext.title || '',
-                taskReward: activeSubmitContext.reward || 0,
-                proofType: proofType,
-                path: 'submit-task-page-resubmit'
-              });
-            } else {
-              console.log('[Submit] 重新提交函数不存在，使用首次提交函数');
-              if (typeof window.coinrealmSubmitTaskProof === 'function') {
-                submitResult = await window.coinrealmSubmitTaskProof({
-                  taskId: activeSubmitContext.taskId,
-                  userId: userId,
-                  description: desc,
-                  screenshotUrls: screenshotUrls,
-                  submission: targetSubmission,
-                  taskTitle: activeSubmitContext.title || '',
-                  taskReward: activeSubmitContext.reward || 0,
-                  requireDescription: proofType === 'text',
-                  proofType: proofType,
-                  path: 'submit-task-page-resubmit'
-                });
-              } else if (typeof submitTaskProofSubmission === 'function') {
-                console.log('[Submit] 使用备用提交函数 submitTaskProofSubmission');
-                submitResult = await submitTaskProofSubmission({
-                  taskId: activeSubmitContext.taskId,
-                  userId: userId,
-                  description: desc,
-                  screenshotUrls: screenshotUrls,
-                  submission: targetSubmission,
-                  taskTitle: activeSubmitContext.title || '',
-                  taskReward: activeSubmitContext.reward || 0,
-                  requireDescription: proofType === 'text',
-                  proofType: proofType,
-                  path: 'submit-task-page-resubmit'
-                });
-              }
-            }
+            submitResult = await resubmitRegularTaskProof({
+              taskId: activeSubmitContext.taskId,
+              userId: userId,
+              description: desc,
+              screenshotUrls: screenshotUrls,
+              submission: targetSubmission,
+              taskTitle: activeSubmitContext.title || '',
+              taskReward: activeSubmitContext.reward || 0,
+              proofType: proofType,
+              path: 'submit-task-page-resubmit'
+            });
           } else if (typeof window.coinrealmSubmitTaskProof === 'function') {
-            console.log('[Submit] 执行首次提交逻辑');
             submitResult = await window.coinrealmSubmitTaskProof({
               taskId: activeSubmitContext.taskId,
               userId: userId,
@@ -971,24 +925,7 @@
               proofType: proofType,
               path: 'submit-task-page'
             });
-          } else if (typeof submitTaskProofSubmission === 'function') {
-            console.log('[Submit] 执行首次提交逻辑（备用：submitTaskProofSubmission）');
-            submitResult = await submitTaskProofSubmission({
-              taskId: activeSubmitContext.taskId,
-              userId: userId,
-              description: desc,
-              screenshotUrls: screenshotUrls,
-              submission: targetSubmission,
-              taskTitle: activeSubmitContext.title || '',
-              taskReward: activeSubmitContext.reward || 0,
-              requireDescription: proofType === 'text',
-              proofType: proofType,
-              path: 'submit-task-page'
-            });
           } else {
-            console.log('[Submit] 条件判断：submit unavailable - 提交函数不存在');
-            console.log('[Submit]   - window.coinrealmSubmitTaskProof:', typeof window.coinrealmSubmitTaskProof);
-            console.log('[Submit]   - submitTaskProofSubmission:', typeof submitTaskProofSubmission);
             alert(stT('st_alert_submit_fail') + 'submit unavailable');
             return;
           }

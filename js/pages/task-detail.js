@@ -2962,27 +2962,12 @@
 
     try {
       var submitFn;
-      if (currentSubmissionRecord.status === 'rejected') {
-        if (typeof window.coinrealmResubmitRegularTaskProof === 'function') {
-          submitFn = window.coinrealmResubmitRegularTaskProof;
-        } else if (typeof resubmitRegularTaskProof === 'function') {
-          console.log('[TaskDetail] 使用备用重新提交函数 resubmitRegularTaskProof');
-          submitFn = resubmitRegularTaskProof;
-        }
-      }
-      if (!submitFn && typeof window.coinrealmSubmitTaskProof === 'function') {
+      if (currentSubmissionRecord.status === 'rejected' &&
+          typeof window.coinrealmResubmitRegularTaskProof === 'function') {
+        submitFn = window.coinrealmResubmitRegularTaskProof;
+      } else if (typeof window.coinrealmSubmitTaskProof === 'function') {
         submitFn = window.coinrealmSubmitTaskProof;
-      }
-      if (!submitFn && typeof submitTaskProofSubmission === 'function') {
-        console.log('[TaskDetail] 使用备用提交函数 submitTaskProofSubmission');
-        submitFn = submitTaskProofSubmission;
-      }
-      if (!submitFn) {
-        console.log('[TaskDetail] 提交函数不存在');
-        console.log('[TaskDetail]   - window.coinrealmSubmitTaskProof:', typeof window.coinrealmSubmitTaskProof);
-        console.log('[TaskDetail]   - submitTaskProofSubmission:', typeof submitTaskProofSubmission);
-        console.log('[TaskDetail]   - window.coinrealmResubmitRegularTaskProof:', typeof window.coinrealmResubmitRegularTaskProof);
-        console.log('[TaskDetail]   - resubmitRegularTaskProof:', typeof resubmitRegularTaskProof);
+      } else {
         alert(tdT('td_proof_alert_submit_fail') + 'submit unavailable');
         return;
       }
