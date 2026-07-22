@@ -246,86 +246,122 @@ function writeInviteBroadcast(userId, description, rewardAmount) {
 }
 
 async function activateInviteRewards(userId) {
-  if (!userId || !window.supabase) return;
-  
+  if (!userId || !window.supabase) {
+    console.log('[ActivateInvite] 跳过 - 缺少 userId 或 supabase');
+    return;
+  }
+
   try {
-    console.log('检查邀请激活状态，用户ID:', userId);
-    
+    console.log('[ActivateInvite] 开始，userId =', userId);
+
+    // 先检查用户是否有已审核通过的提交（只有完成任务才激活邀请奖励）
+    var approvedResult = await window.supabase
+      .from('submissions')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('status', 'approved')
+      .limit(1);
+
+    console.log('[ActivateInvite] 已通过提交查询 =', approvedResult.error ? '失败' : approvedResult.data);
+
+    if (approvedResult.error) {
+      console.warn('[ActivateInvite] 查询已通过提交失败:', approvedResult.error);
+      return;
+    }
+
+    if (!approvedResult.data || !approvedResult.data.length) {
+      console.log('[ActivateInvite] 用户还没有已审核通过的提交，跳过激活');
+      return;
+    }
+
+    console.log('[ActivateInvite] 用户有已通过的提交，检查待激活的邀请记录');
+
     var result = await window.supabase
       .from('invites')
       .select('*')
       .eq('invitee_id', userId)
       .eq('is_activated', false);
-    
-    if (result.error || !result.data || !result.data.length) {
-      console.log('没有需要激活的邀请记录');
+
+    console.log('[ActivateInvite] 待激活邀请记录查询 =', result.error ? '失败' : result.data);
+
+    if (result.error) {
+      console.warn('[ActivateInvite] 查询邀请记录失败（可能是 RLS 策略阻止）:', result.error);
       return;
     }
-    
-    console.log('找到需要激活的邀请记录:', result.data.length);
-    
+
+    if (!result.data || !result.data.length) {
+      console.log('[ActivateInvite] 没有需要激活的邀请记录');
+      return;
+    }
+
+    console.log('[ActivateInvite] 找到', result.data.length, '条需要激活的邀请记录');
+
     var settings = await fetchInviteSettings();
     var level1Reward = Number(settings.invite_level1_reward) || INVITE_SETTINGS_DEFAULTS.invite_level1_reward;
     var level2Reward = Number(settings.invite_level2_reward) || INVITE_SETTINGS_DEFAULTS.invite_level2_reward;
-    
+
     for (var i = 0; i < result.data.length; i++) {
       var invite = result.data[i];
       var inviterId = invite.inviter_id;
       var level = invite.level;
       var rewardAmount = level === 1 ? level1Reward : level2Reward;
-      
-      console.log('激活邀请记录:', invite.id, '邀请人:', inviterId, '级别:', level, '奖励:', rewardAmount);
-      
+
+      console.log('[ActivateInvite] 激活邀请记录:', invite.id, '邀请人:', inviterId, '级别:', level, '奖励:', rewardAmount);
+
       var inviterResult = await window.supabase
         .from('users')
         .select('id, crlm_balance, invite_count, username')
         .eq('id', inviterId)
         .maybeSingle();
-      
+
       if (inviterResult.error || !inviterResult.data) {
-        console.warn('获取邀请人信息失败:', inviterResult.error);
+        console.warn('[ActivateInvite] 获取邀请人信息失败:', inviterResult.error);
         continue;
       }
-      
+
       var inviter = inviterResult.data;
-      
+
       var updateResult = await window.supabase
         .from('invites')
         .update({ is_activated: true })
         .eq('id', invite.id);
-      
+
       if (updateResult.error) {
-        console.warn('更新邀请记录为已激活失败:', updateResult.error);
+        console.warn('[ActivateInvite] 更新邀请记录为已激活失败:', updateResult.error);
         continue;
       }
-      
+
+      console.log('[ActivateInvite] 邀请记录已更新为已激活');
+
       var newBalance = (Number(inviter.crlm_balance) || 0) + rewardAmount;
       var patchPayload = { crlm_balance: newBalance };
-      
+
       if (level === 1) {
         patchPayload.invite_count = (Number(inviter.invite_count) || 0) + 1;
       }
-      
+
       var updateUserResult = await window.supabase
         .from('users')
         .update(patchPayload)
         .eq('id', inviter.id);
-      
+
       if (updateUserResult.error) {
-        console.warn('更新邀请人奖励失败:', updateUserResult.error);
+        console.warn('[ActivateInvite] 更新邀请人奖励失败:', updateUserResult.error);
         continue;
       }
-      
+
+      console.log('[ActivateInvite] 邀请人余额已更新，级别:', level, '奖励:', rewardAmount);
+
       var title = level === 1 ? '你成功邀请了一位新用户，获得一级邀请奖励' : '你成功邀请的一位好友进一步扩展了邀请网络，获得二级邀请奖励';
       await writeInviteNotification(inviter.id, title, 'invite', userId);
-      
+
       var description = level === 1 ? '你成功邀请了一位新用户，获得一级邀请奖励' : '你的二级邀请关系产生了奖励';
       writeInviteBroadcast(inviter.id, description, rewardAmount);
-      
-      console.log('邀请激活成功，邀请人:', inviterId, '获得奖励:', rewardAmount);
+
+      console.log('[ActivateInvite] 邀请激活成功，邀请人:', inviterId, '获得奖励:', rewardAmount);
     }
   } catch (activateErr) {
-    console.warn('检查并激活邀请失败:', activateErr);
+    console.warn('[ActivateInvite] 检查并激活邀请失败:', activateErr);
   }
 }
 
