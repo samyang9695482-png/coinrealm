@@ -3851,6 +3851,163 @@ async function upgradeUserLevelOnTaskApproved(userId) {
     }
 }
 
+async function processInviteRewards(submissionId, userId) {
+    console.log('[InviteReward] ===== 开始处理邀请奖励 =====');
+    console.log('[InviteReward] submissionId:', submissionId);
+    console.log('[InviteReward] userId (被邀请人):', userId);
+
+    if (!window.supabase || !userId) {
+        console.log('[InviteReward] 跳过: Supabase未初始化或userId为空');
+        return;
+    }
+
+    var userResult = await window.supabase
+        .from('users')
+        .select('id, inviter_id')
+        .eq('id', userId)
+        .maybeSingle();
+
+    if (userResult.error || !userResult.data) {
+        console.log('[InviteReward] 跳过: 查询用户信息失败, error:', userResult.error);
+        return;
+    }
+
+    var inviterId = userResult.data.inviter_id;
+    console.log('[InviteReward] 一级邀请人(inviter_id):', inviterId);
+
+    if (!inviterId) {
+        console.log('[InviteReward] 跳过: 用户没有邀请人');
+        return;
+    }
+
+    var alreadyRewardedResult = await window.supabase
+        .from('invites')
+        .select('id')
+        .eq('invitee_id', userId)
+        .eq('level', 1);
+
+    console.log('[InviteReward] 检查一级奖励是否已发放 - 查询结果:', alreadyRewardedResult.data);
+
+    if (!alreadyRewardedResult.error && alreadyRewardedResult.data && alreadyRewardedResult.data.length > 0) {
+        console.log('[InviteReward] 跳过: 一级奖励已发放过');
+        return;
+    }
+
+    console.log('[InviteReward] 一级奖励未发放, 开始发放流程');
+
+    var settings = await fetchInviteSettings();
+    var level1Reward = Number(settings.invite_level1_reward) || INVITE_SETTINGS_DEFAULTS.invite_level1_reward;
+    var level2Reward = Number(settings.invite_level2_reward) || INVITE_SETTINGS_DEFAULTS.invite_level2_reward;
+    console.log('[InviteReward] 奖励金额 - 一级:', level1Reward, ', 二级:', level2Reward);
+
+    var inviterBalanceResult = await window.supabase
+        .from('users')
+        .select('id, username, crlm_balance')
+        .eq('id', inviterId)
+        .maybeSingle();
+
+    if (inviterBalanceResult.error || !inviterBalanceResult.data) {
+        console.error('[InviteReward] 失败: 查询一级邀请人余额失败, error:', inviterBalanceResult.error);
+        return;
+    }
+
+    var inviterUsername = inviterBalanceResult.data.username;
+    var inviterCurrentBalance = Number(inviterBalanceResult.data.crlm_balance) || 0;
+    console.log('[InviteReward] 一级邀请人信息:', inviterUsername, '(', inviterId, '), 当前余额:', inviterCurrentBalance);
+
+    var inviterPatch = { crlm_balance: inviterCurrentBalance + level1Reward };
+    console.log('[InviteReward] 准备增加一级邀请人余额:', inviterCurrentBalance, '+', level1Reward, '=', inviterCurrentBalance + level1Reward);
+    
+    var inviterUpdate = await window.supabase.from('users').update(inviterPatch).eq('id', inviterId);
+    
+    if (inviterUpdate.error) {
+        console.error('[InviteReward] 失败: 增加一级邀请人余额失败:', inviterUpdate.error);
+        return;
+    }
+
+    console.log('[InviteReward] 成功: 一级邀请人余额已更新');
+
+    await window.supabase.from('invites').insert({
+        inviter_id: inviterId,
+        invitee_id: userId,
+        level: 1,
+        reward_amount: level1Reward,
+        is_activated: true,
+        created_at: new Date().toISOString()
+    });
+
+    console.log('[InviteReward] 成功: 一级邀请记录已写入invites表');
+    console.log('[InviteReward] 一级奖励发放完成 - 金额:', level1Reward, ', 邀请人:', inviterUsername);
+
+    var inviterUserResult = await window.supabase
+        .from('users')
+        .select('id, username, inviter_id')
+        .eq('id', inviterId)
+        .maybeSingle();
+
+    if (!inviterUserResult.error && inviterUserResult.data && inviterUserResult.data.inviter_id) {
+        var level2InviterId = inviterUserResult.data.inviter_id;
+        var level2InviterUsername = inviterUserResult.data.username;
+        console.log('[InviteReward] 二级邀请人存在 - id:', level2InviterId, ', username:', level2InviterUsername);
+        
+        var level2AlreadyRewarded = await window.supabase
+            .from('invites')
+            .select('id')
+            .eq('invitee_id', userId)
+            .eq('level', 2);
+
+        console.log('[InviteReward] 检查二级奖励是否已发放 - 查询结果:', level2AlreadyRewarded.data);
+
+        if (!level2AlreadyRewarded.error && (!level2AlreadyRewarded.data || level2AlreadyRewarded.data.length === 0)) {
+            console.log('[InviteReward] 二级奖励未发放, 开始发放流程');
+
+            var level2BalanceResult = await window.supabase
+                .from('users')
+                .select('id, username, crlm_balance')
+                .eq('id', level2InviterId)
+                .maybeSingle();
+
+            if (!level2BalanceResult.error && level2BalanceResult.data) {
+                var level2Username = level2BalanceResult.data.username;
+                var level2CurrentBalance = Number(level2BalanceResult.data.crlm_balance) || 0;
+                console.log('[InviteReward] 二级邀请人信息:', level2Username, '(', level2InviterId, '), 当前余额:', level2CurrentBalance);
+
+                var level2Patch = { crlm_balance: level2CurrentBalance + level2Reward };
+                console.log('[InviteReward] 准备增加二级邀请人余额:', level2CurrentBalance, '+', level2Reward, '=', level2CurrentBalance + level2Reward);
+                
+                var level2Update = await window.supabase.from('users').update(level2Patch).eq('id', level2InviterId);
+                
+                if (!level2Update.error) {
+                    await window.supabase.from('invites').insert({
+                        inviter_id: level2InviterId,
+                        invitee_id: userId,
+                        level: 2,
+                        reward_amount: level2Reward,
+                        is_activated: true,
+                        created_at: new Date().toISOString()
+                    });
+
+                    console.log('[InviteReward] 成功: 二级邀请人余额已更新');
+                    console.log('[InviteReward] 成功: 二级邀请记录已写入invites表');
+                    console.log('[InviteReward] 二级奖励发放完成 - 金额:', level2Reward, ', 邀请人:', level2Username);
+                } else {
+                    console.error('[InviteReward] 失败: 增加二级邀请人余额失败:', level2Update.error);
+                }
+            } else {
+                console.error('[InviteReward] 失败: 查询二级邀请人余额失败:', level2BalanceResult.error);
+            }
+        } else {
+            console.log('[InviteReward] 跳过: 二级奖励已发放过');
+        }
+    } else {
+        console.log('[InviteReward] 跳过: 一级邀请人没有上级, 不发放二级奖励');
+    }
+
+    console.log('[InviteReward] ===== 邀请奖励处理结束 =====');
+}
+
+window.coinrealmProcessInviteRewards = processInviteRewards;
+
 async function checkTaskRewardDuplicate(taskId, userId) {
     if (!window.supabase || !taskId || !userId) {
         return { alreadyRewarded: false };

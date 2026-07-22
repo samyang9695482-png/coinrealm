@@ -943,6 +943,18 @@
 
     await upgradeUserLevelOnTaskApproved(submission.user_id);
 
+    console.log('[Review] 准备调用邀请奖励发放函数 - submissionId:', submissionId, ', userId:', submission.user_id);
+    if (typeof window.coinrealmProcessInviteRewards === 'function') {
+      try {
+        await window.coinrealmProcessInviteRewards(submissionId, submission.user_id);
+        console.log('[Review] 邀请奖励发放函数调用成功');
+      } catch (e) {
+        console.error('[Review] 邀请奖励发放函数调用失败:', e);
+      }
+    } else {
+      console.warn('[Review] 邀请奖励发放函数未找到');
+    }
+
     // 审核通过后增加任务名额
     var taskUpdateResult = await window.supabase
       .from('tasks')
