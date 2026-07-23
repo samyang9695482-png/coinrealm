@@ -337,8 +337,8 @@
         return result.data.id;
       })
       .then(function (userId) {
-        if (userId && typeof window.coinrealmProcessInvite === 'function') {
-          return window.coinrealmProcessInvite(userId).catch(function (inviteErr) {
+        if (userId && typeof processInvite === 'function') {
+          return processInvite(userId).catch(function (inviteErr) {
             console.warn('Google 登录邀请处理失败', inviteErr);
           }).then(function () {
             return userId;
@@ -425,9 +425,9 @@
       .then(function (userId) {
         if (userId) {
           sessionStorage.setItem('coinrealm_user_id', userId);
-          if (isWalletAuthUser(currentUser) && typeof window.coinrealmProcessPendingInvite === 'function') {
-            console.log('[DIAG] 步骤4：邀请处理调用（syncUserToSupabase）- 钱包用户同步完成，userId =', userId, '，开始 coinrealmProcessPendingInvite');
-            window.coinrealmProcessPendingInvite().then(function () {
+          if (isWalletAuthUser(currentUser) && typeof processPendingInviteRegistration === 'function') {
+            console.log('[DIAG] 步骤4：邀请处理调用（syncUserToSupabase）- 钱包用户同步完成，userId =', userId, '，开始 processPendingInviteRegistration');
+            processPendingInviteRegistration().then(function () {
               console.log('[DIAG] 步骤4：邀请处理调用（syncUserToSupabase）- 完成');
             }).catch(function (inviteErr) {
               console.warn('[DIAG] 步骤4：邀请处理调用（syncUserToSupabase）- 失败:', inviteErr);
@@ -582,15 +582,15 @@
           if (authUser && authUser.id) {
             console.log('[DIAG] 步骤4：邀请处理调用 - 开始 upsertWalletUser，完成后将处理邀请');
             upsertWalletUser(authUser, address).then(function (syncedUserId) {
-              console.log('[DIAG] 步骤4：邀请处理调用 - upsertWalletUser 完成，syncedUserId =', syncedUserId, '，开始 coinrealmProcessPendingInvite');
-              if (typeof window.coinrealmProcessPendingInvite === 'function') {
-                return window.coinrealmProcessPendingInvite().then(function () {
-                  console.log('[DIAG] 步骤4：邀请处理调用 - coinrealmProcessPendingInvite 完成');
+              console.log('[DIAG] 步骤4：邀请处理调用 - upsertWalletUser 完成，syncedUserId =', syncedUserId, '，开始 processPendingInviteRegistration');
+              if (typeof processPendingInviteRegistration === 'function') {
+                return processPendingInviteRegistration().then(function () {
+                  console.log('[DIAG] 步骤4：邀请处理调用 - processPendingInviteRegistration 完成');
                 }).catch(function (inviteErr) {
-                  console.warn('[DIAG] 步骤4：邀请处理调用 - coinrealmProcessPendingInvite 失败:', inviteErr);
+                  console.warn('[DIAG] 步骤4：邀请处理调用 - processPendingInviteRegistration 失败:', inviteErr);
                 });
               } else {
-                console.warn('[DIAG] 步骤4：邀请处理调用 - window.coinrealmProcessPendingInvite 不存在');
+                console.warn('[DIAG] 步骤4：邀请处理调用 - processPendingInviteRegistration 不存在');
               }
             }).catch(function (syncErr) {
               console.warn('[DIAG] 步骤4：邀请处理调用 - upsertWalletUser 失败:', syncErr);
@@ -625,10 +625,10 @@
           if (isWalletAuthUser(session.user)) {
             console.log('[DIAG] 步骤4：邀请处理调用（恢复会话）- 开始 upsertWalletUser');
             upsertWalletUser(session.user, getWalletAddressFromUser(session.user)).then(function (syncedUserId) {
-              console.log('[DIAG] 步骤4：邀请处理调用（恢复会话）- upsertWalletUser 完成，syncedUserId =', syncedUserId, '，开始 coinrealmProcessPendingInvite');
-              if (typeof window.coinrealmProcessPendingInvite === 'function') {
-                return window.coinrealmProcessPendingInvite().then(function () {
-                  console.log('[DIAG] 步骤4：邀请处理调用（恢复会话）- coinrealmProcessPendingInvite 完成');
+              console.log('[DIAG] 步骤4：邀请处理调用（恢复会话）- upsertWalletUser 完成，syncedUserId =', syncedUserId, '，开始 processPendingInviteRegistration');
+              if (typeof processPendingInviteRegistration === 'function') {
+                return processPendingInviteRegistration().then(function () {
+                  console.log('[DIAG] 步骤4：邀请处理调用（恢复会话）- processPendingInviteRegistration 完成');
                 }).catch(function (inviteErr) {
                   console.warn('[DIAG] 步骤4：邀请处理调用（恢复会话）- 失败:', inviteErr);
                 });

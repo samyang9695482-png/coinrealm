@@ -10187,7 +10187,7 @@ window.addEventListener('hashchange', function () {
     ensureAdminInviteLeaderboardToggle();
     applyAdminI18n();
 
-    var settings = await (typeof window.coinrealmFetchInviteSettings === 'function' ? window.coinrealmFetchInviteSettings() : { invite_level1_reward: 50, invite_level2_reward: 10 });
+    var settings = await (typeof fetchInviteSettings === 'function' ? fetchInviteSettings() : { invite_level1_reward: 50, invite_level2_reward: 10 });
     var level1El = document.getElementById('ad-invite-level1');
     var level2El = document.getElementById('ad-invite-level2');
     var showLeaderboardEl = document.getElementById('ad-invite-show-leaderboard');

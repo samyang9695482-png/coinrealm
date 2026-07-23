@@ -635,6 +635,19 @@ async function grantLevel2Reward(params) {
     return false;
   }
 
+  // ★ 权限校验：只能为当前用户发放奖励
+  var currentUserId = null;
+  if (typeof window.coinrealmGetCurrentUserId === 'function') {
+    currentUserId = await window.coinrealmGetCurrentUserId();
+  } else if (typeof getCurrentUserId === 'function') {
+    currentUserId = await getCurrentUserId();
+  }
+
+  if (!currentUserId || String(currentUserId) !== String(grandParentId)) {
+    console.error('[Level2Reward] 权限拒绝：只能为当前用户发放奖励 | currentUserId=', currentUserId, '| grandParentId=', grandParentId);
+    return false;
+  }
+
   try {
     console.log('[Level2Reward] 开始发放二级奖励：grandParent=' + grandParentId + ' invitee=' + inviteeUserId + ' amount=' + level2Reward);
 
@@ -986,11 +999,7 @@ async function processPendingInviteRegistration() {
   }
 }
 
-window.coinrealmCaptureInviteRef = captureInviteRefFromUrl;
-window.coinrealmProcessInvite = processInvite;
-window.coinrealmProcessPendingInvite = processPendingInviteRegistration;
-window.coinrealmFetchInviteSettings = fetchInviteSettings;
-window.coinrealmInviteSettingsDefaults = INVITE_SETTINGS_DEFAULTS;
+// 仅保留诊断工具用于调试
 window.coinrealmDiagnoseInviteRLS = diagnoseInviteRLS;
 
 // RLS 快速自检：在控制台运行 window.coinrealmDiagnoseInviteRLS() 查看诊断结果

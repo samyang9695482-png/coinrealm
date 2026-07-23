@@ -420,8 +420,8 @@
 
     inviteDataLoading = true;
 
-    // 使用 window 对象引用 invite-logic.js 中暴露的函数
-    var appFetchInviteSettings = window.coinrealmFetchInviteSettings;
+    // 使用 invite-logic.js 中定义的内部函数
+    var appFetchInviteSettings = fetchInviteSettings;
 
     return Promise.all([
       appFetchInviteSettings(),
@@ -877,8 +877,8 @@
     updateInviteRecordsTabsUI();
     updateAirdropHint();
 
-    if (typeof window.coinrealmProcessPendingInvite === 'function') {
-      window.coinrealmProcessPendingInvite();
+    if (typeof processPendingInviteRegistration === 'function') {
+      processPendingInviteRegistration();
     }
 
     refreshMiningButtonState().then(function () {
