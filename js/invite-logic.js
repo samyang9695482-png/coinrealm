@@ -287,6 +287,19 @@ async function activateInviteRewards(userId) {
     return;
   }
 
+  // ★ 权限校验：只能激活自己的邀请记录
+  var currentUserId = null;
+  if (typeof window.coinrealmGetCurrentUserId === 'function') {
+    currentUserId = await window.coinrealmGetCurrentUserId();
+  } else if (typeof getCurrentUserId === 'function') {
+    currentUserId = await getCurrentUserId();
+  }
+
+  if (!currentUserId || String(currentUserId) !== String(userId)) {
+    console.error('[ActivateInvite] 权限拒绝：当前用户只能激活自己的邀请记录 | currentUserId=', currentUserId, '| targetUserId=', userId);
+    return;
+  }
+
   try {
     console.log('[ActivateInvite] ====== 开始激活检查 ======');
     console.log('[ActivateInvite] userId =', userId);
@@ -575,6 +588,7 @@ async function recordInviteRewardTransaction(params) {
     type: 'invite_reward',
     description: description,
     related_id: params.inviteId || null,
+    trigger_source: params.triggerSource || 'review_approve',
     created_at: new Date().toISOString()
   };
 
@@ -994,7 +1008,6 @@ async function processPendingInviteRegistration() {
 window.coinrealmCaptureInviteRef = captureInviteRefFromUrl;
 window.coinrealmProcessInvite = processInvite;
 window.coinrealmProcessPendingInvite = processPendingInviteRegistration;
-window.coinrealmActivateInviteRewards = activateInviteRewards;
 window.coinrealmFetchInviteSettings = fetchInviteSettings;
 window.coinrealmInviteSettingsDefaults = INVITE_SETTINGS_DEFAULTS;
 window.coinrealmDiagnoseInviteRLS = diagnoseInviteRLS;
