@@ -374,7 +374,29 @@ async function activateInviteRewards(userId) {
         continue;
       }
 
-      // ★ 防重复：检查 deposit_records 是否已有该邀请的奖励记录
+      // ★ 防重复：先尝试更新 invites 表标记为已激活（乐观锁）
+      // 只有当 is_activated = false 时才能更新成功
+      var lockResult = await window.supabase
+        .from('invites')
+        .update({ is_activated: true })
+        .eq('id', invite.id)
+        .eq('is_activated', false);
+
+      if (lockResult.error) {
+        console.error('[ActivateInvite] 锁定邀请记录失败:', lockResult.error);
+        continue;
+      }
+
+      // 如果更新的行数为 0，说明已经被其他请求激活了
+      if (!lockResult.data || lockResult.data.length === 0) {
+        console.log('[ActivateInvite] 跳过 - 邀请记录已被其他请求激活');
+        skipCount++;
+        continue;
+      }
+
+      console.log('[ActivateInvite] ✅ 成功锁定邀请记录，开始发放奖励');
+
+      // ★ 二次防重复：检查 deposit_records 是否已有该邀请的奖励记录
       var dupCheck = await window.supabase
         .from('deposit_records')
         .select('id')
@@ -385,9 +407,6 @@ async function activateInviteRewards(userId) {
 
       if (dupCheck.data) {
         console.log('[ActivateInvite] 跳过 - deposit_records 已有记录（奖励已发放过）');
-        if (!invite.is_activated) {
-          await window.supabase.from('invites').update({ is_activated: true }).eq('id', invite.id);
-        }
         skipCount++;
         continue;
       }
@@ -411,6 +430,16 @@ async function activateInviteRewards(userId) {
 
       var inviter = inviterResult.data;
       console.log('[ActivateInvite] 邀请人信息：username=' + inviter.username + ' 当前余额=' + inviter.crlm_balance);
+
+      // ★ 获取被邀请人信息（用于通知）
+      var inviteeResult = await window.supabase
+        .from('users')
+        .select('id, username')
+        .eq('id', userId)
+        .maybeSingle();
+
+      var inviteeUsername = inviteeResult.data ? inviteeResult.data.username : '未知用户';
+      console.log('[ActivateInvite] 被邀请人信息：username=' + inviteeUsername);
 
       // ★ 关键修复：先发奖励（更新余额），成功后再标记 is_activated = true
       // 这样如果余额更新失败，is_activated 仍为 false，下次可以重试
@@ -455,21 +484,9 @@ async function activateInviteRewards(userId) {
         console.warn('[ActivateInvite] ⚠️ 交易明细记录失败（余额已更新，但明细未记录）');
       }
 
-      // 余额更新成功后，标记 is_activated = true
-      var updateResult = await window.supabase
-        .from('invites')
-        .update({ is_activated: true })
-        .eq('id', invite.id);
-
-      if (updateResult.error) {
-        console.warn('[ActivateInvite] ⚠️ 余额已更新但 is_activated 标记失败（不影响奖励，下次会跳过）:', updateResult.error);
-      } else {
-        console.log('[ActivateInvite] ✅ is_activated 已标记为 true');
-      }
-
       // 发送通知（格式：恭喜你获得X级邀请奖励 +XXX CRLM（用户XXX完成任务））
       var levelLabel = level === 1 ? '一级' : '二级';
-      var notifTitle = '恭喜你获得' + levelLabel + '邀请奖励 +' + rewardAmount + ' CRLM（你的好友完成任务）';
+      var notifTitle = '恭喜你获得' + levelLabel + '邀请奖励 +' + rewardAmount + ' CRLM（用户' + inviteeUsername + '完成任务）';
       await writeInviteNotification(inviter.id, notifTitle, 'invite', userId);
 
       var description = level === 1 ? '你成功邀请了一位新用户，获得一级邀请奖励' : '你的二级邀请关系产生了奖励';
