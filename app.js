@@ -5576,35 +5576,46 @@ window.addEventListener('hashchange', function () {
       console.warn('余额明细：任务退款查询失败', refundErr);
     }
 
-    // 查询邀请奖励记录（deposit_records 表）
+    // 查询 deposit_records 表的所有记录（包括邀请奖励、充值等）
     try {
-      var inviteRewardResult = await window.supabase
+      var depositRecordsResult = await window.supabase
         .from('deposit_records')
         .select('id, amount, type, description, related_id, created_at')
         .eq('user_id', userId)
-        .eq('type', 'invite_reward')
         .order('created_at', { ascending: false })
         .limit(queryLimit);
 
-      if (!inviteRewardResult.error && inviteRewardResult.data) {
-        (inviteRewardResult.data).forEach(function (row) {
+      if (!depositRecordsResult.error && depositRecordsResult.data) {
+        (depositRecordsResult.data).forEach(function (row) {
           var amount = Number(row.amount) || 0;
           if (amount <= 0) return;
           var desc = String(row.description || '').trim();
+          var recordType = String(row.type || '').trim();
+          var icon = '💰';
+          var descText = desc || '余额变动';
+
+          if (recordType === 'invite_reward') {
+            icon = '🎁';
+            descText = desc || '邀请奖励';
+          } else if (recordType === 'deposit') {
+            icon = '💳';
+            descText = desc || '充值';
+          }
+
           entries.push({
             time: row.created_at || new Date().toISOString(),
-            icon: '🎁',
-            description: desc || '邀请奖励',
+            icon: icon,
+            description: descText,
             delta: amount,
             income: true
           });
         });
-        console.log('余额明细：邀请奖励记录', inviteRewardResult.data.length, '条');
-      } else if (inviteRewardResult.error) {
-        console.warn('余额明细：邀请奖励查询失败（可能 deposit_records 表不存在）', inviteRewardResult.error.message);
+        console.log('余额明细：deposit_records 记录', depositRecordsResult.data.length, '条');
+      } else if (depositRecordsResult.error) {
+        console.warn('余额明细：deposit_records 查询失败（可能表不存在）', depositRecordsResult.error.message);
       }
-    } catch (inviteRewardErr) {
-      console.warn('余额明细：邀请奖励查询异常', inviteRewardErr);
+    } catch (depositRecordsErr) {
+      console.warn('余额明细：deposit_records 查询异常', depositRecordsErr);
     }
 
     console.log('余额明细最终条目（含任务奖励、邀请奖励）：', entries);
