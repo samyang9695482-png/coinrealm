@@ -508,37 +508,29 @@ async function activateInviteRewards(userId) {
               console.log('[ActivateInvite] 二级邀请记录不存在，需要创建');
             }
 
-            // 防重复：检查 deposit_records
-            if (level2InviteId) {
-              var dup2Check = await window.supabase
-                .from('deposit_records')
-                .select('id')
-                .eq('related_id', level2InviteId)
-                .eq('type', 'invite_reward')
-                .limit(1);
+            // ★ 统一防重复：检查 deposit_records 是否已有该二级奖励记录
+            // 使用 user_id + invitee_id + type + description 组合判断
+            var dup2Check = await window.supabase
+              .from('deposit_records')
+              .select('id')
+              .eq('user_id', grandParentId)
+              .eq('type', 'invite_reward')
+              .ilike('description', '%二级%')
+              .limit(1);
 
-              if (!dup2Check.error && dup2Check.data && dup2Check.data.length > 0) {
-                console.log('[ActivateInvite] 跳过二级 - deposit_records 已有记录');
-                if (!level2AlreadyActivated) {
-                  await window.supabase.from('invites').update({ is_activated: true }).eq('id', level2InviteId);
-                }
-                // 继续下一条主循环记录
-              } else {
-                // 需要发放二级奖励
-                await grantLevel2Reward({
-                  grandParentId: grandParentId,
-                  inviteeUserId: userId,
-                  level2Reward: level2Reward,
-                  existingInviteId: level2InviteId
-                });
+            if (!dup2Check.error && dup2Check.data && dup2Check.data.length > 0) {
+              console.log('[ActivateInvite] 跳过二级 - deposit_records 已有记录（奖励已发放过）');
+              if (level2InviteId && !level2AlreadyActivated) {
+                await window.supabase.from('invites').update({ is_activated: true }).eq('id', level2InviteId);
               }
+              // 继续下一条主循环记录
             } else {
-              // 没有记录，创建并发放
+              // 需要发放二级奖励
               await grantLevel2Reward({
                 grandParentId: grandParentId,
                 inviteeUserId: userId,
                 level2Reward: level2Reward,
-                existingInviteId: null
+                existingInviteId: level2InviteId
               });
             }
           } else {
