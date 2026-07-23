@@ -184,6 +184,13 @@ async function grantInviteReward(inviter, inviteeId, level, amount) {
     amount: amount,
     supabaseReady: !!window.supabase
   });
+
+  // 检查：用户不能邀请自己
+  if (inviter && inviter.id && String(inviter.id) === String(inviteeId)) {
+    console.warn('[Invite] 跳过：用户不能邀请自己 | inviterId =', inviter.id, '| inviteeId =', inviteeId);
+    return false;
+  }
+
   if (!inviter || !inviteeId || amount <= 0 || !window.supabase) {
     console.log('[DIAG] 步骤5：数据库写入跳过 - 参数不足');
     return false;
@@ -780,8 +787,9 @@ async function processInvite(newUserId) {
     return false;
   }
 
+  // 检查：用户不能邀请自己
   if (String(inviterId) === String(newUserId)) {
-    console.log('[DIAG] 步骤4：processInvite 跳过 - 不能邀请自己 | inviterId =', inviterId, '| newUserId =', newUserId);
+    console.warn('[Invite] 跳过：用户不能邀请自己 | inviterId =', inviterId, '| inviteeId =', newUserId);
     clearStoredInviterId();
     return false;
   }
@@ -829,6 +837,10 @@ async function processInvite(newUserId) {
     }
 
     console.log('[DIAG] 步骤4：processInvite - 查询二级邀请人（inviter 的上级）');
+    
+    // ★ 注意：由于 RLS 策略限制，注册时新用户（newUserId）无法查询邀请人的上级关系
+    // 二级奖励在 activateInviteRewards 中处理（用户完成任务时，使用 invitee_id 查询，RLS 允许）
+    // 这里尝试查询，如果失败则跳过，由 activateInviteRewards 处理
     var parentResult = await window.supabase
       .from('invites')
       .select('inviter_id')
@@ -856,6 +868,8 @@ async function processInvite(newUserId) {
           console.log('[DIAG] 步骤4：processInvite - 二级奖励结果 =', level2Done);
         }
       }
+    } else {
+      console.log('[DIAG] 步骤4：processInvite - 二级邀请人查询失败（可能 RLS 限制），将由 activateInviteRewards 处理');
     }
 
     console.log('[DIAG] 步骤4：processInvite - 成功完成，清除 inviter_id');
