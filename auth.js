@@ -357,48 +357,24 @@
 
     console.log('开始同步钱包用户：', { userId: userId, wallet_address: address, defaultUsername: defaultUsername });
 
+    var upsertPayload = {
+      id: userId,
+      email: null,
+      wallet_address: address,
+      username: defaultUsername,
+      level: 0,
+      reputation_score: 100,
+      crlm_balance: 0,
+      usdt_balance: 0,
+      updated_at: now
+    };
+    console.log('Upsert钱包用户：', upsertPayload);
+
     return window.supabase
       .from('users')
+      .upsert(upsertPayload, { onConflict: 'id' })
       .select('id, username, wallet_address')
-      .eq('id', userId)
-      .maybeSingle()
-      .then(function (result) {
-        if (result.error) throw result.error;
-
-        if (result.data) {
-          var patch = {
-            updated_at: now,
-            wallet_address: address || result.data.wallet_address || null
-          };
-          if (!result.data.username || !String(result.data.username).trim()) {
-            patch.username = defaultUsername;
-          }
-          console.log('更新钱包用户：', patch);
-          return window.supabase
-            .from('users')
-            .update(patch)
-            .eq('id', userId)
-            .select('id, username, wallet_address')
-            .single();
-        }
-
-        var insertPayload = {
-          id: userId,
-          email: null,
-          wallet_address: address,
-          username: defaultUsername,
-          level: 0,
-          reputation_score: 100,
-          crlm_balance: 0,
-          usdt_balance: 0
-        };
-        console.log('创建钱包用户：', insertPayload);
-        return window.supabase
-          .from('users')
-          .insert(insertPayload)
-          .select('id, username, wallet_address')
-          .single();
-      })
+      .single()
       .then(function (result) {
         if (result.error) throw result.error;
         console.log('[auth] 钱包用户同步成功，userId:', result.data.id);
