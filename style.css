@@ -6169,6 +6169,17 @@ img {
     color: #c99400;
 }
 
+/* 已激活：金色奖励金额 */
+.iv-record-reward-activated {
+    color: #c99400;
+}
+
+/* 未激活：灰色“未激活”文案 */
+.iv-record-reward-pending {
+    color: #9aa0a6;
+    font-weight: 500;
+}
+
 .invite-mining-panel .invite-mining-section {
     margin-bottom: 0;
     padding: 16px 0 8px;

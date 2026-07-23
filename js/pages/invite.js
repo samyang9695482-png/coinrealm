@@ -39,10 +39,10 @@
       iv_invite_count: '{count} 人',
       iv_total_reward: '{amount} CRLM',
       iv_btn_copy_link: '复制链接',
-      iv_friends_title: '我邀请的好友',
-      iv_rewards_title: '邀请奖励记录',
+      iv_friends_title: '一级邀请记录',
+      iv_rewards_title: '二级邀请记录',
       iv_reward_amount: '+{amount} CRLM',
-      iv_reward_pending: '奖励发放中',
+      iv_reward_pending: '未激活',
       iv_level_tag: 'L{level}',
       iv_alert_copied: '已复制！',
       iv_alert_share: '已复制链接，即将跳转...',
@@ -83,10 +83,10 @@
       iv_invite_count: '{count}',
       iv_total_reward: '{amount} CRLM',
       iv_btn_copy_link: 'Copy link',
-      iv_friends_title: 'My invites',
-      iv_rewards_title: 'Reward history',
+      iv_friends_title: 'Level 1 Invites',
+      iv_rewards_title: 'Level 2 Invites',
       iv_reward_amount: '+{amount} CRLM',
-      iv_reward_pending: 'Reward pending',
+      iv_reward_pending: 'Inactive',
       iv_level_tag: 'L{level}',
       iv_alert_copied: 'Copied!',
       iv_alert_share: 'Link copied, redirecting...',
@@ -454,28 +454,32 @@
 
           var inviteRows = invitesResult.error ? [] : (invitesResult.data || []);
           var level1Rows = inviteRows.filter(function (row) { return Number(row.level) === 1; });
-          var inviteeIds = level1Rows.map(function (row) { return row.invitee_id; }).filter(Boolean);
+          var level2Rows = inviteRows.filter(function (row) { return Number(row.level) === 2; });
+          // 一级和二级邀请的被邀请人ID合并，用于批量查询用户名
+          var inviteeIds = inviteRows.map(function (row) { return row.invitee_id; }).filter(Boolean);
           var uniqueIds = inviteeIds.filter(function (id, index) { return inviteeIds.indexOf(id) === index; });
 
             var buildData = function (userMap) {
+              // 一级邀请记录：inviter_id = 当前用户，level = 1
               var friends = level1Rows.map(function (row) {
                 var user = userMap[row.invitee_id] || {};
                 return {
                   username: user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'Unknown'),
                   registeredAt: row.created_at ? String(row.created_at).slice(0, 10) : '—',
                   reward: Number(row.reward_amount) || 0,
-                  isActivated: Boolean(row.is_activated) // 新增：激活状态
+                  isActivated: Boolean(row.is_activated)
                 };
               });
 
-              var rewardRecords = inviteRows.map(function (row) {
+              // 二级邀请记录：inviter_id = 当前用户，level = 2（好友邀请的好友）
+              var rewardRecords = level2Rows.map(function (row) {
                 var user = userMap[row.invitee_id] || {};
                 return {
-                  level: Number(row.level) || 1,
-                  username: user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'User'),
+                  level: 2,
+                  username: user.username || (typeof displayNameFromEmail === 'function' ? displayNameFromEmail(user.email) : 'Unknown'),
+                  registeredAt: row.created_at ? String(row.created_at).slice(0, 10) : '—',
                   reward: Number(row.reward_amount) || 0,
-                  createdAt: row.created_at ? String(row.created_at).slice(0, 16).replace('T', ' ') : '—',
-                  isActivated: Boolean(row.is_activated) // 新增：激活状态
+                  isActivated: Boolean(row.is_activated)
                 };
               });
 
@@ -756,17 +760,29 @@
       return;
     }
 
+    // 二级邀请记录：与一级一致，按 is_activated 显示“未激活”或奖励金额
     listEl.innerHTML = rewards.map(function (record) {
       var safeName = typeof escapeHtml === 'function' ? escapeHtml(record.username) : record.username;
-      var levelClass = record.level === 2 ? 'iv-record-level-2' : 'iv-record-level-1';
+      var rewardText;
+      var rewardClass;
+
+      if (record.isActivated) {
+        // 已激活：显示金色奖励金额
+        rewardText = ivT('iv_reward_amount', { amount: formatNumber(record.reward) });
+        rewardClass = 'iv-record-reward iv-record-reward-activated';
+      } else {
+        // 未激活：显示灰色“未激活”
+        rewardText = ivT('iv_reward_pending');
+        rewardClass = 'iv-record-reward iv-record-reward-pending';
+      }
+
       return (
         '<li class="invite-record-item">' +
-          '<span class="iv-record-level ' + levelClass + '">' + ivT('iv_level_tag', { level: record.level }) + '</span>' +
           '<div class="iv-lb-info">' +
             '<span class="iv-lb-name">' + safeName + '</span>' +
-            '<span class="iv-lb-meta">' + record.createdAt + '</span>' +
+            '<span class="iv-lb-meta">' + record.registeredAt + '</span>' +
           '</div>' +
-          '<span class="iv-record-reward">' + ivT('iv_reward_amount', { amount: formatNumber(record.reward) }) + '</span>' +
+          '<span class="' + rewardClass + '">' + rewardText + '</span>' +
         '</li>'
       );
     }).join('');
