@@ -367,36 +367,7 @@ async function activateInviteRewards(userId) {
 
       console.log('[ActivateInvite] --- 处理第 ' + (i + 1) + '/' + result.data.length + ' 条：id=' + invite.id + ' ' + levelLabel + ' 邀请人=' + inviterId + ' 已激活=' + invite.is_activated + ' ---');
 
-      // ★ 快速跳过：检查该邀请记录是否已经激活
-      if (invite.is_activated === true) {
-        console.log('[ActivateInvite] 跳过 - 该邀请记录已激活，invite.id:', invite.id);
-        skipCount++;
-        continue;
-      }
-
-      // ★ 防重复：先尝试更新 invites 表标记为已激活（乐观锁）
-      // 只有当 is_activated = false 时才能更新成功
-      var lockResult = await window.supabase
-        .from('invites')
-        .update({ is_activated: true })
-        .eq('id', invite.id)
-        .eq('is_activated', false);
-
-      if (lockResult.error) {
-        console.error('[ActivateInvite] 锁定邀请记录失败:', lockResult.error);
-        continue;
-      }
-
-      // 如果更新的行数为 0，说明已经被其他请求激活了
-      if (!lockResult.data || lockResult.data.length === 0) {
-        console.log('[ActivateInvite] 跳过 - 邀请记录已被其他请求激活');
-        skipCount++;
-        continue;
-      }
-
-      console.log('[ActivateInvite] ✅ 成功锁定邀请记录，开始发放奖励');
-
-      // ★ 二次防重复：检查 deposit_records 是否已有该邀请的奖励记录
+      // ★ 优先检查 deposit_records：这是判断奖励是否已发放的最可靠依据
       var dupCheck = await window.supabase
         .from('deposit_records')
         .select('id')
@@ -407,6 +378,10 @@ async function activateInviteRewards(userId) {
 
       if (dupCheck.data) {
         console.log('[ActivateInvite] 跳过 - deposit_records 已有记录（奖励已发放过）');
+        // 确保 is_activated 标记为 true
+        if (!invite.is_activated) {
+          await window.supabase.from('invites').update({ is_activated: true }).eq('id', invite.id);
+        }
         skipCount++;
         continue;
       }
@@ -414,6 +389,34 @@ async function activateInviteRewards(userId) {
       if (dupCheck.error) {
         console.error('[ActivateInvite] 防重复检查失败，停止发放:', dupCheck.error);
         continue;
+      }
+
+      // ★ 乐观锁：尝试更新 invites 表标记为已激活（只有 is_activated = false 时才能成功）
+      // 对于已激活的记录，这里会更新失败，但我们仍然继续发放奖励（补救模式）
+      var needLock = !invite.is_activated;
+      var lockSuccess = false;
+
+      if (needLock) {
+        var lockResult = await window.supabase
+          .from('invites')
+          .update({ is_activated: true })
+          .eq('id', invite.id)
+          .eq('is_activated', false);
+
+        if (lockResult.error) {
+          console.error('[ActivateInvite] 锁定邀请记录失败:', lockResult.error);
+          continue;
+        }
+
+        if (!lockResult.data || lockResult.data.length === 0) {
+          console.log('[ActivateInvite] 邀请记录已被其他请求激活，进入补救模式');
+          // 进入补救模式：记录已激活但可能未发放奖励，继续执行发奖逻辑
+        } else {
+          lockSuccess = true;
+          console.log('[ActivateInvite] ✅ 成功锁定邀请记录');
+        }
+      } else {
+        console.log('[ActivateInvite] 邀请记录已激活，进入补救模式（检查是否已发放奖励）');
       }
 
       // 获取邀请人信息
