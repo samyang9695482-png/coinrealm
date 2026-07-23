@@ -702,12 +702,7 @@ async function grantLevel2Reward(params) {
         // 验证 inviter_id 是否匹配（防止取到错误的记录）
         if (String(existResult.data.inviter_id) === String(grandParentId)) {
           inviteId = existResult.data.id;
-          console.log('[Level2Reward] 邀请记录已存在，id=' + inviteId + '，已激活=' + existResult.data.is_activated);
-
-          if (existResult.data.is_activated) {
-            console.log('[Level2Reward] 跳过 - 该记录已激活');
-            return false;
-          }
+          console.log('[Level2Reward] 邀请记录已存在，id=' + inviteId);
         } else {
           console.log('[Level2Reward] 查询到的记录 inviter_id 不匹配，需要创建新记录');
         }
@@ -754,7 +749,7 @@ async function grantLevel2Reward(params) {
       return false;
     }
 
-    // ★ 防重复：检查 deposit_records 是否已有该邀请的二级奖励记录
+    // ★ 优先检查 deposit_records：这是判断奖励是否已发放的最可靠依据
     var dupCheckResult = await window.supabase
       .from('deposit_records')
       .select('id')
@@ -772,6 +767,19 @@ async function grantLevel2Reward(params) {
 
     if (dupCheckResult.error) {
       console.error('[Level2Reward] 防重复检查失败，停止发放:', dupCheckResult.error);
+      return false;
+    }
+
+    // ★ 二次检查：查询 invites 记录的 is_activated 状态
+    // 如果已激活但 deposit_records 没有记录，说明之前发放过但明细记录失败
+    var inviteStatusResult = await window.supabase
+      .from('invites')
+      .select('is_activated')
+      .eq('id', inviteId)
+      .maybeSingle();
+
+    if (!inviteStatusResult.error && inviteStatusResult.data && inviteStatusResult.data.is_activated === true) {
+      console.log('[Level2Reward] 跳过 - invites 记录已激活（之前已发放过奖励，可能 deposit_records 插入失败）');
       return false;
     }
 
