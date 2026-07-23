@@ -337,8 +337,8 @@
         return result.data.id;
       })
       .then(function (userId) {
-        if (userId && typeof window.coinrealmProcessInvite === 'function') {
-          return window.coinrealmProcessInvite(userId).catch(function (inviteErr) {
+        if (userId && typeof processInvite === 'function') {
+          return processInvite(userId).catch(function (inviteErr) {
             console.warn('Google 登录邀请处理失败', inviteErr);
           }).then(function () {
             return userId;
@@ -405,8 +405,8 @@
         return result.data.id;
       })
       .then(function (userId) {
-        if (userId && typeof window.coinrealmProcessInvite === 'function') {
-          return window.coinrealmProcessInvite(userId).catch(function (inviteErr) {
+        if (userId && typeof processInvite === 'function') {
+          return processInvite(userId).catch(function (inviteErr) {
             console.warn('钱包登录邀请处理失败', inviteErr);
           }).then(function () {
             return userId;
@@ -1023,9 +1023,9 @@
       scheduleUserSync();
       
       // 处理邀请逻辑
-      if (typeof window.coinrealmProcessPendingInvite === 'function') {
+      if (typeof processPendingInviteRegistration === 'function') {
         console.log('邀请处理-检测到用户登录，准备处理邀请');
-        window.coinrealmProcessPendingInvite().then(function() {
+        processPendingInviteRegistration().then(function() {
           console.log('邀请处理-待处理邀请处理完成');
         }).catch(function(err) {
           console.warn('邀请处理-待处理邀请处理失败:', err);

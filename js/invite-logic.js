@@ -35,6 +35,42 @@ var INVITE_SETTINGS_DEFAULTS = {
 };
 var cachedInviteSettings = null;
 
+async function updateUserBalanceViaEdge(userId, amount, operation) {
+  var supabaseUrl = Deno.env?.get('SUPABASE_URL') || window.supabase?.url;
+  if (!supabaseUrl) {
+    console.warn('[EdgeBalance] 无法获取 Supabase URL');
+    return null;
+  }
+
+  try {
+    var response = await fetch(`${supabaseUrl}/functions/v1/update_user_balance`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${window.supabase.auth.session()?.access_token || ''}`
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        amount: amount,
+        operation: operation
+      })
+    });
+
+    var result = await response.json();
+    console.log('[EdgeBalance] 更新结果:', result);
+
+    if (result.error) {
+      console.error('[EdgeBalance] 更新失败:', result.error);
+      return null;
+    }
+
+    return result.newBalance;
+  } catch (err) {
+    console.error('[EdgeBalance] 请求异常:', err);
+    return null;
+  }
+}
+
 async function fetchInviteSettings() {
   if (cachedInviteSettings) return cachedInviteSettings;
 
@@ -69,6 +105,11 @@ async function fetchInviteSettings() {
 
   cachedInviteSettings = settings;
   return settings;
+}
+
+// 清空邀请奖励设置缓存（管理员保存设置后由 app.js 调用）
+function invalidateInviteSettingsCache() {
+  cachedInviteSettings = null;
 }
 
 async function findInviterByRef(ref) {

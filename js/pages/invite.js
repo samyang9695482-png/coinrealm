@@ -19,12 +19,8 @@
   var miningRecordsExpanded = false;
   var rankBadges = ['🥇', '🥈', '🥉'];
 
-  // 从 window 获取默认值
-  var INVITE_SETTINGS_DEFAULTS = window.coinrealmInviteSettingsDefaults || {
-    invite_level1_reward: 50,
-    invite_level2_reward: 10
-  };
-
+  // INVITE_SETTINGS_DEFAULTS / fetchInviteSettings / processPendingInviteRegistration
+  // 由 js/invite-logic.js 提供全局变量与函数
   var inviteTranslations = {
     zh: {
       iv_page_title: '邀请好友',
@@ -420,8 +416,8 @@
 
     inviteDataLoading = true;
 
-    // 使用 window 对象引用 app.js 中暴露的函数
-    var appFetchInviteSettings = window.coinrealmFetchInviteSettings || fetchInviteSettings;
+    // fetchInviteSettings 由 js/invite-logic.js 提供全局函数
+    var appFetchInviteSettings = fetchInviteSettings;
 
     return Promise.all([
       appFetchInviteSettings(),

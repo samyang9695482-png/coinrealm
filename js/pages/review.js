@@ -976,6 +976,13 @@
       });
     }
 
+    // 审核通过后激活邀请奖励（管理员审核通过流程，跳过权限校验）
+    if (typeof activateInviteRewards === 'function') {
+      activateInviteRewards(submission.user_id, { skipPermissionCheck: true }).catch(function (inviteErr) {
+        console.warn('审核通过后激活邀请奖励失败:', inviteErr);
+      });
+    }
+
     return true;
   }
 
