@@ -281,23 +281,28 @@ function writeInviteBroadcast(userId, description, rewardAmount) {
   }
 }
 
-async function activateInviteRewards(userId) {
+async function activateInviteRewards(userId, options) {
   if (!userId || !window.supabase) {
     console.log('[ActivateInvite] 跳过 - 缺少 userId 或 supabase');
     return;
   }
 
-  // ★ 权限校验：只能激活自己的邀请记录
-  var currentUserId = null;
-  if (typeof window.coinrealmGetCurrentUserId === 'function') {
-    currentUserId = await window.coinrealmGetCurrentUserId();
-  } else if (typeof getCurrentUserId === 'function') {
-    currentUserId = await getCurrentUserId();
-  }
+  options = options || {};
+  var skipPermissionCheck = options.skipPermissionCheck === true;
 
-  if (!currentUserId || String(currentUserId) !== String(userId)) {
-    console.error('[ActivateInvite] 权限拒绝：当前用户只能激活自己的邀请记录 | currentUserId=', currentUserId, '| targetUserId=', userId);
-    return;
+  // ★ 权限校验：只能激活自己的邀请记录（审核通过时由管理员调用，可跳过校验）
+  if (!skipPermissionCheck) {
+    var currentUserId = null;
+    if (typeof window.coinrealmGetCurrentUserId === 'function') {
+      currentUserId = await window.coinrealmGetCurrentUserId();
+    } else if (typeof getCurrentUserId === 'function') {
+      currentUserId = await getCurrentUserId();
+    }
+
+    if (!currentUserId || String(currentUserId) !== String(userId)) {
+      console.error('[ActivateInvite] 权限拒绝：当前用户只能激活自己的邀请记录 | currentUserId=', currentUserId, '| targetUserId=', userId);
+      return;
+    }
   }
 
   try {
@@ -577,7 +582,8 @@ async function activateInviteRewards(userId) {
                 grandParentId: grandParentId,
                 inviteeUserId: userId,
                 level2Reward: level2Reward,
-                existingInviteId: level2InviteId
+                existingInviteId: level2InviteId,
+                skipPermissionCheck: skipPermissionCheck
               });
             }
           } else {
@@ -649,23 +655,26 @@ async function grantLevel2Reward(params) {
   var inviteeUserId = params.inviteeUserId;
   var level2Reward = params.level2Reward;
   var existingInviteId = params.existingInviteId;
+  var skipPermissionCheck = params.skipPermissionCheck === true;
 
   if (!grandParentId || !inviteeUserId || !window.supabase) {
     console.log('[Level2Reward] 跳过 - 参数不足');
     return false;
   }
 
-  // ★ 权限校验：只能为当前用户发放奖励
-  var currentUserId = null;
-  if (typeof window.coinrealmGetCurrentUserId === 'function') {
-    currentUserId = await window.coinrealmGetCurrentUserId();
-  } else if (typeof getCurrentUserId === 'function') {
-    currentUserId = await getCurrentUserId();
-  }
+  // ★ 权限校验：只能为当前用户发放奖励（审核通过时由管理员调用，可跳过校验）
+  if (!skipPermissionCheck) {
+    var currentUserId = null;
+    if (typeof window.coinrealmGetCurrentUserId === 'function') {
+      currentUserId = await window.coinrealmGetCurrentUserId();
+    } else if (typeof getCurrentUserId === 'function') {
+      currentUserId = await getCurrentUserId();
+    }
 
-  if (!currentUserId || String(currentUserId) !== String(grandParentId)) {
-    console.error('[Level2Reward] 权限拒绝：只能为当前用户发放奖励 | currentUserId=', currentUserId, '| grandParentId=', grandParentId);
-    return false;
+    if (!currentUserId || String(currentUserId) !== String(grandParentId)) {
+      console.error('[Level2Reward] 权限拒绝：只能为当前用户发放奖励 | currentUserId=', currentUserId, '| grandParentId=', grandParentId);
+      return false;
+    }
   }
 
   try {

@@ -357,24 +357,52 @@
 
     console.log('开始同步钱包用户：', { userId: userId, wallet_address: address, defaultUsername: defaultUsername });
 
-    var upsertPayload = {
-      id: userId,
-      email: null,
-      wallet_address: address,
-      username: defaultUsername,
-      level: 0,
-      reputation_score: 100,
-      crlm_balance: 0,
-      usdt_balance: 0,
-      updated_at: now
-    };
-    console.log('Upsert钱包用户：', upsertPayload);
-
+    // 先查询用户是否存在
     return window.supabase
       .from('users')
-      .upsert(upsertPayload, { onConflict: 'id' })
-      .select('id, username, wallet_address')
-      .single()
+      .select('id, username, wallet_address, crlm_balance, usdt_balance')
+      .eq('id', userId)
+      .maybeSingle()
+      .then(function (result) {
+        if (result.error) throw result.error;
+
+        if (result.data) {
+          // 用户已存在：只更新 wallet_address 和 username（如果为空），保留余额
+          var patch = {
+            updated_at: now,
+            wallet_address: address || result.data.wallet_address || null
+          };
+          if (!result.data.username || !String(result.data.username).trim()) {
+            patch.username = defaultUsername;
+          }
+          console.log('更新钱包用户：', patch);
+          return window.supabase
+            .from('users')
+            .update(patch)
+            .eq('id', userId)
+            .select('id, username, wallet_address')
+            .single();
+        }
+
+        // 用户不存在：插入新记录，初始余额为0
+        var insertPayload = {
+          id: userId,
+          email: null,
+          wallet_address: address,
+          username: defaultUsername,
+          level: 0,
+          reputation_score: 100,
+          crlm_balance: 0,
+          usdt_balance: 0,
+          updated_at: now
+        };
+        console.log('创建钱包用户：', insertPayload);
+        return window.supabase
+          .from('users')
+          .insert(insertPayload)
+          .select('id, username, wallet_address')
+          .single();
+      })
       .then(function (result) {
         if (result.error) throw result.error;
         console.log('[auth] 钱包用户同步成功，userId:', result.data.id);

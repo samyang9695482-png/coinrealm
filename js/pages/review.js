@@ -979,7 +979,7 @@
     // 审核通过后激活邀请奖励（一级 + 二级）
     if (typeof activateInviteRewards === 'function') {
       console.log('[审核通过] 开始激活邀请奖励，被邀请用户ID:', submission.user_id);
-      activateInviteRewards(submission.user_id).then(function () {
+      activateInviteRewards(submission.user_id, { skipPermissionCheck: true }).then(function () {
         console.log('[审核通过] 邀请奖励激活完成，被邀请用户ID:', submission.user_id);
       }).catch(function (inviteErr) {
         console.warn('[审核通过] 邀请奖励激活失败:', inviteErr);
