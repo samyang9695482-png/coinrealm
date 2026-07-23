@@ -355,23 +355,16 @@ async function activateInviteRewards(userId) {
       console.log('[ActivateInvite] --- 处理第 ' + (i + 1) + '/' + result.data.length + ' 条：id=' + invite.id + ' ' + levelLabel + ' 邀请人=' + inviterId + ' 已激活=' + invite.is_activated + ' ---');
 
       // ★ 防重复：检查 deposit_records 是否已有该邀请的奖励记录
-      var dupQuery = window.supabase
+      var dupCheck = await window.supabase
         .from('deposit_records')
         .select('id')
         .eq('user_id', inviterId)
         .eq('type', 'invite_reward')
-        .eq('related_id', invite.id);
+        .eq('related_id', invite.id)
+        .maybeSingle();
 
-      // 二级奖励额外检查 description
-      if (level === 2) {
-        dupQuery = dupQuery.ilike('description', '%二级%');
-      }
-
-      var dupCheck = await dupQuery.limit(1);
-
-      if (!dupCheck.error && dupCheck.data && dupCheck.data.length > 0) {
+      if (dupCheck.data) {
         console.log('[ActivateInvite] 跳过 - deposit_records 已有记录（奖励已发放过）');
-        // 确保 is_activated 标记为 true（补救之前可能只发了奖没标记的情况）
         if (!invite.is_activated) {
           await window.supabase.from('invites').update({ is_activated: true }).eq('id', invite.id);
         }
@@ -380,7 +373,8 @@ async function activateInviteRewards(userId) {
       }
 
       if (dupCheck.error) {
-        console.log('[ActivateInvite] deposit_records 查询失败（可能表不存在），继续发放:', dupCheck.error.message);
+        console.error('[ActivateInvite] 防重复检查失败，停止发放:', dupCheck.error);
+        continue;
       }
 
       // 获取邀请人信息
@@ -509,21 +503,34 @@ async function activateInviteRewards(userId) {
             }
 
             // ★ 统一防重复：检查 deposit_records 是否已有该二级奖励记录
-            // 使用 user_id + invitee_id + type + description 组合判断
-            var dup2Check = await window.supabase
-              .from('deposit_records')
-              .select('id')
-              .eq('user_id', grandParentId)
-              .eq('type', 'invite_reward')
-              .ilike('description', '%二级%')
-              .limit(1);
+            // 使用 user_id + type + related_id 组合判断（与一级奖励一致）
+            var dup2Check;
+            if (level2InviteId) {
+              dup2Check = await window.supabase
+                .from('deposit_records')
+                .select('id')
+                .eq('user_id', grandParentId)
+                .eq('type', 'invite_reward')
+                .eq('related_id', level2InviteId)
+                .maybeSingle();
+            } else {
+              dup2Check = await window.supabase
+                .from('deposit_records')
+                .select('id')
+                .eq('user_id', grandParentId)
+                .eq('type', 'invite_reward')
+                .ilike('description', '%二级%')
+                .maybeSingle();
+            }
 
-            if (!dup2Check.error && dup2Check.data && dup2Check.data.length > 0) {
+            if (dup2Check.data) {
               console.log('[ActivateInvite] 跳过二级 - deposit_records 已有记录（奖励已发放过）');
               if (level2InviteId && !level2AlreadyActivated) {
                 await window.supabase.from('invites').update({ is_activated: true }).eq('id', level2InviteId);
               }
               // 继续下一条主循环记录
+            } else if (dup2Check.error) {
+              console.error('[ActivateInvite] 二级防重复检查失败，停止发放:', dup2Check.error);
             } else {
               // 需要发放二级奖励
               await grantLevel2Reward({
@@ -719,9 +726,9 @@ async function grantLevel2Reward(params) {
       .eq('user_id', grandParentId)
       .eq('type', 'invite_reward')
       .eq('related_id', inviteId)
-      .limit(1);
+      .maybeSingle();
 
-    if (!dupCheckResult.error && dupCheckResult.data && dupCheckResult.data.length > 0) {
+    if (dupCheckResult.data) {
       console.log('[Level2Reward] 跳过 - deposit_records 已有记录（奖励已发放过）');
       // 确保 is_activated 标记为 true
       await window.supabase.from('invites').update({ is_activated: true }).eq('id', inviteId);
@@ -729,7 +736,8 @@ async function grantLevel2Reward(params) {
     }
 
     if (dupCheckResult.error) {
-      console.log('[Level2Reward] deposit_records 查询失败（可能表不存在），继续发放:', dupCheckResult.error.message);
+      console.error('[Level2Reward] 防重复检查失败，停止发放:', dupCheckResult.error);
+      return false;
     }
 
     // 先发奖励（更新余额）
