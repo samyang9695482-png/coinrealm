@@ -468,10 +468,12 @@ async function activateInviteRewards(userId) {
       if (level === 1) {
         console.log('[ActivateInvite] --- 追溯上级，检查是否有二级奖励 ---');
         try {
+          // ★ 关键修复：查询当前用户（userId）是否有上级（即是否也是被邀请人）
+          // 而不是查询邀请人（inviterId）是否有上级
           var parentInviteResult = await window.supabase
             .from('invites')
             .select('id, inviter_id, is_activated')
-            .eq('invitee_id', inviterId)
+            .eq('invitee_id', userId)
             .eq('level', 1)
             .order('created_at', { ascending: true })
             .limit(1)
