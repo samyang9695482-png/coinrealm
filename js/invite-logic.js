@@ -619,8 +619,35 @@ async function grantLevel2Reward(params) {
 
     var inviteId = existingInviteId;
 
-    // 如果没有现有记录，先创建 invites 记录（level=2）
+    // ★ 修复：先查询，后插入（避免 409 冲突）
     if (!inviteId) {
+      console.log('[Level2Reward] 查询是否已存在 level=2 的邀请记录');
+      var existResult = await window.supabase
+        .from('invites')
+        .select('id, is_activated')
+        .eq('inviter_id', grandParentId)
+        .eq('invitee_id', inviteeUserId)
+        .eq('level', 2)
+        .limit(1)
+        .maybeSingle();
+
+      if (!existResult.error && existResult.data) {
+        inviteId = existResult.data.id;
+        console.log('[Level2Reward] 邀请记录已存在，id=' + inviteId + '，已激活=' + existResult.data.is_activated);
+
+        // 如果已激活，跳过发放
+        if (existResult.data.is_activated) {
+          console.log('[Level2Reward] 跳过 - 该记录已激活');
+          return false;
+        }
+      } else {
+        console.log('[Level2Reward] 邀请记录不存在，需要创建');
+      }
+    }
+
+    // 如果仍然没有邀请记录ID，执行 INSERT
+    if (!inviteId) {
+      console.log('[Level2Reward] 执行 INSERT 创建 level=2 邀请记录');
       var insertResult = await window.supabase
         .from('invites')
         .insert({
@@ -638,10 +665,10 @@ async function grantLevel2Reward(params) {
         var errMsg = String(insertResult.error.message || '').toLowerCase();
         var errCode = insertResult.error.code || '';
 
-        // 已存在（唯一约束冲突），查询一下获取 id
-        if (errCode === '23505' || errMsg.indexOf('duplicate') !== -1) {
-          console.log('[Level2Reward] invites 记录已存在（冲突），查询获取id');
-          var existResult = await window.supabase
+        // 仍然可能冲突（竞态条件），再查询一次
+        if (errCode === '23505' || errMsg.indexOf('duplicate') !== -1 || errMsg.indexOf('conflict') !== -1) {
+          console.log('[Level2Reward] INSERT 冲突，再次查询获取id');
+          var retryResult = await window.supabase
             .from('invites')
             .select('id, is_activated')
             .eq('inviter_id', grandParentId)
@@ -650,9 +677,9 @@ async function grantLevel2Reward(params) {
             .limit(1)
             .maybeSingle();
 
-          if (!existResult.error && existResult.data) {
-            inviteId = existResult.data.id;
-            if (existResult.data.is_activated) {
+          if (!retryResult.error && retryResult.data) {
+            inviteId = retryResult.data.id;
+            if (retryResult.data.is_activated) {
               console.log('[Level2Reward] 已激活，跳过');
               return false;
             }
