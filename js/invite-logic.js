@@ -354,13 +354,20 @@ async function activateInviteRewards(userId) {
 
       console.log('[ActivateInvite] --- 处理第 ' + (i + 1) + '/' + result.data.length + ' 条：id=' + invite.id + ' ' + levelLabel + ' 邀请人=' + inviterId + ' 已激活=' + invite.is_activated + ' ---');
 
-      // 防重复：检查 deposit_records 是否已有该邀请的奖励记录
-      var dupCheck = await window.supabase
+      // ★ 防重复：检查 deposit_records 是否已有该邀请的奖励记录
+      var dupQuery = window.supabase
         .from('deposit_records')
         .select('id')
-        .eq('related_id', invite.id)
+        .eq('user_id', inviterId)
         .eq('type', 'invite_reward')
-        .limit(1);
+        .eq('related_id', invite.id);
+
+      // 二级奖励额外检查 description
+      if (level === 2) {
+        dupQuery = dupQuery.ilike('description', '%二级%');
+      }
+
+      var dupCheck = await dupQuery.limit(1);
 
       if (!dupCheck.error && dupCheck.data && dupCheck.data.length > 0) {
         console.log('[ActivateInvite] 跳过 - deposit_records 已有记录（奖励已发放过）');
@@ -709,6 +716,26 @@ async function grantLevel2Reward(params) {
     if (!inviteId) {
       console.warn('[Level2Reward] 无法获取邀请记录ID，跳过');
       return false;
+    }
+
+    // ★ 防重复：检查 deposit_records 是否已有该邀请的二级奖励记录
+    var dupCheckResult = await window.supabase
+      .from('deposit_records')
+      .select('id')
+      .eq('user_id', grandParentId)
+      .eq('type', 'invite_reward')
+      .eq('related_id', inviteId)
+      .limit(1);
+
+    if (!dupCheckResult.error && dupCheckResult.data && dupCheckResult.data.length > 0) {
+      console.log('[Level2Reward] 跳过 - deposit_records 已有记录（奖励已发放过）');
+      // 确保 is_activated 标记为 true
+      await window.supabase.from('invites').update({ is_activated: true }).eq('id', inviteId);
+      return false;
+    }
+
+    if (dupCheckResult.error) {
+      console.log('[Level2Reward] deposit_records 查询失败（可能表不存在），继续发放:', dupCheckResult.error.message);
     }
 
     // 先发奖励（更新余额）
