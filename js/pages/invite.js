@@ -440,23 +440,17 @@
         }
 
         return Promise.all([
-          window.supabase.from('users').select('invite_count').eq('id', userId).single(),
           window.supabase.from('invites').select('id, inviter_id, invitee_id, level, reward_amount, is_activated, created_at').eq('inviter_id', userId).eq('level', 1).order('created_at', { ascending: false }),
           window.supabase.from('invites').select('id, inviter_id, invitee_id, level, reward_amount, is_activated, created_at').eq('inviter_id', userId).eq('level', 2).order('created_at', { ascending: false }),
           window.supabase.from('checkins').select('*').eq('user_id', userId).order('checkin_date', { ascending: false }).limit(50),
           fetchInviteLeaderboard(50),
           fetchMyInviteRank(userId)
         ]).then(function (pageResults) {
-          var userResult = pageResults[0];
-          var level1InvitesResult = pageResults[1];
-          var level2InvitesResult = pageResults[2];
-          var checkinsResult = pageResults[3];
-          var leaderboard = pageResults[4];
-          var myRank = pageResults[5];
-
-          if (userResult.error || !userResult.data) {
-            return { loggedIn: false, settings: settings, showInviteLeaderboard: showInviteLeaderboard };
-          }
+          var level1InvitesResult = pageResults[0];
+          var level2InvitesResult = pageResults[1];
+          var checkinsResult = pageResults[2];
+          var leaderboard = pageResults[3];
+          var myRank = pageResults[4];
 
           var level1Invites = level1InvitesResult.error ? [] : (level1InvitesResult.data || []);
           var level2Invites = level2InvitesResult.error ? [] : (level2InvitesResult.data || []);
@@ -501,7 +495,7 @@
               userId: userId,
               settings: settings,
               showInviteLeaderboard: showInviteLeaderboard,
-              inviteCount: Number(userResult.data.invite_count) || level1Records.length,
+              inviteCount: level1Records.length,
               totalReward: totalReward,
               level1ActivatedCount: level1ActivatedCount,
               level2ActivatedCount: level2ActivatedCount,
