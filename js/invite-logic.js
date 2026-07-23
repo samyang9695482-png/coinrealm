@@ -619,26 +619,29 @@ async function grantLevel2Reward(params) {
 
     var inviteId = existingInviteId;
 
-    // ★ 修复：先查询，后插入（避免 409 冲突）
+    // ★ 关键修复：查询时只用 invitee_id（RLS 允许），不用 inviter_id
     if (!inviteId) {
-      console.log('[Level2Reward] 查询是否已存在 level=2 的邀请记录');
+      console.log('[Level2Reward] 查询 level=2 的邀请记录（只用 invitee_id）');
       var existResult = await window.supabase
         .from('invites')
-        .select('id, is_activated')
-        .eq('inviter_id', grandParentId)
+        .select('id, inviter_id, is_activated')
         .eq('invitee_id', inviteeUserId)
         .eq('level', 2)
         .limit(1)
         .maybeSingle();
 
       if (!existResult.error && existResult.data) {
-        inviteId = existResult.data.id;
-        console.log('[Level2Reward] 邀请记录已存在，id=' + inviteId + '，已激活=' + existResult.data.is_activated);
+        // 验证 inviter_id 是否匹配（防止取到错误的记录）
+        if (String(existResult.data.inviter_id) === String(grandParentId)) {
+          inviteId = existResult.data.id;
+          console.log('[Level2Reward] 邀请记录已存在，id=' + inviteId + '，已激活=' + existResult.data.is_activated);
 
-        // 如果已激活，跳过发放
-        if (existResult.data.is_activated) {
-          console.log('[Level2Reward] 跳过 - 该记录已激活');
-          return false;
+          if (existResult.data.is_activated) {
+            console.log('[Level2Reward] 跳过 - 该记录已激活');
+            return false;
+          }
+        } else {
+          console.log('[Level2Reward] 查询到的记录 inviter_id 不匹配，需要创建新记录');
         }
       } else {
         console.log('[Level2Reward] 邀请记录不存在，需要创建');
@@ -665,24 +668,26 @@ async function grantLevel2Reward(params) {
         var errMsg = String(insertResult.error.message || '').toLowerCase();
         var errCode = insertResult.error.code || '';
 
-        // 仍然可能冲突（竞态条件），再查询一次
+        // 冲突时，用 invitee_id 查询获取 ID（RLS 允许）
         if (errCode === '23505' || errMsg.indexOf('duplicate') !== -1 || errMsg.indexOf('conflict') !== -1) {
-          console.log('[Level2Reward] INSERT 冲突，再次查询获取id');
+          console.log('[Level2Reward] INSERT 冲突，用 invitee_id 查询获取id');
           var retryResult = await window.supabase
             .from('invites')
-            .select('id, is_activated')
-            .eq('inviter_id', grandParentId)
+            .select('id, inviter_id, is_activated')
             .eq('invitee_id', inviteeUserId)
             .eq('level', 2)
             .limit(1)
             .maybeSingle();
 
-          if (!retryResult.error && retryResult.data) {
+          if (!retryResult.error && retryResult.data && String(retryResult.data.inviter_id) === String(grandParentId)) {
             inviteId = retryResult.data.id;
             if (retryResult.data.is_activated) {
               console.log('[Level2Reward] 已激活，跳过');
               return false;
             }
+            console.log('[Level2Reward] 冲突后查询成功，id=' + inviteId);
+          } else {
+            console.warn('[Level2Reward] 冲突后查询仍失败（可能 RLS 限制），inviter_id匹配=' + (retryResult.data ? String(retryResult.data.inviter_id) === String(grandParentId) : 'N/A'));
           }
         } else {
           console.warn('[Level2Reward] 创建 invites 记录失败:', insertResult.error);
