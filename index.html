@@ -7,16 +7,14 @@
       try {
         var urlParams = new URLSearchParams(window.location.search);
         var refParam = urlParams.get('ref');
-        console.log('[DIAG] 步骤1：URL 参数捕获 - ref =', refParam, '| full search =', window.location.search);
         if (refParam) {
           localStorage.setItem('inviter_id', refParam);
           localStorage.setItem('coinrealm_invite_ref', refParam);
-          console.log('[DIAG] 步骤2：localStorage 存储 - inviter_id =', localStorage.getItem('inviter_id'), '| coinrealm_invite_ref =', localStorage.getItem('coinrealm_invite_ref'));
-        } else {
-          console.log('[DIAG] 步骤2：localStorage 存储 - 跳过（URL 无 ref 参数）| 现有 inviter_id =', localStorage.getItem('inviter_id'));
+          console.log('页面加载-检测到 ref 参数：', refParam);
+          console.log('页面加载-已存入 localStorage：', localStorage.getItem('inviter_id'));
         }
       } catch (e) {
-        console.warn('[DIAG] 步骤1/2：捕获 ref 参数失败:', e);
+        console.warn('捕获 ref 参数失败:', e);
       }
     })();
   </script>
@@ -1730,21 +1728,20 @@
       </div>
     </div>
   </main>
-  <script src="js/i18n.js?v=20260718"></script>
-  <script src="auth.js?v=20260721"></script>
-  <script src="js/pages/leaderboard.js?v=20260718"></script>
-  <script src="js/pages/dividends.js?v=20260718"></script>
-  <script src="js/pages/invite.js?v=20260727"></script>
-  <script src="js/pages/admin.js?v=20260718"></script>
-  <script src="js/pages/home.js?v=20260718"></script>
-  <script src="js/pages/publisher.js?v=20260718"></script>
-  <script src="js/pages/task-detail.js?v=20260718"></script>
-  <script src="js/pages/create-task.js?v=20260718"></script>
-  <script src="js/pages/submit-task.js?v=20260718"></script>
-  <script src="js/pages/review.js?v=20260718"></script>
-  <script src="js/pages/profile.js?v=20260718"></script>
-  <script src="js/pages/my-tasks.js?v=20260718"></script>
-  <script src="js/invite-logic.js?v=20260730"></script>
-  <script src="app.js?v=20260726"></script>
+  <script src="js/i18n.js?v=20260717"></script>
+  <script src="auth.js?v=20260717"></script>
+  <script src="js/pages/leaderboard.js?v=20260717"></script>
+  <script src="js/pages/dividends.js?v=20260717"></script>
+  <script src="js/pages/invite.js?v=20260717"></script>
+  <script src="js/pages/admin.js?v=20260717"></script>
+  <script src="js/pages/home.js?v=20260717"></script>
+  <script src="js/pages/publisher.js?v=20260717"></script>
+  <script src="js/pages/task-detail.js?v=20260717"></script>
+  <script src="js/pages/create-task.js?v=20260717"></script>
+  <script src="js/pages/submit-task.js?v=20260717"></script>
+  <script src="js/pages/review.js?v=20260717"></script>
+  <script src="js/pages/profile.js?v=20260717"></script>
+  <script src="js/pages/my-tasks.js?v=20260717"></script>
+  <script src="app.js?v=20260717"></script>
 </body>
 </html>
