@@ -655,7 +655,7 @@ async function grantLevel2Reward(params) {
 
     var inviteId = existingInviteId;
 
-    // ★ 关键修复：查询时只用 invitee_id（RLS 允许），不用 inviter_id
+    // ★ 先查询是否已存在记录（只用 invitee_id，RLS 允许）
     if (!inviteId) {
       console.log('[Level2Reward] 查询 level=2 的邀请记录（只用 invitee_id）');
       var existResult = await window.supabase
@@ -663,7 +663,6 @@ async function grantLevel2Reward(params) {
         .select('id, inviter_id, is_activated')
         .eq('invitee_id', inviteeUserId)
         .eq('level', 2)
-        .limit(1)
         .maybeSingle();
 
       if (!existResult.error && existResult.data) {
@@ -684,7 +683,7 @@ async function grantLevel2Reward(params) {
       }
     }
 
-    // 如果仍然没有邀请记录ID，执行 INSERT
+    // 如果仍然没有邀请记录ID，执行 INSERT（前置查询已避免大部分冲突）
     if (!inviteId) {
       console.log('[Level2Reward] 执行 INSERT 创建 level=2 邀请记录');
       var insertResult = await window.supabase
@@ -704,27 +703,9 @@ async function grantLevel2Reward(params) {
         var errMsg = String(insertResult.error.message || '').toLowerCase();
         var errCode = insertResult.error.code || '';
 
-        // 冲突时，用 invitee_id 查询获取 ID（RLS 允许）
         if (errCode === '23505' || errMsg.indexOf('duplicate') !== -1 || errMsg.indexOf('conflict') !== -1) {
-          console.log('[Level2Reward] INSERT 冲突，用 invitee_id 查询获取id');
-          var retryResult = await window.supabase
-            .from('invites')
-            .select('id, inviter_id, is_activated')
-            .eq('invitee_id', inviteeUserId)
-            .eq('level', 2)
-            .limit(1)
-            .maybeSingle();
-
-          if (!retryResult.error && retryResult.data && String(retryResult.data.inviter_id) === String(grandParentId)) {
-            inviteId = retryResult.data.id;
-            if (retryResult.data.is_activated) {
-              console.log('[Level2Reward] 已激活，跳过');
-              return false;
-            }
-            console.log('[Level2Reward] 冲突后查询成功，id=' + inviteId);
-          } else {
-            console.warn('[Level2Reward] 冲突后查询仍失败（可能 RLS 限制），inviter_id匹配=' + (retryResult.data ? String(retryResult.data.inviter_id) === String(grandParentId) : 'N/A'));
-          }
+          console.warn('[Level2Reward] INSERT 冲突，记录可能已被其他请求创建，跳过');
+          return false;
         } else {
           console.warn('[Level2Reward] 创建 invites 记录失败:', insertResult.error);
           return false;
