@@ -354,6 +354,13 @@ async function activateInviteRewards(userId) {
 
       console.log('[ActivateInvite] --- 处理第 ' + (i + 1) + '/' + result.data.length + ' 条：id=' + invite.id + ' ' + levelLabel + ' 邀请人=' + inviterId + ' 已激活=' + invite.is_activated + ' ---');
 
+      // ★ 快速跳过：检查该邀请记录是否已经激活
+      if (invite.is_activated === true) {
+        console.log('[ActivateInvite] 跳过 - 该邀请记录已激活，invite.id:', invite.id);
+        skipCount++;
+        continue;
+      }
+
       // ★ 防重复：检查 deposit_records 是否已有该邀请的奖励记录
       var dupCheck = await window.supabase
         .from('deposit_records')
