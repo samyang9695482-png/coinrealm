@@ -328,46 +328,73 @@ function writeInviteBroadcast(userId, description, rewardAmount) {
 // 记录邀请奖励交易明细到 deposit_records 表
 // params: { userId, amount, level, inviteId, inviteeId, inviterUsername, triggerSource }
 async function recordInviteRewardTransaction(params) {
-  if (!window.supabase || !params.userId || !params.amount) return false;
+  if (!window.supabase || !params.userId || !params.amount) {
+    console.warn('[InviteReward] 跳过 - 参数不足:', params);
+    return false;
+  }
 
   var levelLabel = params.level === 1 ? '一级' : '二级';
   var description = levelLabel + '邀请奖励（用户' + (params.inviterUsername || params.inviteeId) + '完成任务）';
 
+  var relatedId = params.related_id || params.inviteId || null;
+
   var payload = {
     user_id: params.userId,
-    amount: params.amount,
+    amount: Number(params.amount),
     type: 'invite_reward',
     description: description,
-    related_id: params.inviteId || null,
-    trigger_source: params.triggerSource || 'review_approve',
-    created_at: new Date().toISOString()
+    related_id: relatedId,
+    trigger_source: params.triggerSource || 'review_approve'
   };
 
+  console.log('[InviteReward] 准备插入 deposit_records:');
+  console.log('[InviteReward]   user_id:', payload.user_id);
+  console.log('[InviteReward]   amount:', payload.amount, '(类型:', typeof payload.amount, ')');
+  console.log('[InviteReward]   type:', payload.type);
+  console.log('[InviteReward]   description:', payload.description);
+  console.log('[InviteReward]   related_id:', payload.related_id, '(类型:', typeof payload.related_id, ')');
+  console.log('[InviteReward]   trigger_source:', payload.trigger_source);
+  console.log('[InviteReward]   完整 payload:', JSON.stringify(payload));
+
   try {
-    var result = await window.supabase.from('deposit_records').insert(payload);
+    var result = await window.supabase.from('deposit_records').insert(payload).select();
+
+    console.log('[InviteReward] 插入结果:', result);
 
     if (result.error) {
+      console.error('[InviteReward] ❌ 插入失败 - error:', result.error);
+      console.error('[InviteReward] ❌ 错误详情 - code:', result.error.code, 'message:', result.error.message, 'details:', result.error.details);
+
       var errMsg = String(result.error.message || '').toLowerCase();
 
       if (errMsg.indexOf('column') !== -1 && errMsg.indexOf('does not exist') !== -1) {
-        console.warn('[InviteReward] deposit_records 字段缺失，请执行 SQL：');
-        console.warn('[InviteReward] ALTER TABLE deposit_records ADD COLUMN IF NOT EXISTS type TEXT DEFAULT \'invite_reward\';');
-        console.warn('[InviteReward] ALTER TABLE deposit_records ADD COLUMN IF NOT EXISTS description TEXT;');
-        console.warn('[InviteReward] ALTER TABLE deposit_records ADD COLUMN IF NOT EXISTS related_id UUID;');
-        console.warn('[InviteReward] ALTER TABLE deposit_records ADD COLUMN IF NOT EXISTS trigger_source TEXT;');
+        console.warn('[InviteReward] ⚠️ 字段缺失，请执行 SQL：');
+        console.warn('[InviteReward]   ALTER TABLE deposit_records ADD COLUMN IF NOT EXISTS type TEXT DEFAULT \'invite_reward\';');
+        console.warn('[InviteReward]   ALTER TABLE deposit_records ADD COLUMN IF NOT EXISTS description TEXT;');
+        console.warn('[InviteReward]   ALTER TABLE deposit_records ADD COLUMN IF NOT EXISTS related_id UUID;');
+        console.warn('[InviteReward]   ALTER TABLE deposit_records ADD COLUMN IF NOT EXISTS trigger_source TEXT;');
       }
 
       if (errMsg.indexOf('relation') !== -1 && errMsg.indexOf('does not exist') !== -1) {
-        console.warn('[InviteReward] deposit_records 表不存在，请创建该表');
+        console.warn('[InviteReward] ⚠️ deposit_records 表不存在');
       }
 
-      console.warn('[InviteReward] deposit_records 插入失败:', result.error);
+      if (errMsg.indexOf('unique') !== -1 || errMsg.indexOf('duplicate') !== -1) {
+        console.warn('[InviteReward] ⚠️ 唯一约束冲突（可能已存在相同记录）');
+      }
+
+      if (errMsg.indexOf('null') !== -1 && errMsg.indexOf('not null') !== -1) {
+        console.warn('[InviteReward] ⚠️ 非空字段缺失，请检查表结构');
+      }
+
       return false;
     }
 
+    console.log('[InviteReward] ✅ 插入成功 - 返回数据:', result.data);
     return true;
   } catch (recordErr) {
-    console.warn('[InviteReward] deposit_records 插入异常:', recordErr);
+    console.error('[InviteReward] ❌ 插入异常:', recordErr);
+    console.error('[InviteReward] ❌ 异常堆栈:', recordErr.stack);
     return false;
   }
 }
