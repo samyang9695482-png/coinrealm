@@ -1184,21 +1184,21 @@ window.coinrealmDiagnoseInviteRLS = diagnoseInviteRLS;
 
    注意：grantInviteReward 不拦截——它只是写入 invites 记录的工具函数，
    不发奖，只在 processInvite 注册建关系时被调用。
+   grantLevel2Reward 也不拦截——activateInviteRewards 内部通过全局名调用它，
+   拦截会导致二级奖励完全失效；它本身有权限校验+防重复检查，单独滥用风险低。
    ======================================================================== */
 (function protectInviteFunctions() {
   // 保存内部引用
   var _internalActivateInviteRewards = activateInviteRewards;
-  var _internalGrantLevel2Reward = grantLevel2Reward;
 
-  // 覆盖全局发奖函数为 no-op 警告（控制台调用时只打印警告，不执行任何操作）
-  // 注意：grantInviteReward 不拦截，它只是写入 invites 记录的工具函数，不发奖
+  // 覆盖全局发奖主入口为 no-op 警告（控制台调用时只打印警告，不执行任何操作）
+  // 注意：grantLevel2Reward 和 grantInviteReward 不拦截：
+  //   - grantLevel2Reward 是内部辅助函数，activateInviteRewards 内部通过全局名调用它，
+  //     拦截会导致二级奖励完全失效；它本身有权限校验+防重复检查，单独滥用风险低
+  //   - grantInviteReward 只是写入 invites 记录的工具函数，不发奖
   activateInviteRewards = function () {
     console.warn('[Invite] ⛔ activateInviteRewards 不能从控制台直接调用，请通过审核流程触发');
     return Promise.resolve();
-  };
-  grantLevel2Reward = function () {
-    console.warn('[Invite] ⛔ grantLevel2Reward 不能从控制台直接调用');
-    return Promise.resolve(false);
   };
 
   // 仅暴露审核流程需要的入口（名称不直观，降低滥用风险）
