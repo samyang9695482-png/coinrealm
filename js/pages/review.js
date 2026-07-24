@@ -977,8 +977,9 @@
     }
 
     // 审核通过后激活邀请奖励（管理员审核通过流程，跳过权限校验）
-    if (typeof activateInviteRewards === 'function') {
-      activateInviteRewards(submission.user_id, { skipPermissionCheck: true }).catch(function (inviteErr) {
+    // 使用 coinrealmReviewActivateRewards（内部受保护入口，控制台无法直接调用 activateInviteRewards）
+    if (typeof window.coinrealmReviewActivateRewards === 'function') {
+      window.coinrealmReviewActivateRewards(submission.user_id, { skipPermissionCheck: true }).catch(function (inviteErr) {
         console.warn('审核通过后激活邀请奖励失败:', inviteErr);
       });
     }

@@ -1170,3 +1170,41 @@ async function diagnoseInviteRLS() {
   }
 }
 window.coinrealmDiagnoseInviteRLS = diagnoseInviteRLS;
+
+/* ========================================================================
+   ⛔ 控制台防滥用：移除敏感发奖函数的全局暴露
+   ----------------------------------------------------------------------
+   原因：activateInviteRewards 等函数是顶层函数声明，浏览器会自动将其
+   挂载到 window 上，导致控制台可直接调用 window.activateInviteRewards()
+   重复发奖。
+
+   修复：将敏感函数的全局引用覆盖为 no-op 警告函数，真正的实现仅通过
+   window.coinrealmReviewActivateRewards 暴露给 review.js 审核流程使用
+   （名称不直观，降低滥用风险）。
+   ======================================================================== */
+(function protectInviteFunctions() {
+  // 保存内部引用
+  var _internalActivateInviteRewards = activateInviteRewards;
+  var _internalGrantLevel2Reward = grantLevel2Reward;
+  var _internalGrantInviteReward = grantInviteReward;
+
+  // 覆盖全局函数为 no-op 警告（控制台调用时只打印警告，不执行任何操作）
+  activateInviteRewards = function () {
+    console.warn('[Invite] ⛔ activateInviteRewards 不能从控制台直接调用，请通过审核流程触发');
+    return Promise.resolve();
+  };
+  grantLevel2Reward = function () {
+    console.warn('[Invite] ⛔ grantLevel2Reward 不能从控制台直接调用');
+    return Promise.resolve(false);
+  };
+  grantInviteReward = function () {
+    console.warn('[Invite] ⛔ grantInviteReward 不能从控制台直接调用');
+    return Promise.resolve(false);
+  };
+
+  // 仅暴露审核流程需要的入口（名称不直观，降低滥用风险）
+  // review.js 通过 window.coinrealmReviewActivateRewards 调用
+  window.coinrealmReviewActivateRewards = _internalActivateInviteRewards;
+
+  console.log('[Invite] ✅ 敏感发奖函数已从全局作用域移除，仅审核流程可调用');
+})();
