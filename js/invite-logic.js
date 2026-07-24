@@ -498,6 +498,35 @@ async function activateInviteRewards(userId, options) {
 
     console.log('[ActivateInvite] 步骤3：找到', result.data.length, '条邀请记录，开始逐条处理');
 
+    // ★ 自邀记录过滤（防御深度）：先剔除 inviter_id === userId 的脏数据记录，
+    // 防止历史自邀记录在循环中被误发奖励。循环内仍保留二次检查。
+    var selfInviteCount = 0;
+    var filteredInvites = [];
+    for (var k = 0; k < result.data.length; k++) {
+      var row = result.data[k];
+      if (row.inviter_id && String(row.inviter_id) === String(userId)) {
+        selfInviteCount++;
+        console.warn('[ActivateInvite] ⚠️ 检测到自邀脏记录，已过滤 | inviteId=', row.id, ' inviter_id=', row.inviter_id);
+        // 标记为已激活，避免后续重复扫描
+        if (!row.is_activated) {
+          try {
+            await window.supabase
+              .from('invites')
+              .update({ is_activated: true })
+              .eq('id', row.id);
+          } catch (markErr) {
+            console.warn('[ActivateInvite] 自邀脏记录标记失败:', markErr);
+          }
+        }
+      } else {
+        filteredInvites.push(row);
+      }
+    }
+    if (selfInviteCount > 0) {
+      console.warn('[ActivateInvite] ⚠️ 共过滤掉 ' + selfInviteCount + ' 条自邀脏记录，剩余 ' + filteredInvites.length + ' 条待处理');
+    }
+    result.data = filteredInvites;
+
     var settings = await fetchInviteSettings();
     var level1Reward = Number(settings.invite_level1_reward) || INVITE_SETTINGS_DEFAULTS.invite_level1_reward;
     var level2Reward = Number(settings.invite_level2_reward) || INVITE_SETTINGS_DEFAULTS.invite_level2_reward;
@@ -518,6 +547,25 @@ async function activateInviteRewards(userId, options) {
 
       if (!inviterId) {
         console.warn('[ActivateInvite] 跳过 - 缺少 inviter_id');
+        continue;
+      }
+
+      // ★ 自邀检查（最重要）：邀请人ID === 被邀请人ID 时，直接跳过整条记录，
+      // 不发任何奖励、不创建任何记录。防止用户用自己的链接给自己发奖。
+      if (String(inviterId) === String(userId)) {
+        console.warn('[ActivateInvite] ⚠️ 跳过 - 自邀记录（inviter_id === invitee_id），不发放奖励 | inviteId=', invite.id);
+        // 仅将此脏记录标记为已激活，避免后续重复扫描
+        if (!invite.is_activated) {
+          try {
+            await window.supabase
+              .from('invites')
+              .update({ is_activated: true })
+              .eq('id', invite.id);
+          } catch (markErr) {
+            console.warn('[ActivateInvite] 自邀记录标记失败:', markErr);
+          }
+        }
+        skipCount++;
         continue;
       }
 
@@ -727,9 +775,14 @@ async function grantLevel2Reward(params) {
       console.log('[Level2Reward] 找到上级（grandParent）：', grandParentId);
     }
 
-    // 防自邀：上级不能是被邀请人自己
+    // ★ 自邀检查（防御深度）：上级不能是被邀请人自己，也不能是一级邀请人自己
+    // 防止数据异常导致给同一个人重复发奖
     if (String(grandParentId) === String(inviteeUserId)) {
-      console.warn('[Level2Reward] 跳过：上级与被邀请人相同（数据异常）');
+      console.warn('[Level2Reward] ⚠️ 跳过：上级与被邀请人相同（自邀，数据异常）');
+      return false;
+    }
+    if (String(grandParentId) === String(inviterId)) {
+      console.warn('[Level2Reward] ⚠️ 跳过：上级与一级邀请人相同（循环邀请，数据异常）| grandParentId=', grandParentId, ' inviterId=', inviterId);
       return false;
     }
 
@@ -1044,8 +1097,8 @@ async function processPendingInviteRegistration() {
     var inviter = await findInviterByRef(inviterId);
     console.log('[DIAG] 步骤4：processPendingInviteRegistration - 邀请人查找结果 =', inviter);
 
-    if (!inviter || inviter.id === userId) {
-      console.log('[DIAG] 步骤4：processPendingInviteRegistration - 邀请者无效或不能邀请自己，清除 inviter_id');
+    if (!inviter || String(inviter.id) === String(userId)) {
+      console.log('[DIAG] 步骤4：processPendingInviteRegistration - 邀请者无效或不能邀请自己（自邀），清除 inviter_id');
       clearStoredInviterId();
       return;
     }
