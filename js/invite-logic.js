@@ -427,6 +427,12 @@ async function isInviteRewardAlreadyGranted(userId, inviteId) {
 // 激活邀请奖励：任务审核通过后调用
 // userId：完成任务并被审核通过的用户
 // options.skipPermissionCheck：管理员审核通过时传 true 跳过权限校验
+//
+// ★★★ 防重复策略（核心）★★★
+// 无论何时调用（审核通过自动触发 / 控制台手动调用），也无论 invites.is_activated 是什么状态，
+// 每条邀请记录在发奖前都必须先检查 deposit_records(user_id + related_id + type='invite_reward')。
+// 只有 deposit_records 中【没有】对应记录时，才执行发奖。这是判断奖励是否已发放的唯一可靠依据，
+// 彻底杜绝因 is_activated 标记失败/状态不一致导致的重复发奖。
 async function activateInviteRewards(userId, options) {
   if (!userId || !window.supabase) {
     console.log('[ActivateInvite] 跳过 - 缺少 userId 或 supabase');
@@ -569,26 +575,38 @@ async function activateInviteRewards(userId, options) {
         continue;
       }
 
-      // ★ 防重复检查（最重要）：deposit_records(user_id + related_id + type)
+      // ★★★ 核心防重复检查（最重要）★★★
+      // 无论 invites.is_activated 是 true 还是 false，都必须先检查 deposit_records。
+      // deposit_records(user_id + related_id + type='invite_reward') 是判断奖励是否已发放的
+      // 【唯一可靠依据】。这确保即使 is_activated 标记失败、状态不一致、或从控制台手动调用，
+      // 都不会重复发奖。
+      console.log('[ActivateInvite] 🔒 执行防重复检查（不受 is_activated=' + invite.is_activated + ' 影响）| user_id=' + inviterId + ' related_id=' + invite.id + ' type=invite_reward');
       var dupCheck = await isInviteRewardAlreadyGranted(inviterId, invite.id);
 
       if (!dupCheck.ok) {
-        console.error('[ActivateInvite] 防重复检查失败，跳过该条以防重复发放');
+        console.error('[ActivateInvite] ❌ 防重复检查失败（查询异常），为安全起见跳过该条不发奖');
         continue;
       }
 
       if (dupCheck.granted) {
-        console.log('[ActivateInvite] 跳过 - deposit_records 已有记录（奖励已发放过）');
-        // 确保 is_activated 标记为 true（保持数据一致性）
+        console.log('[ActivateInvite] ✅ 防重复命中 - deposit_records 已有记录，奖励已发放过，跳过 | is_activated=' + invite.is_activated);
+        // 确保 is_activated 标记为 true（保持数据一致性，补救之前可能失败的标记）
         if (!invite.is_activated) {
-          await window.supabase
-            .from('invites')
-            .update({ is_activated: true, is_effective: level === 1 ? true : invite.is_effective })
-            .eq('id', invite.id);
+          try {
+            await window.supabase
+              .from('invites')
+              .update({ is_activated: true, is_effective: level === 1 ? true : invite.is_effective })
+              .eq('id', invite.id);
+            console.log('[ActivateInvite] ✅ 已将 is_activated 补救标记为 true');
+          } catch (markErr) {
+            console.warn('[ActivateInvite] ⚠️ is_activated 补救标记失败:', markErr);
+          }
         }
         skipCount++;
         continue;
       }
+
+      console.log('[ActivateInvite] 防重复通过 - deposit_records 无记录，继续发放奖励');
 
       // 获取邀请人信息（用于更新余额）
       var inviterResult = await window.supabase
