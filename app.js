@@ -5091,6 +5091,8 @@ window.addEventListener('hashchange', function () {
       pf_ledger_icon_checkin: '🎁',
       pf_ledger_icon_publish: '📝',
       pf_ledger_icon_refund: '↩️',
+      pf_ledger_icon_invite: '🎁',
+      pf_ledger_type_invite: '邀请奖励',
       pf_ledger_balance_after: '余额 {amount} CRLM',
       pf_withdraw_title: '提现 CRLM',
       pf_withdraw_balance_label: '当前余额',
@@ -5173,6 +5175,8 @@ window.addEventListener('hashchange', function () {
       pf_ledger_icon_checkin: '🎁',
       pf_ledger_icon_publish: '📝',
       pf_ledger_icon_refund: '↩️',
+      pf_ledger_icon_invite: '🎁',
+      pf_ledger_type_invite: 'Invite Reward',
       pf_ledger_balance_after: 'Balance {amount} CRLM',
       pf_withdraw_title: 'Withdraw CRLM',
       pf_withdraw_balance_label: 'Current balance',
@@ -5570,6 +5574,34 @@ window.addEventListener('hashchange', function () {
       }
     } catch (refundErr) {
       console.warn('余额明细：任务退款查询失败', refundErr);
+    }
+
+    try {
+      var inviteRewardsResult = await window.supabase
+        .from('deposit_records')
+        .select('amount, description, related_id, type, created_at')
+        .eq('user_id', userId)
+        .eq('type', 'invite_reward')
+        .order('created_at', { ascending: false })
+        .limit(queryLimit);
+
+      console.log('余额明细：邀请奖励查询结果：', inviteRewardsResult);
+
+      if (!inviteRewardsResult.error) {
+        (inviteRewardsResult.data || []).forEach(function (row) {
+          var amount = Number(row.amount) || 0;
+          if (amount <= 0) return;
+          entries.push({
+            time: row.created_at || new Date().toISOString(),
+            icon: pfT('pf_ledger_icon_invite'),
+            description: row.description || pfT('pf_ledger_type_invite'),
+            delta: amount,
+            income: true
+          });
+        });
+      }
+    } catch (inviteErr) {
+      console.warn('余额明细：邀请奖励查询失败', inviteErr);
     }
 
     console.log('余额明细最终条目（含任务奖励）：', entries);
