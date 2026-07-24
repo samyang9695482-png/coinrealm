@@ -1178,27 +1178,26 @@ window.coinrealmDiagnoseInviteRLS = diagnoseInviteRLS;
    挂载到 window 上，导致控制台可直接调用 window.activateInviteRewards()
    重复发奖。
 
-   修复：将敏感函数的全局引用覆盖为 no-op 警告函数，真正的实现仅通过
+   修复：将敏感发奖函数的全局引用覆盖为 no-op 警告函数，真正的实现仅通过
    window.coinrealmReviewActivateRewards 暴露给 review.js 审核流程使用
    （名称不直观，降低滥用风险）。
+
+   注意：grantInviteReward 不拦截——它只是写入 invites 记录的工具函数，
+   不发奖，只在 processInvite 注册建关系时被调用。
    ======================================================================== */
 (function protectInviteFunctions() {
   // 保存内部引用
   var _internalActivateInviteRewards = activateInviteRewards;
   var _internalGrantLevel2Reward = grantLevel2Reward;
-  var _internalGrantInviteReward = grantInviteReward;
 
-  // 覆盖全局函数为 no-op 警告（控制台调用时只打印警告，不执行任何操作）
+  // 覆盖全局发奖函数为 no-op 警告（控制台调用时只打印警告，不执行任何操作）
+  // 注意：grantInviteReward 不拦截，它只是写入 invites 记录的工具函数，不发奖
   activateInviteRewards = function () {
     console.warn('[Invite] ⛔ activateInviteRewards 不能从控制台直接调用，请通过审核流程触发');
     return Promise.resolve();
   };
   grantLevel2Reward = function () {
     console.warn('[Invite] ⛔ grantLevel2Reward 不能从控制台直接调用');
-    return Promise.resolve(false);
-  };
-  grantInviteReward = function () {
-    console.warn('[Invite] ⛔ grantInviteReward 不能从控制台直接调用');
     return Promise.resolve(false);
   };
 
