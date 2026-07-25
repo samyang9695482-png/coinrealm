@@ -1000,7 +1000,7 @@ async function processInvite(newUserId) {
   // 检查：用户不能邀请自己
   if (String(inviterId) === String(newUserId)) {
     console.warn('[Invite] 跳过：用户不能邀请自己 | inviterId =', inviterId, '| inviteeId =', newUserId);
-    clearStoredInviterId();
+    // ★ 保留 inviter_id 不清除（可能是数据异常，下次重试时再判断）
     return false;
   }
 
@@ -1016,8 +1016,7 @@ async function processInvite(newUserId) {
     console.log('[DIAG] 步骤4：processInvite - 已有邀请记录查询结果 =', existingResult.error ? '查询失败' : existingResult.data);
 
     if (!existingResult.error && existingResult.data && existingResult.data.length) {
-      console.log('[DIAG] 步骤4：processInvite - 用户已有邀请关系，清除 inviter_id 并跳过');
-      clearStoredInviterId();
+      console.log('[DIAG] 步骤4：processInvite - 用户已有邀请关系，保留 inviter_id 不清除');
       return true;
     }
 
@@ -1118,8 +1117,7 @@ async function processPendingInviteRegistration(options) {
     console.log('[DIAG] 步骤4：processPendingInviteRegistration - 已有邀请记录查询结果 =', existingResult.error ? '查询失败' : existingResult.data);
 
     if (!existingResult.error && existingResult.data && existingResult.data.length) {
-      console.log('[DIAG] 步骤4：processPendingInviteRegistration - 用户已有邀请关系，清除 inviter_id');
-      clearStoredInviterId();
+      console.log('[DIAG] 步骤4：processPendingInviteRegistration - 用户已有邀请关系，保留 inviter_id');
       return;
     }
 
@@ -1129,17 +1127,14 @@ async function processPendingInviteRegistration(options) {
     console.log('[DIAG] 步骤4：processPendingInviteRegistration - 邀请人查找结果 =', inviter);
 
     if (!inviter || String(inviter.id) === String(userId)) {
-      console.log('[DIAG] 步骤4：processPendingInviteRegistration - 邀请者无效或不能邀请自己（自邀），清除 inviter_id');
-      clearStoredInviterId();
+      console.log('[DIAG] 步骤4：processPendingInviteRegistration - 邀请者无效或不能邀请自己（自邀），保留 inviter_id');
       return;
     }
 
     console.log('[DIAG] 步骤4：processPendingInviteRegistration - 开始调用 processInvite');
     var inviteResult = await processInvite(userId);
     console.log('[DIAG] 步骤4：processPendingInviteRegistration - processInvite 完成，结果 =', inviteResult);
-    if (inviteResult) {
-      clearStoredInviterId();
-    }
+    // ★ processInvite 内部已处理 inviter_id 的清除（成功时清除，失败时保留）
   } catch (pendingErr) {
     console.warn('[DIAG] 步骤4：processPendingInviteRegistration 异常 - 保留 inviter_id 以便重试:', pendingErr);
   }
@@ -1220,6 +1215,103 @@ window.coinrealmDiagnoseInviteRLS = diagnoseInviteRLS;
 
   // 暴露待处理邀请处理函数（auth.js 在钱包登录成功后调用）
   window.coinrealmProcessPendingInvite = processPendingInviteRegistration;
+
+  // ★ 全局诊断工具：排查二级奖励问题
+  // 在浏览器控制台执行：window.coinrealmDiagnoseLevel2Reward('C的用户ID')
+  window.coinrealmDiagnoseLevel2Reward = async function (userId) {
+    console.log('===========================================');
+    console.log('🚀 二级奖励诊断工具');
+    console.log('===========================================');
+
+    if (!window.supabase) {
+      console.error('❌ 未连接 Supabase');
+      return;
+    }
+
+    console.log('1️⃣ 步骤：查询用户的邀请记录');
+    var inviteResult = await window.supabase
+      .from('invites')
+      .select('id, inviter_id, level, is_activated, is_effective, reward_amount')
+      .eq('invitee_id', userId);
+    console.log('   结果:', inviteResult.error ? '失败' : '成功', inviteResult.data);
+
+    if (!inviteResult.data || !inviteResult.data.length) {
+      console.error('❌ 该用户没有邀请记录');
+      return;
+    }
+
+    var level1Invite = inviteResult.data.find(function (i) { return i.level === 1; });
+    if (!level1Invite) {
+      console.error('❌ 没有 level=1 的邀请记录');
+      return;
+    }
+
+    console.log('2️⃣ 步骤：一级邀请记录');
+    console.log('   inviter_id (B):', level1Invite.inviter_id);
+    console.log('   is_activated:', level1Invite.is_activated);
+    console.log('   is_effective:', level1Invite.is_effective);
+    console.log('   reward_amount:', level1Invite.reward_amount);
+
+    console.log('3️⃣ 步骤：查询一级邀请人的上级（A）');
+    var parentResult = await window.supabase
+      .from('invites')
+      .select('id, inviter_id, is_activated')
+      .eq('invitee_id', level1Invite.inviter_id)
+      .eq('level', 1)
+      .limit(1);
+    console.log('   结果:', parentResult.error ? '失败' : '成功', parentResult.data);
+
+    if (parentResult.error) {
+      console.error('❌ 查询上级失败，可能是 RLS 策略限制');
+      console.error('   请执行：CREATE POLICY IF NOT EXISTS "invites_select_all" ON invites FOR SELECT TO authenticated USING (true);');
+      return;
+    }
+
+    if (!parentResult.data || !parentResult.data.length) {
+      console.log('ℹ️ 一级邀请人没有上级，无二级奖励');
+      return;
+    }
+
+    var grandParentId = parentResult.data[0].inviter_id;
+    console.log('4️⃣ 步骤：找到上级（A）:', grandParentId);
+
+    console.log('5️⃣ 步骤：查询 level=2 邀请记录');
+    var level2Result = await window.supabase
+      .from('invites')
+      .select('id, is_activated, reward_amount')
+      .eq('inviter_id', grandParentId)
+      .eq('invitee_id', userId)
+      .eq('level', 2)
+      .maybeSingle();
+    console.log('   结果:', level2Result.error ? '失败' : '成功', level2Result.data);
+
+    if (level2Result.data) {
+      console.log('   level=2 记录已存在:', level2Result.data);
+    } else {
+      console.log('   level=2 记录不存在，需要创建');
+    }
+
+    console.log('6️⃣ 步骤：检查防重复记录');
+    var dupCheck = await isInviteRewardAlreadyGranted(grandParentId, level2Result.data ? level2Result.data.id : 'N/A');
+    console.log('   结果:', dupCheck);
+
+    console.log('7️⃣ 步骤：查询上级用户信息');
+    var gpUserResult = await window.supabase
+      .from('users')
+      .select('id, username, crlm_balance')
+      .eq('id', grandParentId)
+      .maybeSingle();
+    console.log('   结果:', gpUserResult.error ? '失败' : '成功', gpUserResult.data);
+
+    console.log('8️⃣ 步骤：查询 settings 配置');
+    var settings = await fetchInviteSettings();
+    console.log('   invite_level1_reward:', settings.invite_level1_reward);
+    console.log('   invite_level2_reward:', settings.invite_level2_reward);
+
+    console.log('===========================================');
+    console.log('✅ 诊断完成');
+    console.log('===========================================');
+  };
 
   console.log('[Invite] ✅ 敏感发奖函数已从全局作用域移除，仅审核流程可调用');
 })();
