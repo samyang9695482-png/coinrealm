@@ -1072,8 +1072,12 @@ async function processInvite(newUserId) {
 }
 
 // 处理待处理邀请：登录后/页面加载时调用，读取 localStorage 中的 inviter_id 并尝试建立邀请关系
-async function processPendingInviteRegistration() {
-  console.log('[DIAG] 步骤4：processPendingInviteRegistration 开始');
+// options.userId: 可选，直接传入用户ID（钱包登录成功后调用时传入，避免再次查询）
+async function processPendingInviteRegistration(options) {
+  options = options || {};
+  var providedUserId = options.userId || null;
+
+  console.log('[DIAG] 步骤4：processPendingInviteRegistration 开始 | providedUserId=', providedUserId);
 
   if (!window.supabase) {
     console.log('[DIAG] 步骤4：processPendingInviteRegistration 失败 - 没有 supabase，保留 inviter_id 以便重试');
@@ -1088,13 +1092,15 @@ async function processPendingInviteRegistration() {
     return;
   }
 
-  var userId;
-  if (typeof window.coinrealmGetCurrentUserId === 'function') {
-    userId = await window.coinrealmGetCurrentUserId();
-  } else if (typeof getCurrentUserId === 'function') {
-    userId = await getCurrentUserId();
+  var userId = providedUserId;
+  if (!userId) {
+    if (typeof window.coinrealmGetCurrentUserId === 'function') {
+      userId = await window.coinrealmGetCurrentUserId();
+    } else if (typeof getCurrentUserId === 'function') {
+      userId = await getCurrentUserId();
+    }
   }
-  console.log('[DIAG] 步骤3：processPendingInviteRegistration 读取当前用户ID =', userId);
+  console.log('[DIAG] 步骤3：processPendingInviteRegistration 读取当前用户ID =', userId, '(来源:', providedUserId ? '传入' : '查询', ')');
 
   if (!userId) {
     console.log('[DIAG] 步骤4：processPendingInviteRegistration 跳过 - 没有找到当前用户ID，保留 inviter_id 以便重试');
@@ -1211,6 +1217,9 @@ window.coinrealmDiagnoseInviteRLS = diagnoseInviteRLS;
   // 仅暴露审核流程需要的入口（名称不直观，降低滥用风险）
   // review.js 通过 window.coinrealmReviewActivateRewards 调用
   window.coinrealmReviewActivateRewards = _internalActivateInviteRewards;
+
+  // 暴露待处理邀请处理函数（auth.js 在钱包登录成功后调用）
+  window.coinrealmProcessPendingInvite = processPendingInviteRegistration;
 
   console.log('[Invite] ✅ 敏感发奖函数已从全局作用域移除，仅审核流程可调用');
 })();

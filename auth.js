@@ -413,6 +413,15 @@
           });
         }
         return userId;
+      })
+      .then(function (userId) {
+        if (userId && typeof window.coinrealmProcessPendingInvite === 'function') {
+          console.log('钱包登录成功，处理待处理邀请 | userId=', userId);
+          window.coinrealmProcessPendingInvite({ userId: userId }).catch(function (inviteErr) {
+            console.warn('钱包登录待处理邀请处理失败', inviteErr);
+          });
+        }
+        return userId;
       });
   }
 
