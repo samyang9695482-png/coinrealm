@@ -409,10 +409,10 @@ function buildTaskCardHtml(task) {
     const publisherId = escapeHtml(getTaskField(task, ['publisher_id'], ''));
     const title = escapeHtml(getTaskField(task, ['title', 'task_title'], ''));
     const reward = formatRewardAmount(getTaskField(task, ['reward_amount', 'reward'], 0));
-    const slotsTotalRaw = getTaskField(task, ['slots_total', 'total_slots', 'max_participants'], 0);
-    const slotsLeftRaw = getTaskField(task, ['slots_left', 'slots_remaining', 'remaining_slots'], null);
-    const slotsLeft = escapeHtml(slotsLeftRaw != null && slotsLeftRaw !== '' ? slotsLeftRaw : slotsTotalRaw);
-    const slotsTotal = escapeHtml(slotsTotalRaw);
+    const maxParticipants = Number(getTaskField(task, ['max_participants'], 0));
+    const currentParticipants = Number(getTaskField(task, ['current_participants'], 0));
+    const slotsLeft = Math.max(0, maxParticipants - currentParticipants);
+    const slotsTotal = maxParticipants;
     const daysLeft = calcDaysLeft(getTaskField(task, ['deadline', 'end_date', 'ends_at'], null));
     const isOfficial = !!task.is_official;
     const isPromo = isHomeTaskPromoted(task);
@@ -482,10 +482,10 @@ function buildOfficialRecommendCardHtml(task) {
     var title = escapeHtml(getTaskField(task, ['title', 'task_title'], ''));
     var description = escapeHtml(getTaskField(task, ['description'], ''));
     var reward = formatRewardAmount(getTaskField(task, ['reward_amount', 'reward'], 0));
-    var slotsTotalRaw = getTaskField(task, ['slots_total', 'total_slots', 'max_participants'], 0);
-    var slotsLeftRaw = getTaskField(task, ['slots_left', 'slots_remaining', 'remaining_slots'], null);
-    var slotsLeft = escapeHtml(slotsLeftRaw != null && slotsLeftRaw !== '' ? slotsLeftRaw : slotsTotalRaw);
-    var slotsTotal = escapeHtml(slotsTotalRaw);
+    var maxParticipants = Number(getTaskField(task, ['max_participants'], 0));
+    var currentParticipants = Number(getTaskField(task, ['current_participants'], 0));
+    var slotsLeft = Math.max(0, maxParticipants - currentParticipants);
+    var slotsTotal = maxParticipants;
     var taskId = escapeHtml(getTaskField(task, ['id'], ''));
 
     var publisherUser = getPublisherAvatarUser(task);
