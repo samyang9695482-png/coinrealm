@@ -351,6 +351,29 @@ function isHomeTaskCompleted(taskId) {
     return !!homeUserApprovedTaskIds[String(taskId)];
 }
 
+function isTaskEnded(task) {
+    var maxParticipants = Number(task.max_participants) || 0;
+    var currentParticipants = Number(task.current_participants) || 0;
+    
+    if (task.status === 'ended') {
+        return true;
+    }
+    
+    if (maxParticipants > 0 && currentParticipants >= maxParticipants) {
+        return true;
+    }
+    
+    var deadline = getTaskField(task, ['deadline', 'end_date', 'ends_at'], null);
+    if (deadline) {
+        var deadlineDate = new Date(deadline);
+        if (!Number.isNaN(deadlineDate.getTime()) && deadlineDate.getTime() < Date.now()) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
 async function loadHomeUserApprovedTaskIds() {
     homeUserApprovedTaskIds = {};
 
@@ -668,9 +691,10 @@ function fetchTasks() {
                 }
 
                 var visibleOfficialData = (officialData || []).filter(function (task) {
-                    return typeof window.coinrealmIsVisibleHomeTaskStatus === 'function'
+                    var isVisibleStatus = typeof window.coinrealmIsVisibleHomeTaskStatus === 'function'
                         ? window.coinrealmIsVisibleHomeTaskStatus(task.status)
                         : true;
+                    return isVisibleStatus && !isTaskEnded(task);
                 });
 
                 return enrichTasksWithPublishers(visibleOfficialData).then(function (enrichedOfficial) {
@@ -678,9 +702,10 @@ function fetchTasks() {
                     renderOfficialRecommendSection();
 
                     var visibleTasks = (result.data || []).filter(function (task) {
-                        return typeof window.coinrealmIsVisibleHomeTaskStatus === 'function'
+                        var isVisibleStatus = typeof window.coinrealmIsVisibleHomeTaskStatus === 'function'
                             ? window.coinrealmIsVisibleHomeTaskStatus(task.status)
                             : true;
+                        return isVisibleStatus && !isTaskEnded(task);
                     });
 
                     if (result.error || visibleTasks.length === 0) {

@@ -10950,6 +10950,29 @@ window.addEventListener('hashchange', function () {
 
     try {
       simpleTasksList = await fetchSimpleTasks();
+      
+      simpleTasksList = simpleTasksList.filter(function (task) {
+        var maxParticipants = Number(task.max_participants) || 0;
+        var currentParticipants = Number(task.current_participants) || 0;
+        
+        if (task.status === 'ended') {
+          return false;
+        }
+        
+        if (maxParticipants > 0 && currentParticipants >= maxParticipants) {
+          return false;
+        }
+        
+        var deadline = task.deadline || task.end_date || task.ends_at;
+        if (deadline) {
+          var deadlineDate = new Date(deadline);
+          if (!Number.isNaN(deadlineDate.getTime()) && deadlineDate.getTime() < Date.now()) {
+            return false;
+          }
+        }
+        
+        return true;
+      });
       var userId = await getCurrentUserId();
       var taskIds = simpleTasksList.map(function (task) { return task.id; });
       await loadUserSimpleSubmissions(userId, taskIds);
