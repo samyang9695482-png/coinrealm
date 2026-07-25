@@ -707,8 +707,11 @@ async function activateInviteRewards(userId, options) {
       // ★ 一级奖励发放成功后，追溯邀请人的上级，发放二级奖励
       if (level === 1) {
         console.log('[ActivateInvite] --- 追溯邀请人的上级，检查是否有二级奖励 ---');
+        console.log('[ActivateInvite]   一级邀请人 B =', inviterId);
+        console.log('[ActivateInvite]   完成任务用户 C =', userId);
+        console.log('[ActivateInvite]   二级奖励金额 =', level2Reward);
         try {
-          await grantLevel2Reward({
+          var level2Result = await grantLevel2Reward({
             grandParentId: null,           // 待查询确定
             inviterId: inviterId,           // 一级邀请人（其上级将获得二级奖励）
             inviteeUserId: userId,          // 完成任务的用户
@@ -716,6 +719,7 @@ async function activateInviteRewards(userId, options) {
             skipPermissionCheck: skipPermissionCheck,
             triggerSource: triggerSource
           });
+          console.log('[ActivateInvite]   二级奖励发放结果:', level2Result);
         } catch (parentErr) {
           console.warn('[ActivateInvite] 追溯上级异常:', parentErr);
         }
@@ -769,6 +773,7 @@ async function grantLevel2Reward(params) {
 
     if (!grandParentId) {
       console.log('[Level2Reward] 查询一级邀请人的上级（invitee_id = ' + inviterId + ', level = 1）');
+      console.log('[Level2Reward]   当前用户权限跳过:', skipPermissionCheck);
       var parentInviteResult = await window.supabase
         .from('invites')
         .select('id, inviter_id, is_activated')
@@ -777,6 +782,8 @@ async function grantLevel2Reward(params) {
         .order('created_at', { ascending: true })
         .limit(1)
         .maybeSingle();
+
+      console.log('[Level2Reward]   查询结果:', parentInviteResult.error ? '失败' : '成功', parentInviteResult.data);
 
       if (parentInviteResult.error) {
         console.warn('[Level2Reward] 查询上级失败（可能是 RLS 限制）：', parentInviteResult.error);
