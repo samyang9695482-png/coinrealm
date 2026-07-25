@@ -405,20 +405,27 @@
         return result.data.id;
       })
       .then(function (userId) {
-        if (userId && typeof processInvite === 'function') {
-          return processInvite(userId).catch(function (inviteErr) {
-            console.warn('钱包登录邀请处理失败', inviteErr);
-          }).then(function () {
-            return userId;
-          });
+        // ★ 先处理待处理邀请（从 localStorage 读取 inviter_id），确保邀请关系建立后再清除
+        if (userId && typeof window.coinrealmProcessPendingInvite === 'function') {
+          console.log('钱包登录成功，先处理待处理邀请 | userId=', userId);
+          return window.coinrealmProcessPendingInvite({ userId: userId })
+            .catch(function (inviteErr) {
+              console.warn('钱包登录待处理邀请处理失败', inviteErr);
+            })
+            .then(function () {
+              return userId;
+            });
         }
         return userId;
       })
       .then(function (userId) {
-        if (userId && typeof window.coinrealmProcessPendingInvite === 'function') {
-          console.log('钱包登录成功，处理待处理邀请 | userId=', userId);
-          window.coinrealmProcessPendingInvite({ userId: userId }).catch(function (inviteErr) {
-            console.warn('钱包登录待处理邀请处理失败', inviteErr);
+        // ★ 后处理 URL 中的邀请参数（从 URL 读取 ref）
+        if (userId && typeof processInvite === 'function') {
+          console.log('钱包登录成功，处理 URL 邀请参数 | userId=', userId);
+          return processInvite(userId).catch(function (inviteErr) {
+            console.warn('钱包登录 URL 邀请处理失败', inviteErr);
+          }).then(function () {
+            return userId;
           });
         }
         return userId;
