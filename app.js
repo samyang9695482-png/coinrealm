@@ -279,6 +279,12 @@ function buildTaskInsertPayload(userId, fields) {
     if (fields.imageUrl) {
         payload.image_url = fields.imageUrl;
     }
+    if (fields.promoLink) {
+        payload.promo_link = fields.promoLink;
+    }
+    if (fields.promoCode) {
+        payload.promo_code = fields.promoCode;
+    }
     if (fields.verificationType) {
         payload.verification_type = fields.verificationType;
     }

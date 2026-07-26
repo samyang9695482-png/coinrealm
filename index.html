@@ -374,6 +374,24 @@
           <h3 class="task-detail-section-title" data-i18n="td_desc_title">任务描述</h3>
           <div id="td-task-description" class="task-detail-desc"></div>
         </div>
+
+        <div id="td-promo-section" class="task-detail-section hidden">
+          <h3 class="task-detail-section-title" data-i18n="td_promo_title">推广信息</h3>
+          <div id="td-promo-link-row" class="td-promo-row hidden">
+            <label class="td-promo-label" data-i18n="td_promo_link_label">推广链接</label>
+            <div class="td-promo-value">
+              <span id="td-promo-link-text" class="td-promo-text"></span>
+              <button type="button" id="td-promo-link-copy" class="td-promo-copy-btn" data-i18n="td_promo_copy">复制</button>
+            </div>
+          </div>
+          <div id="td-promo-code-row" class="td-promo-row hidden">
+            <label class="td-promo-label" data-i18n="td_promo_code_label">推广码</label>
+            <div class="td-promo-value">
+              <span id="td-promo-code-text" class="td-promo-text"></span>
+              <button type="button" id="td-promo-code-copy" class="td-promo-copy-btn" data-i18n="td_promo_copy">复制</button>
+            </div>
+          </div>
+        </div>
         <div id="td-proof-upload-section" class="task-detail-section hidden">
           <h3 class="task-detail-section-title" data-i18n="td_proof_title">提交凭证</h3>
           <input type="file" id="td-proof-file-input" class="td-proof-file-input" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple hidden>
@@ -582,6 +600,16 @@
         <div class="create-task-field">
           <label class="create-task-label" data-i18n="ct_label_desc">任务描述</label>
           <textarea id="ct-task-desc" class="create-task-textarea" data-placeholder="ct_ph_desc" placeholder="请详细描述任务内容和要求"></textarea>
+        </div>
+
+        <div id="ct-field-promotion" class="create-task-field">
+          <label class="create-task-label" data-i18n="ct_label_promo_link">推广链接</label>
+          <input type="text" id="ct-promo-link" class="create-task-input" data-placeholder="ct_ph_promo_link" placeholder="请输入推广链接">
+        </div>
+
+        <div id="ct-field-promotion-code" class="create-task-field">
+          <label class="create-task-label" data-i18n="ct_label_promo_code">推广码</label>
+          <input type="text" id="ct-promo-code" class="create-task-input" data-placeholder="ct_ph_promo_code" placeholder="请输入推广码">
         </div>
 
         <div id="ct-field-images" class="create-task-field">

@@ -97,6 +97,10 @@
       ct_label_title: '任务标题',
       ct_label_type: '任务类型',
       ct_label_desc: '任务描述',
+      ct_label_promo_link: '推广链接',
+      ct_label_promo_code: '推广码',
+      ct_ph_promo_link: '请输入推广链接',
+      ct_ph_promo_code: '请输入推广码',
       ct_label_req: '任务要求',
       ct_label_reward_type: '奖励类型',
       ct_label_reward_amount: '奖励金额',
@@ -236,6 +240,10 @@
       ct_label_title: 'Task Title',
       ct_label_type: 'Task Type',
       ct_label_desc: 'Description',
+      ct_label_promo_link: 'Promotion Link',
+      ct_label_promo_code: 'Promotion Code',
+      ct_ph_promo_link: 'Enter promotion link',
+      ct_ph_promo_code: 'Enter promotion code',
       ct_label_req: 'Requirements',
       ct_label_reward_type: 'Reward Type',
       ct_label_reward_amount: 'Reward Amount',
@@ -1389,6 +1397,8 @@
   function resetCreateTaskForm() {
     var title = document.getElementById('ct-task-title');
     var desc = document.getElementById('ct-task-desc');
+    var promoLink = document.getElementById('ct-promo-link');
+    var promoCode = document.getElementById('ct-promo-code');
     var reward = document.getElementById('ct-reward-amount');
     var slots = document.getElementById('ct-task-slots');
     var deadline = document.getElementById('ct-deadline');
@@ -1398,6 +1408,8 @@
     var simpleRadio = document.querySelector('input[name="ct-task-type"][value="simple"]');
     if (simpleRadio) simpleRadio.checked = true;
     if (desc) desc.value = '';
+    if (promoLink) promoLink.value = '';
+    if (promoCode) promoCode.value = '';
     if (reward) reward.value = '';
     if (slots) slots.value = '';
     if (deadline) deadline.value = getDefaultDeadline();
@@ -1613,6 +1625,8 @@
         var simpleTask = typeSelect && typeSelect.value === 'simple';
         var type = simpleTask ? 'simple' : (typeSelect ? typeSelect.value : 'other');
         var description = document.getElementById('ct-task-desc').value.trim();
+        var promoLink = document.getElementById('ct-promo-link').value.trim();
+        var promoCode = document.getElementById('ct-promo-code').value.trim();
         var requirements = collectRequirements();
         var rewardType = simpleTask ? 'CRLM' : getRewardType();
         var rewardAmount = parseFloat(document.getElementById('ct-reward-amount').value);
@@ -1652,6 +1666,8 @@
           title: title,
           type: type,
           description: description,
+          promoLink: promoLink,
+          promoCode: promoCode,
           requirements: requirements,
           rewardType: rewardType,
           rewardAmount: rewardAmount,

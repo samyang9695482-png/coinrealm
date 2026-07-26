@@ -47,6 +47,11 @@
       td_official_badge: '官方认证',
       td_desc_title: '任务描述',
       td_desc_empty: '暂无任务描述',
+      td_promo_title: '推广信息',
+      td_promo_link_label: '推广链接',
+      td_promo_code_label: '推广码',
+      td_promo_copy: '复制',
+      td_promo_copy_done: '已复制',
       td_images_title: '任务图片',
       td_req_title: '任务要求',
       td_req_empty: '暂无任务要求',
@@ -204,6 +209,11 @@
       td_official_badge: 'Official Verified',
       td_desc_title: 'Description',
       td_desc_empty: 'No description provided',
+      td_promo_title: 'Promotion Info',
+      td_promo_link_label: 'Promotion Link',
+      td_promo_code_label: 'Promotion Code',
+      td_promo_copy: 'Copy',
+      td_promo_copy_done: 'Copied',
       td_images_title: 'Task Images',
       td_req_title: 'Requirements',
       td_req_empty: 'No requirements listed',
@@ -2482,6 +2492,27 @@
 
     renderTaskDetailImages(currentTaskRecord);
 
+    var promoSection = document.getElementById('td-promo-section');
+    var promoLinkRow = document.getElementById('td-promo-link-row');
+    var promoCodeRow = document.getElementById('td-promo-code-row');
+    var promoLinkText = document.getElementById('td-promo-link-text');
+    var promoCodeText = document.getElementById('td-promo-code-text');
+
+    var promoLink = String(getTaskField(currentTaskRecord, ['promo_link'], '') || '').trim();
+    var promoCode = String(getTaskField(currentTaskRecord, ['promo_code'], '') || '').trim();
+
+    if (promoLink || promoCode) {
+      promoSection.classList.remove('hidden');
+      if (promoLink) {
+        promoLinkRow.classList.remove('hidden');
+        promoLinkText.textContent = promoLink;
+      }
+      if (promoCode) {
+        promoCodeRow.classList.remove('hidden');
+        promoCodeText.textContent = promoCode;
+      }
+    }
+
     var reqEl = document.getElementById('td-task-requirements');
     if (reqEl) {
       var reqs = parseRequirements(getTaskField(currentTaskRecord, ['requirements'], ''));
@@ -3584,6 +3615,31 @@
     }
 
     initProofUploadSection();
+
+    var promoLinkCopyBtn = document.getElementById('td-promo-link-copy');
+    var promoCodeCopyBtn = document.getElementById('td-promo-code-copy');
+    if (promoLinkCopyBtn) {
+      promoLinkCopyBtn.addEventListener('click', function () {
+        var text = document.getElementById('td-promo-link-text').textContent || '';
+        if (text) {
+          navigator.clipboard.writeText(text).then(function () {
+            promoLinkCopyBtn.textContent = tdT('td_promo_copy_done');
+            setTimeout(function () { promoLinkCopyBtn.textContent = tdT('td_promo_copy'); }, 2000);
+          });
+        }
+      });
+    }
+    if (promoCodeCopyBtn) {
+      promoCodeCopyBtn.addEventListener('click', function () {
+        var text = document.getElementById('td-promo-code-text').textContent || '';
+        if (text) {
+          navigator.clipboard.writeText(text).then(function () {
+            promoCodeCopyBtn.textContent = tdT('td_promo_copy_done');
+            setTimeout(function () { promoCodeCopyBtn.textContent = tdT('td_promo_copy'); }, 2000);
+          });
+        }
+      });
+    }
 
     var manageBtn = document.getElementById('td-btn-manage');
     if (manageBtn) {

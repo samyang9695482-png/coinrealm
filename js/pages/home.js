@@ -470,7 +470,7 @@ function buildTaskCardHtml(task) {
         : '<button type="button" class="claim-btn" data-task-id="' + escapeHtml(taskId) + '" data-i18n="btn_claim">领取</button>';
 
     return (
-        '<div class="task-card' + cardClass + '" data-category="' + escapeHtml(category) + '" data-task-id="' + escapeHtml(taskId) + '">' +
+        '<div class="task-card' + cardClass + '" data-category="' + escapeHtml(category) + '" data-task-id="' + escapeHtml(taskId) + '" data-publisher-id="' + publisherId + '">' +
             imageHtml +
             '<div class="task-card-body">' +
             '<div class="card-top">' +
@@ -814,6 +814,27 @@ function initHomePageLogic() {
                 e.preventDefault();
                 e.stopPropagation();
                 handleClaimTask(btn);
+            });
+
+            taskGrid.addEventListener('click', function (e) {
+                var card = e.target.closest('.task-card');
+                if (!card || !taskGrid.contains(card)) return;
+                if (e.target.closest('.publisher-link') || e.target.closest('.claim-btn')) return;
+
+                var taskId = card.getAttribute('data-task-id');
+                var publisherId = card.getAttribute('data-publisher-id');
+                
+                if (taskId && publisherId) {
+                    getCurrentUserId().then(function (currentUserId) {
+                        if (currentUserId && String(currentUserId) === String(publisherId)) {
+                            window.location.hash = 'publish-management';
+                        } else {
+                            navigateToTaskDetail(taskId);
+                        }
+                    });
+                } else if (taskId) {
+                    navigateToTaskDetail(taskId);
+                }
             });
         }
 
