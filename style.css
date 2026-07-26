@@ -1012,6 +1012,12 @@ img {
     color: var(--color-accent);
     margin-bottom: 16px;
 }
+
+.reward-amount .per-task-reward {
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--color-text-secondary);
+}
 .card-bottom {
     display: flex;
     justify-content: space-between;

@@ -278,6 +278,16 @@ function sortTasks(tasks, sortValue) {
     const list = tasks.slice();
     switch (sortValue) {
         case 'highest-value':
+            list.sort((a, b) => {
+                const ra = Number(getTaskField(a, ['reward_amount', 'reward'], 0));
+                const rb = Number(getTaskField(b, ['reward_amount', 'reward'], 0));
+                const ma = Number(getTaskField(a, ['max_participants'], 1));
+                const mb = Number(getTaskField(b, ['max_participants'], 1));
+                const pa = ma > 0 ? ra / ma : ra;
+                const pb = mb > 0 ? rb / mb : rb;
+                return pb - pa;
+            });
+            break;
         case 'most-rewards':
             list.sort((a, b) => {
                 const ra = Number(getTaskField(a, ['reward_amount', 'reward'], 0));
@@ -431,7 +441,8 @@ function buildTaskCardHtml(task) {
     const level = escapeHtml(publisher.level);
     const publisherId = escapeHtml(getTaskField(task, ['publisher_id'], ''));
     const title = escapeHtml(getTaskField(task, ['title', 'task_title'], ''));
-    const reward = formatRewardAmount(getTaskField(task, ['reward_amount', 'reward'], 0));
+    const rewardAmount = Number(getTaskField(task, ['reward_amount', 'reward'], 0));
+    const reward = formatRewardAmount(rewardAmount);
     const maxParticipants = Number(getTaskField(task, ['max_participants'], 0));
     const currentParticipants = Number(getTaskField(task, ['current_participants'], 0));
     const slotsLeft = Math.max(0, maxParticipants - currentParticipants);
@@ -469,6 +480,10 @@ function buildTaskCardHtml(task) {
         ? '<button type="button" class="claim-btn claim-btn-done" disabled style="background:#e8e8e8;color:#999;cursor:not-allowed;">' + escapeHtml(completedLabel) + '</button>'
         : '<button type="button" class="claim-btn" data-task-id="' + escapeHtml(taskId) + '" data-i18n="btn_claim">领取</button>';
 
+    const perTaskReward = maxParticipants > 0 ? (rewardAmount / maxParticipants) : rewardAmount;
+    const perTaskLabel = window.currentLang === 'en' ? 'Per Task: ' : '｜单价：';
+    const rewardDisplay = reward + '<span class="per-task-reward">' + perTaskLabel + formatRewardAmount(perTaskReward) + '</span>';
+
     return (
         '<div class="task-card' + cardClass + '" data-category="' + escapeHtml(category) + '" data-task-id="' + escapeHtml(taskId) + '" data-publisher-id="' + publisherId + '">' +
             imageHtml +
@@ -484,7 +499,7 @@ function buildTaskCardHtml(task) {
                 badgeHtml +
             '</div>' +
             (title ? '<div class="task-card-title">' + title + '</div>' : '') +
-            '<div class="reward-amount">' + reward + '</div>' +
+            '<div class="reward-amount">' + rewardDisplay + '</div>' +
             '<div class="card-bottom">' +
                 '<div class="meta-tags">' +
                     '<span class="type-label label-' + escapeHtml(category) + '" data-i18n="' + typeLabelKey + '"></span>' +
@@ -607,7 +622,7 @@ function applyFiltersAndSort() {
     const activeBtn = document.querySelector('#filter-tags .tag-btn.active');
     const selectedCategory = activeBtn ? activeBtn.getAttribute('data-type') : 'all';
     const sortDropdown = document.getElementById('sort-dropdown');
-    const sortValue = sortDropdown ? sortDropdown.value : 'latest';
+    const sortValue = sortDropdown ? sortDropdown.value : 'highest-value';
 
     let filtered = allTasks.slice();
     if (selectedCategory !== 'all') {
