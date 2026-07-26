@@ -48,7 +48,7 @@ function renderHomeBroadcastTicker(items) {
     wrapper.innerHTML = items.map(function (record) {
         var desc = escapeHtml(record.description || '');
         var rewardHtml = record.reward_amount
-            ? ' <span class="highlight">' + Number(record.reward_amount).toLocaleString() + ' CRLM</span>'
+            ? ' <span class="highlight">' + Number(record.reward_amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' CRLM</span>'
             : '';
         return '<div class="broadcast-item">' + desc + rewardHtml + '</div>';
     }).join('');
@@ -263,7 +263,7 @@ function getTypeLabelKey(task) {
 
 function formatRewardAmount(amount) {
     const n = Number(amount) || 0;
-    return n.toLocaleString('en-US') + ' CRLM';
+    return n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' CRLM';
 }
 
 function calcDaysLeft(deadline) {

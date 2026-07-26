@@ -2475,7 +2475,7 @@
     if (rewardAmountEl) {
       var rewardVal = Number(currentTaskRecord.reward_amount) || 0;
       var rewardUnit = currentTaskRecord.reward_type || 'CRLM';
-      rewardAmountEl.textContent = rewardVal.toLocaleString('en-US') + ' ' + rewardUnit;
+      rewardAmountEl.textContent = rewardVal.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' ' + rewardUnit;
     }
 
     var descEl = document.getElementById('td-task-description');
@@ -2566,8 +2566,12 @@
         ? Number(currentTaskRecord.stake_amount)
         : rewardAmount + depositAmount;
       stakedTextEl.textContent = currentTaskRecord.deposit_amount != null || currentTaskRecord.stake_amount != null
-        ? tdT('td_staked', { total: stakedTotal, reward: rewardAmount, deposit: depositAmount })
-        : tdT('td_staked_simple', { total: stakedTotal });
+        ? tdT('td_staked', { 
+            total: stakedTotal.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','), 
+            reward: rewardAmount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','), 
+            deposit: depositAmount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') 
+          })
+        : tdT('td_staked_simple', { total: stakedTotal.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') });
     }
 
     var highRiskTag = document.getElementById('td-high-risk-tag');

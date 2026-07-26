@@ -5242,7 +5242,9 @@ window.addEventListener('hashchange', function () {
   }
 
   function formatNumber(num) {
-    return String(num).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    var n = Number(num) || 0;
+    var fixed = n.toFixed(2);
+    return fixed.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   }
 
   function displayNameFromEmail(email) {
@@ -9254,7 +9256,9 @@ window.addEventListener('hashchange', function () {
   }
 
   function formatNumber(num) {
-    return String(num).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    var n = Number(num) || 0;
+    var fixed = n.toFixed(2);
+    return fixed.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   }
 
   function applyPublisherI18n() {
@@ -9861,7 +9865,9 @@ window.addEventListener('hashchange', function () {
   }
 
   function formatNumber(num) {
-    return String(num).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    var n = Number(num) || 0;
+    var fixed = n.toFixed(2);
+    return fixed.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   }
 
   function safeText(str) {
