@@ -1358,7 +1358,7 @@
       formCard.classList.toggle('create-task-form-simple', simple);
     }
 
-    ['ct-field-images', 'ct-field-reward-type', 'ct-field-proof', 'ct-field-duration'].forEach(function (fieldId) {
+    ['ct-field-images', 'ct-field-reward-type', 'ct-field-proof', 'ct-field-duration', 'ct-field-promotion', 'ct-field-promotion-code'].forEach(function (fieldId) {
       var field = document.getElementById(fieldId);
       if (field) field.classList.toggle('hidden', simple);
     });
@@ -1666,8 +1666,8 @@
           title: title,
           type: type,
           description: description,
-          promoLink: promoLink,
-          promoCode: promoCode,
+          promoLink: simpleTask ? '' : promoLink,
+          promoCode: simpleTask ? '' : promoCode,
           requirements: requirements,
           rewardType: rewardType,
           rewardAmount: rewardAmount,
