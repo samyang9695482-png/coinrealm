@@ -5056,7 +5056,7 @@ window.addEventListener('hashchange', function () {
       pf_stat_completed: '已完成',
       pf_stat_earnings: '累计收益',
       pf_menu_tasks: '我的任务（进行中/已完成/已驳回）',
-      pf_menu_publish: '发布管理（我发布的任务列表）',
+      pf_menu_publish: '任务管理（我发布的任务列表）',
       pf_menu_dividends: '我的分红',
       pf_menu_exchange: '兑换市场',
       pf_menu_leaderboard: '排行榜',
@@ -5140,7 +5140,7 @@ window.addEventListener('hashchange', function () {
       pf_stat_completed: 'Completed',
       pf_stat_earnings: 'Total Earnings',
       pf_menu_tasks: 'My Tasks (Active/Completed/Rejected)',
-      pf_menu_publish: 'Publish Management (My Published Tasks)',
+      pf_menu_publish: 'Task Management (My Published Tasks)',
       pf_menu_dividends: 'My Dividends',
       pf_menu_exchange: 'Exchange Market',
       pf_menu_leaderboard: 'Leaderboard',
@@ -6695,7 +6695,7 @@ window.addEventListener('hashchange', function () {
 
   var publishMgmtTranslations = {
     zh: {
-      pm_page_title: '发布管理',
+      pm_page_title: '任务管理',
       pm_login_required: '请先登录查看发布任务',
       pm_loading: '加载中...',
       pm_empty_text: '你还没有发布过任务',
@@ -6753,7 +6753,7 @@ window.addEventListener('hashchange', function () {
       pm_load_fail: '加载失败：'
     },
     en: {
-      pm_page_title: 'Publish Management',
+      pm_page_title: 'Task Management',
       pm_login_required: 'Please sign in to view your published tasks',
       pm_loading: 'Loading...',
       pm_empty_text: 'You have not published any tasks yet',
