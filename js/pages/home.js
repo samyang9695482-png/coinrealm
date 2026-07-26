@@ -822,17 +822,7 @@ function initHomePageLogic() {
                 if (e.target.closest('.publisher-link') || e.target.closest('.claim-btn')) return;
 
                 var taskId = card.getAttribute('data-task-id');
-                var publisherId = card.getAttribute('data-publisher-id');
-                
-                if (taskId && publisherId) {
-                    getCurrentUserId().then(function (currentUserId) {
-                        if (currentUserId && String(currentUserId) === String(publisherId)) {
-                            window.location.hash = 'publish-management';
-                        } else {
-                            navigateToTaskDetail(taskId);
-                        }
-                    });
-                } else if (taskId) {
+                if (taskId) {
                     navigateToTaskDetail(taskId);
                 }
             });
