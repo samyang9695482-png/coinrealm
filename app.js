@@ -326,6 +326,49 @@ var WITHDRAW_SETTINGS_DEFAULTS = {
 };
 var cachedWithdrawSettings = null;
 
+var PIN_SETTINGS_DEFAULTS = {
+  pin_1day_price: 100,
+  pin_7day_price: 500,
+  pin_30day_price: 2000
+};
+var cachedPinSettings = null;
+
+async function fetchPinSettings() {
+  if (cachedPinSettings) return cachedPinSettings;
+
+  var settings = Object.assign({}, PIN_SETTINGS_DEFAULTS);
+  if (!window.supabase) {
+    cachedPinSettings = settings;
+    return settings;
+  }
+
+  try {
+    var keys = Object.keys(PIN_SETTINGS_DEFAULTS);
+    var result = await window.supabase
+      .from('settings')
+      .select('key, value')
+      .in('key', keys);
+
+    if (result.data) {
+      result.data.forEach(function (row) {
+        var num = Number(row.value);
+        if (row.key && Number.isFinite(num)) {
+          settings[row.key] = num;
+        }
+      });
+    }
+  } catch (settingsErr) {
+    console.warn('加载置顶设置失败:', settingsErr);
+  }
+
+  cachedPinSettings = settings;
+  return settings;
+}
+
+function invalidatePinSettingsCache() {
+  cachedPinSettings = null;
+}
+
 async function fetchWithdrawSettings() {
   if (cachedWithdrawSettings) return cachedWithdrawSettings;
 
@@ -5100,6 +5143,9 @@ window.addEventListener('hashchange', function () {
       pf_ledger_icon_invite: '🎁',
       pf_ledger_type_invite: '邀请奖励',
       pf_ledger_balance_after: '余额 {amount} CRLM',
+      pf_ledger_type_pin: '置顶费用',
+      pf_ledger_desc_pin: '任务置顶 {days} 天',
+      pf_ledger_icon_pin: '📌',
       pf_withdraw_title: '提现 CRLM',
       pf_withdraw_balance_label: '当前余额',
       pf_withdraw_amount_label: '提现金额',
@@ -5184,6 +5230,9 @@ window.addEventListener('hashchange', function () {
       pf_ledger_icon_invite: '🎁',
       pf_ledger_type_invite: 'Invite Reward',
       pf_ledger_balance_after: 'Balance {amount} CRLM',
+      pf_ledger_type_pin: 'Pin Fee',
+      pf_ledger_desc_pin: 'Task pinned for {days} days',
+      pf_ledger_icon_pin: '📌',
       pf_withdraw_title: 'Withdraw CRLM',
       pf_withdraw_balance_label: 'Current balance',
       pf_withdraw_amount_label: 'Withdraw amount',
@@ -5551,6 +5600,35 @@ window.addEventListener('hashchange', function () {
       }
     } catch (publishErr) {
       console.warn('余额明细：发布任务消耗查询失败', publishErr);
+    }
+
+    try {
+      var pinResult = await window.supabase
+        .from('broadcasts')
+        .select('created_at, description, reward_amount, event_type')
+        .eq('user_id', userId)
+        .eq('event_type', 'task_pinned')
+        .order('created_at', { ascending: false })
+        .limit(queryLimit);
+
+      if (!pinResult.error) {
+        (pinResult.data || []).forEach(function (row) {
+          var amount = Number(row.reward_amount) || 0;
+          if (amount >= 0) return;
+          var desc = String(row.description || '').trim();
+          var daysMatch = desc.match(/(\d+)/);
+          var days = daysMatch ? daysMatch[1] : '';
+          entries.push({
+            time: row.created_at || new Date().toISOString(),
+            icon: pfT('pf_ledger_icon_pin'),
+            description: days ? pfT('pf_ledger_desc_pin', { days: days }) : pfT('pf_ledger_type_pin'),
+            delta: Math.abs(amount),
+            income: false
+          });
+        });
+      }
+    } catch (pinErr) {
+      console.warn('余额明细：置顶费用查询失败', pinErr);
     }
 
     try {
@@ -7046,9 +7124,7 @@ window.addEventListener('hashchange', function () {
       parts.push('<button type="button" class="pm-action-btn pm-action-resume" data-task-id="' + taskId + '">' + escapeHtml(pmT('pm_btn_resume')) + '</button>');
     }
 
-    if (isTaskPromoted(task)) {
-      parts.push('<button type="button" class="pm-action-btn pm-action-unpin" data-task-id="' + taskId + '">' + escapeHtml(pmT('pm_btn_unpin')) + '</button>');
-    } else {
+    if (!isTaskPromoted(task)) {
       parts.push('<button type="button" class="pm-action-btn pm-action-pin" data-task-id="' + taskId + '">' + escapeHtml(pmT('pm_btn_pin')) + '</button>');
     }
 
@@ -7450,13 +7526,26 @@ window.addEventListener('hashchange', function () {
     }
   }
 
-  function openPinModal(task) {
+  async function openPinModal(task) {
     pendingPinTask = task;
     selectedPinPackage = null;
     clearPmModalError('pm-pin-error');
 
+    var settings = await fetchPinSettings();
+
     document.querySelectorAll('#pm-pin-modal .pm-pin-package-btn').forEach(function (btn) {
       btn.classList.remove('selected');
+      var days = Number(btn.getAttribute('data-days'));
+      if (days === 1) {
+        btn.setAttribute('data-price', String(settings.pin_1day_price));
+        btn.innerHTML = '<span data-i18n="pm_pin_1d">1天</span> ' + settings.pin_1day_price + ' CRLM';
+      } else if (days === 7) {
+        btn.setAttribute('data-price', String(settings.pin_7day_price));
+        btn.innerHTML = '<span data-i18n="pm_pin_7d">7天</span> ' + settings.pin_7day_price + ' CRLM';
+      } else if (days === 30) {
+        btn.setAttribute('data-price', String(settings.pin_30day_price));
+        btn.innerHTML = '<span data-i18n="pm_pin_30d">30天</span> ' + settings.pin_30day_price + ' CRLM';
+      }
     });
 
     var modal = document.getElementById('pm-pin-modal');
@@ -7559,6 +7648,14 @@ window.addEventListener('hashchange', function () {
         showPmModalError('pm-pin-error', pmT('pm_action_fail'));
         return;
       }
+
+      await window.supabase.from('broadcasts').insert({
+        user_id: userId,
+        event_type: 'task_pinned',
+        description: '任务置顶 ' + days + ' 天',
+        reward_amount: -price,
+        created_at: new Date().toISOString()
+      });
 
       closePinModal();
       alert(pmT('pm_action_success_pin'));
@@ -8151,10 +8248,6 @@ window.addEventListener('hashchange', function () {
           }
           if (actionBtn.classList.contains('pm-action-pin')) {
             openPinModal(entry.task);
-            return;
-          }
-          if (actionBtn.classList.contains('pm-action-unpin')) {
-            unpinTask(taskId);
             return;
           }
           if (actionBtn.classList.contains('pm-action-boost')) {
@@ -9601,6 +9694,7 @@ window.addEventListener('hashchange', function () {
       ad_tab_broadcasts: '广播管理',
       ad_tab_withdraw: '提币设置',
       ad_tab_invite: '邀请设置',
+      ad_tab_pin: '付费置顶',
       ad_tab_airdrop: '空投设置',
       ad_tab_features: '功能开关',
       ad_tab_ads: '广告管理',
@@ -9626,6 +9720,13 @@ window.addEventListener('hashchange', function () {
       ad_invite_save_ok: '邀请设置已保存',
       ad_invite_save_fail: '保存邀请设置失败：',
       ad_invite_invalid: '请输入有效的奖励金额',
+      ad_pin_title: '付费置顶设置',
+      ad_pin_1day: '1天置顶费用（CRLM）',
+      ad_pin_7day: '7天置顶费用（CRLM）',
+      ad_pin_30day: '30天置顶费用（CRLM）',
+      ad_btn_save_pin: '保存',
+      ad_pin_save_success: '设置已保存',
+      ad_pin_invalid: '请输入有效的置顶费用',
       ad_airdrop_title: '空投设置',
       ad_airdrop_mode_level2: '升级到 Lv.2 后每天可领取',
       ad_airdrop_mode_daily_task: '每天完成一个任务才可领取',
@@ -9729,6 +9830,7 @@ window.addEventListener('hashchange', function () {
       ad_tab_broadcasts: 'Broadcasts',
       ad_tab_withdraw: 'Withdraw Settings',
       ad_tab_invite: 'Invite Settings',
+      ad_tab_pin: 'Pin Settings',
       ad_tab_airdrop: 'Airdrop Settings',
       ad_tab_features: 'Feature Toggles',
       ad_tab_ads: 'Ad Management',
@@ -9754,6 +9856,13 @@ window.addEventListener('hashchange', function () {
       ad_invite_save_ok: 'Invite settings saved',
       ad_invite_save_fail: 'Failed to save invite settings: ',
       ad_invite_invalid: 'Please enter valid reward amounts',
+      ad_pin_title: 'Pin Settings',
+      ad_pin_1day: '1 day pin price (CRLM)',
+      ad_pin_7day: '7 days pin price (CRLM)',
+      ad_pin_30day: '30 days pin price (CRLM)',
+      ad_btn_save_pin: 'Save',
+      ad_pin_save_success: 'Settings saved',
+      ad_pin_invalid: 'Please enter valid pin prices',
       ad_airdrop_title: 'Airdrop Settings',
       ad_airdrop_mode_level2: 'Claim daily after reaching Lv.2',
       ad_airdrop_mode_daily_task: 'Complete one task daily to claim',
@@ -10437,6 +10546,8 @@ window.addEventListener('hashchange', function () {
       await loadAdminWithdrawSettings();
     } else if (adminTab === 'invite') {
       await loadAdminInviteSettings();
+    } else if (adminTab === 'pin') {
+      await loadAdminPinSettings();
     } else if (adminTab === 'airdrop') {
       await loadAdminAirdropSettings();
     } else if (adminTab === 'features') {
@@ -10493,6 +10604,57 @@ window.addEventListener('hashchange', function () {
 
     invalidateWithdrawSettingsCache();
     alert(adT('ad_withdraw_save_ok'));
+  }
+
+  async function loadAdminPinSettings() {
+    var settings = await fetchPinSettings();
+    var pin1DayEl = document.getElementById('ad-pin-1day');
+    var pin7DayEl = document.getElementById('ad-pin-7day');
+    var pin30DayEl = document.getElementById('ad-pin-30day');
+
+    if (pin1DayEl) pin1DayEl.value = String(settings.pin_1day_price);
+    if (pin7DayEl) pin7DayEl.value = String(settings.pin_7day_price);
+    if (pin30DayEl) pin30DayEl.value = String(settings.pin_30day_price);
+  }
+
+  async function saveAdminPinSettings() {
+    if (!window.supabase) return;
+
+    var pin1Day = Number(document.getElementById('ad-pin-1day') && document.getElementById('ad-pin-1day').value);
+    var pin7Day = Number(document.getElementById('ad-pin-7day') && document.getElementById('ad-pin-7day').value);
+    var pin30Day = Number(document.getElementById('ad-pin-30day') && document.getElementById('ad-pin-30day').value);
+
+    if (!Number.isFinite(pin1Day) || pin1Day < 0 ||
+        !Number.isFinite(pin7Day) || pin7Day < 0 ||
+        !Number.isFinite(pin30Day) || pin30Day < 0) {
+      alert(adT('ad_pin_invalid'));
+      return;
+    }
+
+    var rows = [
+      { key: 'pin_1day_price', value: String(pin1Day) },
+      { key: 'pin_7day_price', value: String(pin7Day) },
+      { key: 'pin_30day_price', value: String(pin30Day) }
+    ];
+
+    var result = await window.supabase
+      .from('settings')
+      .upsert(rows, { onConflict: 'key' });
+
+    if (result.error) {
+      alert('保存失败：' + result.error.message);
+      return;
+    }
+
+    invalidatePinSettingsCache();
+
+    var successEl = document.getElementById('ad-pin-success');
+    if (successEl) {
+      successEl.classList.remove('hidden');
+      setTimeout(function() {
+        successEl.classList.add('hidden');
+      }, 3000);
+    }
   }
 
   async function loadAdminInviteSettings() {
@@ -10944,6 +11106,11 @@ window.addEventListener('hashchange', function () {
     var inviteSaveBtn = document.getElementById('ad-invite-save-btn');
     if (inviteSaveBtn) {
       inviteSaveBtn.addEventListener('click', saveAdminInviteSettings);
+    }
+
+    var pinSaveBtn = document.getElementById('ad-pin-save-btn');
+    if (pinSaveBtn) {
+      pinSaveBtn.addEventListener('click', saveAdminPinSettings);
     }
 
     var airdropSaveBtn = document.getElementById('ad-airdrop-save-btn');

@@ -1468,6 +1468,7 @@
           <button type="button" class="admin-tab" data-admin-tab="broadcasts" data-i18n="ad_tab_broadcasts">广播管理</button>
           <button type="button" class="admin-tab" data-admin-tab="withdraw" data-i18n="ad_tab_withdraw">提币设置</button>
           <button type="button" class="admin-tab" data-admin-tab="invite" data-i18n="ad_tab_invite">邀请设置</button>
+          <button type="button" class="admin-tab" data-admin-tab="pin" data-i18n="ad_tab_pin">付费置顶</button>
           <button type="button" class="admin-tab" data-admin-tab="ads" data-i18n="ad_tab_ads">广告管理</button>
         </div>
 
@@ -1534,6 +1535,20 @@
             <label class="admin-label" for="ad-invite-level2" data-i18n="ad_invite_level2">二级奖励金额（CRLM）</label>
             <input type="number" id="ad-invite-level2" class="admin-input" min="0" step="1" value="10">
             <button type="button" id="ad-invite-save-btn" class="admin-primary-btn" data-i18n="ad_btn_save_invite">保存</button>
+          </form>
+        </section>
+
+        <section id="admin-panel-pin" class="admin-panel hidden">
+          <h2 class="admin-section-title" data-i18n="ad_pin_title">付费置顶设置</h2>
+          <form id="ad-pin-form" class="admin-form admin-pin-form">
+            <label class="admin-label" for="ad-pin-1day" data-i18n="ad_pin_1day">1天置顶费用（CRLM）</label>
+            <input type="number" id="ad-pin-1day" class="admin-input" min="0" step="1" value="100">
+            <label class="admin-label" for="ad-pin-7day" data-i18n="ad_pin_7day">7天置顶费用（CRLM）</label>
+            <input type="number" id="ad-pin-7day" class="admin-input" min="0" step="1" value="500">
+            <label class="admin-label" for="ad-pin-30day" data-i18n="ad_pin_30day">30天置顶费用（CRLM）</label>
+            <input type="number" id="ad-pin-30day" class="admin-input" min="0" step="1" value="2000">
+            <button type="button" id="ad-pin-save-btn" class="admin-primary-btn" data-i18n="ad_btn_save_pin">保存</button>
+            <p id="ad-pin-success" class="admin-success-message hidden" data-i18n="ad_pin_save_success">设置已保存</p>
           </form>
         </section>
 
