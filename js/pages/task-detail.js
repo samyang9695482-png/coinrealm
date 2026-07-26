@@ -3644,7 +3644,7 @@
     var manageBtn = document.getElementById('td-btn-manage');
     if (manageBtn) {
       manageBtn.addEventListener('click', function () {
-        window.location.hash = 'review';
+        window.location.hash = 'publish-management';
       });
     }
   }
