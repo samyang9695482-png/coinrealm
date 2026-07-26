@@ -1064,6 +1064,40 @@
           </div>
         </div>
       </div>
+
+      <div id="pm-edit-modal" class="pm-action-modal hidden" aria-hidden="true">
+        <div class="pm-action-modal-overlay"></div>
+        <div class="pm-action-modal-card">
+          <h3 class="pm-action-modal-title" data-i18n="pm_edit_title">修改任务</h3>
+          <div class="pm-edit-form">
+            <div class="pm-edit-field">
+              <label class="pm-edit-label" data-i18n="pm_edit_desc">任务描述</label>
+              <textarea id="pm-edit-desc" class="pm-action-input pm-edit-textarea" rows="3"></textarea>
+              <p class="pm-edit-hint" data-i18n="pm_edit_desc_hint">修改后新领取用户将看到新内容</p>
+            </div>
+            <div class="pm-edit-field">
+              <label class="pm-edit-label" data-i18n="pm_edit_image">任务图片URL</label>
+              <input type="text" id="pm-edit-image" class="pm-action-input">
+              <p class="pm-edit-hint" data-i18n="pm_edit_image_hint">修改后新领取用户将看到新图片</p>
+            </div>
+            <div class="pm-edit-field">
+              <label class="pm-edit-label" data-i18n="pm_edit_deadline">截止时间</label>
+              <input type="datetime-local" id="pm-edit-deadline" class="pm-action-input">
+              <p class="pm-edit-hint" data-i18n="pm_edit_deadline_hint">只能延后，不能提前</p>
+            </div>
+            <div class="pm-edit-field">
+              <label class="pm-edit-label" data-i18n="pm_edit_slots">任务名额</label>
+              <input type="number" id="pm-edit-slots" class="pm-action-input" min="1" step="1">
+              <p class="pm-edit-hint" data-i18n="pm_edit_slots_hint">只能增加，不能减少</p>
+            </div>
+          </div>
+          <p id="pm-edit-error" class="pm-action-modal-error hidden"></p>
+          <div class="pm-action-modal-actions">
+            <button type="button" id="pm-edit-cancel" class="pm-action-cancel-btn" data-i18n="pm_btn_cancel">取消</button>
+            <button type="button" id="pm-edit-confirm" class="pm-action-confirm-btn" data-i18n="pm_btn_confirm">确认</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 我的分红页 — 由路由 #dividends 显示 -->
@@ -1729,13 +1763,13 @@
     </div>
   </main>
   <script src="js/i18n.js?v=20260717"></script>
-  <script src="js/invite-logic.js?v=20260725c"></script>
+  <script src="js/invite-logic.js?v=20260725j"></script>
   <script src="auth.js?v=20260717"></script>
   <script src="js/pages/leaderboard.js?v=20260717"></script>
   <script src="js/pages/dividends.js?v=20260717"></script>
   <script src="js/pages/invite.js?v=20260724"></script>
   <script src="js/pages/admin.js?v=20260717"></script>
-  <script src="js/pages/home.js?v=20260717"></script>
+  <script src="js/pages/home.js?v=20260725b"></script>
   <script src="js/pages/publisher.js?v=20260717"></script>
   <script src="js/pages/task-detail.js?v=20260717"></script>
   <script src="js/pages/create-task.js?v=20260717"></script>

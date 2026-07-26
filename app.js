@@ -6689,6 +6689,7 @@ window.addEventListener('hashchange', function () {
   var selectedPinPackage = null;
   var pendingBoostTask = null;
   var pendingSlotsTask = null;
+  var pendingEditTask = null;
   var pmActionInProgress = false;
   var PM_PLATFORM_COMMISSION = 0.15;
   var PM_DEPOSIT_RATE = 0.2;
@@ -6711,6 +6712,19 @@ window.addEventListener('hashchange', function () {
       pm_btn_unpin: '取消置顶',
       pm_btn_boost: '加价',
       pm_btn_add_slots: '增加名额',
+      pm_btn_edit: '修改',
+      pm_edit_title: '修改任务',
+      pm_edit_desc: '任务描述',
+      pm_edit_image: '任务图片URL',
+      pm_edit_deadline: '截止时间',
+      pm_edit_slots: '任务名额',
+      pm_edit_deadline_hint: '只能延后，不能提前',
+      pm_edit_slots_hint: '只能增加，不能减少',
+      pm_edit_desc_hint: '修改后新领取用户将看到新内容',
+      pm_edit_image_hint: '修改后新领取用户将看到新图片',
+      pm_edit_alert_deadline: '截止时间不能早于当前时间',
+      pm_edit_alert_slots: '任务名额不能小于当前值',
+      pm_action_success_edit: '任务已修改。',
       pm_delete_confirm: '确定要删除该任务吗？剩余资金将退回你的账户。',
       pm_pause_confirm: '确定要暂停该任务吗？暂停后用户将无法继续领取。',
       pm_resume_confirm: '确定要恢复该任务吗？恢复后用户可继续领取。',
@@ -6769,6 +6783,19 @@ window.addEventListener('hashchange', function () {
       pm_btn_unpin: 'Unpin',
       pm_btn_boost: 'Boost Reward',
       pm_btn_add_slots: 'Add Slots',
+      pm_btn_edit: 'Edit',
+      pm_edit_title: 'Edit Task',
+      pm_edit_desc: 'Description',
+      pm_edit_image: 'Image URL',
+      pm_edit_deadline: 'Deadline',
+      pm_edit_slots: 'Max Participants',
+      pm_edit_deadline_hint: 'Can only be extended',
+      pm_edit_slots_hint: 'Can only be increased',
+      pm_edit_desc_hint: 'New users will see updated description',
+      pm_edit_image_hint: 'New users will see updated image',
+      pm_edit_alert_deadline: 'Deadline cannot be earlier than current time',
+      pm_edit_alert_slots: 'Max participants cannot be less than current value',
+      pm_action_success_edit: 'Task updated.',
       pm_delete_confirm: 'Delete this task? Remaining funds will be refunded to your account.',
       pm_pause_confirm: 'Pause this task? Users will not be able to claim it while paused.',
       pm_resume_confirm: 'Resume this task? Users will be able to claim it again.',
@@ -7012,6 +7039,8 @@ window.addEventListener('hashchange', function () {
     if ((status === 'active' || status === 'paused') && task.max_participants != null && task.max_participants !== '') {
       parts.push('<button type="button" class="pm-action-btn pm-action-slots" data-task-id="' + taskId + '">' + escapeHtml(pmT('pm_btn_add_slots')) + '</button>');
     }
+
+    parts.push('<button type="button" class="pm-action-btn pm-action-edit" data-task-id="' + taskId + '">' + escapeHtml(pmT('pm_btn_edit')) + '</button>');
 
     if (canDeleteExpiredTask(task)) {
       parts.push('<button type="button" class="pm-action-btn pm-action-delete publish-mgmt-delete-btn" data-task-id="' + taskId + '">' + escapeHtml(pmT('pm_btn_delete')) + '</button>');
@@ -7328,6 +7357,7 @@ window.addEventListener('hashchange', function () {
     closePinModal();
     closeBoostModal();
     closeSlotsModal();
+    closeEditModal();
   }
 
   async function pauseTask(taskId) {
@@ -7813,6 +7843,147 @@ window.addEventListener('hashchange', function () {
     }
   }
 
+  function openEditModal(task) {
+    pendingEditTask = task;
+    clearPmModalError('pm-edit-error');
+
+    var descInput = document.getElementById('pm-edit-desc');
+    var imageInput = document.getElementById('pm-edit-image');
+    var deadlineInput = document.getElementById('pm-edit-deadline');
+    var slotsInput = document.getElementById('pm-edit-slots');
+
+    if (descInput) descInput.value = task.description || '';
+    if (imageInput) imageInput.value = task.image_url || '';
+    if (slotsInput) slotsInput.value = task.max_participants != null ? String(task.max_participants) : '';
+
+    if (deadlineInput && task.deadline) {
+      var d = new Date(task.deadline);
+      if (!Number.isNaN(d.getTime())) {
+        d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+        deadlineInput.value = d.toISOString().slice(0, 16);
+      }
+    }
+
+    var modal = document.getElementById('pm-edit-modal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.setAttribute('aria-hidden', 'false');
+    }
+    applyPublishMgmtI18n();
+  }
+
+  function closeEditModal() {
+    pendingEditTask = null;
+    clearPmModalError('pm-edit-error');
+    var modal = document.getElementById('pm-edit-modal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+    var confirmBtn = document.getElementById('pm-edit-confirm');
+    if (confirmBtn) confirmBtn.disabled = false;
+  }
+
+  async function confirmEditTask() {
+    if (pmActionInProgress || !pendingEditTask || !window.supabase) return;
+
+    pmActionInProgress = true;
+    var confirmBtn = document.getElementById('pm-edit-confirm');
+    if (confirmBtn) confirmBtn.disabled = true;
+    clearPmModalError('pm-edit-error');
+
+    try {
+      var descInput = document.getElementById('pm-edit-desc');
+      var imageInput = document.getElementById('pm-edit-image');
+      var deadlineInput = document.getElementById('pm-edit-deadline');
+      var slotsInput = document.getElementById('pm-edit-slots');
+
+      var newDesc = descInput ? descInput.value.trim() : '';
+      var newImageUrl = imageInput ? imageInput.value.trim() : '';
+      var newDeadlineStr = deadlineInput ? deadlineInput.value : '';
+      var newMaxSlots = slotsInput ? parseInt(slotsInput.value, 10) : null;
+
+      var userId = await getCurrentUserId();
+      if (!userId) {
+        showPmModalError('pm-edit-error', pmT('pm_login_required'));
+        return;
+      }
+
+      var task = await fetchOwnedTask(pendingEditTask.id, userId);
+      if (!task) {
+        showPmModalError('pm-edit-error', pmT('pm_action_fail'));
+        return;
+      }
+
+      var updatePayload = {};
+
+      if (newDesc !== '' && newDesc !== (task.description || '')) {
+        updatePayload.description = newDesc;
+      }
+
+      if (newImageUrl !== '' && newImageUrl !== (task.image_url || '')) {
+        updatePayload.image_url = newImageUrl;
+      }
+
+      if (newDeadlineStr) {
+        var newDeadline = new Date(newDeadlineStr);
+        if (Number.isNaN(newDeadline.getTime())) {
+          showPmModalError('pm-edit-error', pmT('pm_action_fail'));
+          return;
+        }
+
+        var oldDeadline = task.deadline ? new Date(task.deadline) : null;
+        if (oldDeadline && !Number.isNaN(oldDeadline.getTime())) {
+          if (newDeadline.getTime() < oldDeadline.getTime()) {
+            showPmModalError('pm-edit-error', pmT('pm_edit_alert_deadline'));
+            return;
+          }
+        } else {
+          if (newDeadline.getTime() < Date.now()) {
+            showPmModalError('pm-edit-error', pmT('pm_edit_alert_deadline'));
+            return;
+          }
+        }
+
+        updatePayload.deadline = newDeadline.toISOString();
+      }
+
+      if (newMaxSlots != null) {
+        var oldMaxSlots = task.max_participants != null ? Number(task.max_participants) : 0;
+        if (newMaxSlots < oldMaxSlots) {
+          showPmModalError('pm-edit-error', pmT('pm_edit_alert_slots'));
+          return;
+        }
+        updatePayload.max_participants = newMaxSlots;
+      }
+
+      if (Object.keys(updatePayload).length === 0) {
+        closeEditModal();
+        return;
+      }
+
+      var updateResult = await window.supabase
+        .from('tasks')
+        .update(updatePayload)
+        .eq('id', task.id)
+        .eq('publisher_id', userId);
+
+      if (updateResult.error) {
+        showPmModalError('pm-edit-error', pmT('pm_action_fail'));
+        return;
+      }
+
+      closeEditModal();
+      alert(pmT('pm_action_success_edit'));
+      await loadAndRenderPublishMgmt();
+    } finally {
+      pmActionInProgress = false;
+      if (confirmBtn && pendingEditTask) {
+        confirmBtn.disabled = false;
+      }
+    }
+  }
+
   function initPublishMgmtEvents() {
     if (publishMgmtInitialized) return;
     publishMgmtInitialized = true;
@@ -7855,6 +8026,10 @@ window.addEventListener('hashchange', function () {
           }
           if (actionBtn.classList.contains('pm-action-slots')) {
             openSlotsModal(entry.task);
+            return;
+          }
+          if (actionBtn.classList.contains('pm-action-edit')) {
+            openEditModal(entry.task);
             return;
           }
           if (actionBtn.classList.contains('publish-mgmt-delete-btn')) {
@@ -7937,6 +8112,16 @@ window.addEventListener('hashchange', function () {
     if (slotsModal) {
       var slotsOverlay = slotsModal.querySelector('.pm-action-modal-overlay');
       if (slotsOverlay) slotsOverlay.addEventListener('click', closeSlotsModal);
+    }
+
+    var editCancelBtn = document.getElementById('pm-edit-cancel');
+    var editConfirmBtn = document.getElementById('pm-edit-confirm');
+    var editModal = document.getElementById('pm-edit-modal');
+    if (editCancelBtn) editCancelBtn.addEventListener('click', closeEditModal);
+    if (editConfirmBtn) editConfirmBtn.addEventListener('click', confirmEditTask);
+    if (editModal) {
+      var editOverlay = editModal.querySelector('.pm-action-modal-overlay');
+      if (editOverlay) editOverlay.addEventListener('click', closeEditModal);
     }
   }
 
