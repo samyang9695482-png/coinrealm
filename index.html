@@ -1104,8 +1104,22 @@
               <p class="pm-edit-hint" data-i18n="pm_edit_desc_hint">修改后新领取用户将看到新内容</p>
             </div>
             <div class="pm-edit-field">
-              <label class="pm-edit-label" data-i18n="pm_edit_image">任务图片URL</label>
-              <input type="text" id="pm-edit-image" class="pm-action-input">
+              <label class="pm-edit-label" data-i18n="pm_edit_image">任务图片</label>
+              <div id="pm-edit-image-preview" class="pm-edit-image-preview hidden">
+                <img id="pm-edit-image-preview-img" src="" alt="图片预览">
+                <button type="button" id="pm-edit-image-delete" class="pm-edit-image-delete-btn" data-i18n="pm_edit_image_delete">删除图片</button>
+              </div>
+              <div id="pm-edit-image-upload-area">
+                <button type="button" id="pm-edit-image-upload-btn" class="pm-edit-image-upload-btn" data-i18n="pm_edit_image_upload">上传新图片</button>
+                <input type="file" id="pm-edit-image-file-input" class="pm-edit-image-file-input" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" hidden>
+              </div>
+              <div id="pm-edit-image-progress" class="pm-edit-image-progress hidden">
+                <div class="pm-edit-image-progress-bar">
+                  <div id="pm-edit-image-progress-fill" class="pm-edit-image-progress-fill"></div>
+                </div>
+                <span id="pm-edit-image-progress-text" class="pm-edit-image-progress-text">0%</span>
+              </div>
+              <input type="text" id="pm-edit-image" class="pm-action-input pm-edit-image-url-input" data-i18n-placeholder="pm_edit_image_ph">
               <p class="pm-edit-hint" data-i18n="pm_edit_image_hint">修改后新领取用户将看到新图片</p>
             </div>
             <div class="pm-edit-field">

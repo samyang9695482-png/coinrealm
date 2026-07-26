@@ -6721,7 +6721,13 @@ window.addEventListener('hashchange', function () {
       pm_btn_edit: '修改',
       pm_edit_title: '修改任务',
       pm_edit_desc: '任务描述',
-      pm_edit_image: '任务图片URL',
+      pm_edit_image: '任务图片',
+      pm_edit_image_delete: '删除图片',
+      pm_edit_image_upload: '上传新图片',
+      pm_edit_image_ph: '或直接输入图片URL',
+      pm_edit_image_uploading: '上传中...',
+      pm_edit_image_upload_success: '上传完成',
+      pm_edit_image_upload_fail: '上传失败，请重试',
       pm_edit_deadline: '截止时间',
       pm_edit_slots: '任务名额',
       pm_edit_deadline_hint: '只能延后，不能提前',
@@ -6792,7 +6798,13 @@ window.addEventListener('hashchange', function () {
       pm_btn_edit: 'Edit',
       pm_edit_title: 'Edit Task',
       pm_edit_desc: 'Description',
-      pm_edit_image: 'Image URL',
+      pm_edit_image: 'Image',
+      pm_edit_image_delete: 'Delete Image',
+      pm_edit_image_upload: 'Upload New Image',
+      pm_edit_image_ph: 'Or enter image URL',
+      pm_edit_image_uploading: 'Uploading...',
+      pm_edit_image_upload_success: 'Upload Complete',
+      pm_edit_image_upload_fail: 'Upload failed, please retry',
       pm_edit_deadline: 'Deadline',
       pm_edit_slots: 'Max Participants',
       pm_edit_deadline_hint: 'Can only be extended',
@@ -7870,12 +7882,29 @@ window.addEventListener('hashchange', function () {
       }
     }
 
+    var previewContainer = document.getElementById('pm-edit-image-preview');
+    var previewImg = document.getElementById('pm-edit-image-preview-img');
+    var uploadArea = document.getElementById('pm-edit-image-upload-area');
+    var progressArea = document.getElementById('pm-edit-image-progress');
+
+    if (task.image_url) {
+      previewContainer.classList.remove('hidden');
+      previewImg.src = task.image_url;
+      uploadArea.classList.remove('hidden');
+      progressArea.classList.add('hidden');
+    } else {
+      previewContainer.classList.add('hidden');
+      uploadArea.classList.remove('hidden');
+      progressArea.classList.add('hidden');
+    }
+
     var modal = document.getElementById('pm-edit-modal');
     if (modal) {
       modal.classList.remove('hidden');
       modal.setAttribute('aria-hidden', 'false');
     }
     applyPublishMgmtI18n();
+    initEditModalImageEvents();
   }
 
   function closeEditModal() {
@@ -7888,6 +7917,106 @@ window.addEventListener('hashchange', function () {
     }
     var confirmBtn = document.getElementById('pm-edit-confirm');
     if (confirmBtn) confirmBtn.disabled = false;
+  }
+
+  function initEditModalImageEvents() {
+    var deleteBtn = document.getElementById('pm-edit-image-delete');
+    var uploadBtn = document.getElementById('pm-edit-image-upload-btn');
+    var fileInput = document.getElementById('pm-edit-image-file-input');
+
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', handleEditModalDeleteImage);
+    }
+    if (uploadBtn) {
+      uploadBtn.addEventListener('click', function () {
+        if (fileInput) fileInput.click();
+      });
+    }
+    if (fileInput) {
+      fileInput.addEventListener('change', handleEditModalImageFileSelected);
+    }
+  }
+
+  function handleEditModalDeleteImage() {
+    var imageInput = document.getElementById('pm-edit-image');
+    var previewContainer = document.getElementById('pm-edit-image-preview');
+    var previewImg = document.getElementById('pm-edit-image-preview-img');
+
+    if (imageInput) imageInput.value = '';
+    if (previewContainer) previewContainer.classList.add('hidden');
+    if (previewImg) previewImg.src = '';
+
+    if (pendingEditTask) {
+      pendingEditTask.image_url = '';
+    }
+  }
+
+  async function handleEditModalImageFileSelected(e) {
+    var fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+
+    var file = fileList[0];
+    var validationError = validateProofScreenshotFile(file);
+    if (validationError) {
+      alert(validationError);
+      return;
+    }
+
+    var userId = await getCurrentUserId();
+    if (!userId) {
+      alert(pmT('pm_login_required'));
+      return;
+    }
+
+    var uploadBtn = document.getElementById('pm-edit-image-upload-btn');
+    var progressArea = document.getElementById('pm-edit-image-progress');
+    var progressFill = document.getElementById('pm-edit-image-progress-fill');
+    var progressText = document.getElementById('pm-edit-image-progress-text');
+    var uploadArea = document.getElementById('pm-edit-image-upload-area');
+
+    if (uploadBtn) uploadBtn.disabled = true;
+    if (progressArea) progressArea.classList.remove('hidden');
+    if (uploadArea) uploadArea.classList.add('hidden');
+
+    try {
+      var result = await uploadProofScreenshotWithProgress(userId, file, function (progress) {
+        if (progressFill) progressFill.style.width = progress + '%';
+        if (progressText) progressText.textContent = progress + '%';
+      });
+
+      if (result.ok && result.publicUrl) {
+        var imageInput = document.getElementById('pm-edit-image');
+        var previewContainer = document.getElementById('pm-edit-image-preview');
+        var previewImg = document.getElementById('pm-edit-image-preview-img');
+
+        if (imageInput) imageInput.value = result.publicUrl;
+        if (previewImg) previewImg.src = result.publicUrl;
+        if (previewContainer) previewContainer.classList.remove('hidden');
+
+        if (progressText) progressText.textContent = pmT('pm_edit_image_upload_success');
+        setTimeout(function () {
+          if (progressArea) progressArea.classList.add('hidden');
+          if (uploadArea) uploadArea.classList.remove('hidden');
+          if (progressFill) progressFill.style.width = '0%';
+          if (progressText) progressText.textContent = '0%';
+          if (uploadBtn) uploadBtn.disabled = false;
+        }, 2000);
+
+        if (pendingEditTask) {
+          pendingEditTask.image_url = result.publicUrl;
+        }
+      } else {
+        if (progressText) progressText.textContent = pmT('pm_edit_image_upload_fail');
+        if (uploadArea) uploadArea.classList.remove('hidden');
+        if (uploadBtn) uploadBtn.disabled = false;
+      }
+    } catch (error) {
+      if (progressText) progressText.textContent = pmT('pm_edit_image_upload_fail');
+      if (uploadArea) uploadArea.classList.remove('hidden');
+      if (uploadBtn) uploadBtn.disabled = false;
+    }
+
+    if (fileInput) fileInput.value = '';
   }
 
   async function confirmEditTask() {
@@ -7927,7 +8056,7 @@ window.addEventListener('hashchange', function () {
         updatePayload.description = newDesc;
       }
 
-      if (newImageUrl !== '' && newImageUrl !== (task.image_url || '')) {
+      if (newImageUrl !== (task.image_url || '')) {
         updatePayload.image_url = newImageUrl;
       }
 
