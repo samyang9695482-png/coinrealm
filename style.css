@@ -385,17 +385,17 @@ img {
 
 /* 广告轮播 - 简洁风格 */
 .ads-carousel {
-    background-color: var(--color-card);
-    min-height: 80px;
-    margin-bottom: 20px;
+    background-color: transparent;
+    min-height: 64px;
+    margin-bottom: 16px;
     border-radius: var(--card-radius);
     overflow: hidden;
-    box-shadow: var(--shadow-sm);
-    border: 1px solid var(--color-border);
+    box-shadow: none;
+    border: none;
 }
 
 .ads-carousel-viewport {
-    min-height: 80px;
+    min-height: 64px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -403,12 +403,15 @@ img {
 
 .ads-carousel-slide {
     width: 100%;
-    min-height: 80px;
+    min-height: 64px;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 16px;
+    padding: 8px 12px;
     box-sizing: border-box;
+    background: linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%);
+    border: 1px solid #FED7AA;
+    border-radius: 12px;
     opacity: 1;
     transition: opacity 0.3s;
 }
@@ -420,10 +423,10 @@ img {
 .ads-carousel-content {
     width: 100%;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 12px;
     text-align: center;
 }
 
@@ -441,17 +444,22 @@ img {
 .ads-carousel-code {
     width: 100%;
     overflow: hidden;
+    font-size: 15px;
+    font-weight: 600;
+    color: #C2410C;
+    text-align: center;
+    line-height: 1.4;
 }
 
 .ads-carousel-name {
-    color: #333333;
+    color: #C2410C;
     font-size: 14px;
     font-weight: 500;
 }
 
 .ads-carousel-placeholder {
-    color: #666666;
-    font-size: 14px;
+    color: #9CA3AF;
+    font-size: 13px;
     text-align: center;
 }
 
@@ -459,8 +467,8 @@ img {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    padding: 0 0 12px;
+    gap: 6px;
+    padding: 6px 0 0;
 }
 
 .ads-carousel-dots.hidden {
@@ -468,23 +476,22 @@ img {
 }
 
 .ads-carousel-dot {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     padding: 0;
     border: none;
     border-radius: 50%;
-    background-color: #c0c0c0;
+    background-color: #D1D5DB;
     cursor: pointer;
     transition: background-color 0.3s ease, transform 0.3s ease;
 }
 
 .ads-carousel-dot:hover:not(:disabled) {
-    transform: scale(1.15);
+    transform: scale(1.2);
 }
 
 .ads-carousel-dot.is-active {
-    background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-gold) 100%);
-    box-shadow: 0 0 10px rgba(255, 107, 53, 0.5);
+    background: #F97316;
 }
 
 /* 广播动态区 - 草原风格 */
