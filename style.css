@@ -1398,6 +1398,122 @@ img {
     color: #888888;
 }
 
+/* 首页右下角浮动半圆菜单 */
+.floating-menu-container {
+    position: fixed;
+    right: 0;
+    bottom: 80px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    transform: translateX(calc(100% - 40px));
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.floating-menu-container.expanded {
+    transform: translateX(0);
+}
+
+.floating-menu-toggle {
+    width: 40px;
+    height: 50px;
+    background: linear-gradient(135deg, #FF6B35 0%, #E55A2B 100%);
+    border: none;
+    border-radius: 25px 0 0 25px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #FFFFFF;
+    font-size: 14px;
+    box-shadow: 0 4px 16px rgba(255, 107, 53, 0.4);
+    transition: all 0.3s ease;
+    position: relative;
+    z-index: 2;
+}
+
+.floating-menu-toggle:hover {
+    box-shadow: 0 6px 20px rgba(255, 107, 53, 0.5);
+    transform: scale(1.05);
+}
+
+.floating-menu-toggle .fmt-arrow {
+    transition: transform 0.3s ease;
+    display: block;
+}
+
+.floating-menu-container.expanded .floating-menu-toggle .fmt-arrow {
+    transform: rotate(180deg);
+}
+
+.floating-menu-items {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 8px;
+    margin-right: 4px;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(10px);
+    transition: all 0.3s ease;
+}
+
+.floating-menu-container.expanded .floating-menu-items {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+.floating-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background: #1A1A2E;
+    color: #FFFFFF;
+    text-decoration: none;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 107, 53, 0.3);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s ease;
+    min-width: 140px;
+}
+
+.floating-menu-item:hover {
+    background: #252540;
+    border-color: #FF6B35;
+    transform: translateX(-4px);
+    box-shadow: 0 6px 16px rgba(255, 107, 53, 0.3);
+}
+
+.fmi-icon {
+    font-size: 18px;
+}
+
+.fmi-text {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+    .floating-menu-container {
+        bottom: 70px;
+        transform: translateX(calc(100% - 36px));
+    }
+
+    .floating-menu-toggle {
+        width: 36px;
+        height: 44px;
+    }
+
+    .floating-menu-item {
+        min-width: 120px;
+        padding: 8px 12px;
+    }
+}
+
 /* 工具类 */
 .hidden {
     display: none !important;

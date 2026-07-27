@@ -810,42 +810,72 @@ function initHomePageLogic() {
     fetchTasks();
     loadHomeBroadcasts();
 
-    // C2. 更多筛选下拉菜单逻辑 - 始终执行，使用事件委托确保绑定有效
-    (function () {
-        const filterMoreMenu = document.querySelector('.filter-more-menu');
-        const filterTags = document.getElementById('filter-tags');
-        if (!filterTags || !filterMoreMenu) return;
+    // C2. 更多筛选下拉菜单逻辑 - 确保每次都正确绑定
+    var setupMoreMenu = function () {
+        var moreBtn = document.getElementById('filter-more-btn');
+        var moreMenu = document.querySelector('.filter-more-menu');
+        if (!moreBtn || !moreMenu) return;
 
-        const boundAttr = 'data-more-bound';
-        if (filterTags.getAttribute(boundAttr)) return;
-        filterTags.setAttribute(boundAttr, '1');
+        // 移除旧的事件监听器（如果存在）
+        if (moreBtn._clickHandler) {
+            moreBtn.removeEventListener('click', moreBtn._clickHandler);
+        }
 
-        filterTags.addEventListener('click', function (e) {
-            var moreBtn = e.target.closest('#filter-more-btn');
-            if (moreBtn) {
-                e.stopPropagation();
-                filterMoreMenu.classList.toggle('hidden');
-                return;
+        // 添加新的事件监听器
+        moreBtn._clickHandler = function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            moreMenu.classList.toggle('hidden');
+        };
+        moreBtn.addEventListener('click', moreBtn._clickHandler);
+
+        // 绑定菜单项点击事件
+        var items = document.querySelectorAll('.filter-more-item');
+        items.forEach(function (item) {
+            if (item._clickHandler) {
+                item.removeEventListener('click', item._clickHandler);
             }
-
-            var moreItem = e.target.closest('.filter-more-item');
-            if (moreItem) {
+            item._clickHandler = function (e) {
+                e.preventDefault();
                 e.stopPropagation();
-                document.querySelectorAll('#filter-tags .tag-btn').forEach(btn => btn.classList.remove('active'));
-                document.querySelectorAll('.filter-more-item').forEach(i => i.classList.remove('active'));
-                moreItem.classList.add('active');
-                filterMoreMenu.classList.add('hidden');
+                document.querySelectorAll('#filter-tags .tag-btn').forEach(function (btn) {
+                    btn.classList.remove('active');
+                });
+                items.forEach(function (i) {
+                    i.classList.remove('active');
+                });
+                item.classList.add('active');
+                moreMenu.classList.add('hidden');
                 applyFiltersAndSort();
-                return;
-            }
+            };
+            item.addEventListener('click', item._clickHandler);
         });
 
-        document.addEventListener('click', function (e) {
-            if (!e.target.closest('.filter-more-dropdown')) {
-                filterMoreMenu.classList.add('hidden');
-            }
-        });
-    })();
+        // 全局点击关闭
+        if (!document._moreMenuCloseHandler) {
+            document._moreMenuCloseHandler = function (e) {
+                if (!e.target.closest('.filter-more-dropdown')) {
+                    var menu = document.querySelector('.filter-more-menu');
+                    if (menu) menu.classList.add('hidden');
+                }
+            };
+            document.addEventListener('click', document._moreMenuCloseHandler);
+        }
+    };
+
+    // 立即执行并在 DOM 变化时重新绑定
+    setupMoreMenu();
+
+    // 如果 mobile.js 修改了 DOM，需要重新绑定
+    if (window.MutationObserver) {
+        var target = document.getElementById('filter-tags');
+        if (target) {
+            var observer = new MutationObserver(function () {
+                setupMoreMenu();
+            });
+            observer.observe(target, { childList: true, subtree: true });
+        }
+    }
 
     if (!homeEventsBound) {
         homeEventsBound = true;
@@ -978,5 +1008,33 @@ function initHomePageLogic() {
     }
 
     initAdsCarousel();
+
+    // 初始化浮动半圆菜单
+    initFloatingMenu();
+}
+
+function initFloatingMenu() {
+    var container = document.getElementById('floating-menu');
+    var toggle = document.getElementById('floating-toggle');
+    if (!container || !toggle) return;
+
+    toggle.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        container.classList.toggle('expanded');
+    });
+
+    document.addEventListener('click', function (e) {
+        if (!container.contains(e.target)) {
+            container.classList.remove('expanded');
+        }
+    });
+
+    var items = document.querySelectorAll('.floating-menu-item');
+    items.forEach(function (item) {
+        item.addEventListener('click', function () {
+            container.classList.remove('expanded');
+        });
+    });
 }
 
