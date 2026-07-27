@@ -92,7 +92,8 @@
       airdrop_already: '🎁 今日空投已领取，明天再来！',
       airdrop_success: '🎁 空投成功！+{amount} CRLM',
       reward_sent_desc: '奖励已发送至余额',
-      reward_confirm: '确定'
+      reward_confirm: '确定',
+      ad_broadcast_show_on_home: '首页展示广播'
     },
     en: {
       CoinRealm: 'CoinRealm',
@@ -180,7 +181,8 @@
       airdrop_already: '🎁 Today\'s airdrop claimed. Come back tomorrow!',
       airdrop_success: '🎁 Airdrop success! +{amount} CRLM',
       reward_sent_desc: 'Reward sent to your balance',
-      reward_confirm: 'OK'
+      reward_confirm: 'OK',
+      ad_broadcast_show_on_home: 'Show Broadcast on Home'
     }
   };
 

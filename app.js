@@ -10488,6 +10488,22 @@ window.addEventListener('hashchange', function () {
     adminBroadcasts = result.error ? [] : (result.data || []);
   }
 
+  async function fetchShowBroadcastOnHome() {
+    if (!window.supabase) return false;
+    var result = await window.supabase.from('settings').select('value').eq('key', 'show_broadcast_on_home').maybeSingle();
+    if (result.error || !result.data) return false;
+    return result.data.value === 'true' || result.data.value === true;
+  }
+
+  async function saveShowBroadcastOnHome(value) {
+    if (!window.supabase) return;
+    var strValue = value ? 'true' : 'false';
+    var result = await window.supabase.from('settings').upsert({ key: 'show_broadcast_on_home', value: strValue }, { onConflict: 'key' });
+    if (result.error) {
+      console.warn('[admin] 保存首页广播显示设置失败:', result.error);
+    }
+  }
+
   function renderBroadcastList() {
     var listEl = document.getElementById('ad-broadcast-list');
     if (!listEl) return;
@@ -10512,6 +10528,19 @@ window.addEventListener('hashchange', function () {
         '</div>'
       );
     }).join('');
+  }
+
+  async function initBroadcastHomeToggle() {
+    var toggleSwitch = document.getElementById('ad-broadcast-home-switch');
+    if (!toggleSwitch) return;
+    var value = await fetchShowBroadcastOnHome();
+    toggleSwitch.checked = value;
+    if (!toggleSwitch.dataset.bound) {
+      toggleSwitch.dataset.bound = '1';
+      toggleSwitch.addEventListener('change', function () {
+        saveShowBroadcastOnHome(this.checked);
+      });
+    }
   }
 
   async function deleteBroadcast(id) {
@@ -10542,6 +10571,7 @@ window.addEventListener('hashchange', function () {
     } else if (adminTab === 'broadcasts') {
       await loadAdminBroadcasts();
       renderBroadcastList();
+      await initBroadcastHomeToggle();
     } else if (adminTab === 'withdraw') {
       await loadAdminWithdrawSettings();
     } else if (adminTab === 'invite') {

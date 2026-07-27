@@ -91,13 +91,37 @@ function loadHomeBroadcasts() {
     }
 
     return window.supabase
-        .from('broadcasts')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(10)
+        .from('settings')
+        .select('value')
+        .eq('key', 'show_broadcast_on_home')
+        .maybeSingle()
+        .then(function (settingResult) {
+            var showBroadcast = false;
+            if (settingResult.data) {
+                showBroadcast = settingResult.data.value === 'true' || settingResult.data.value === true;
+            }
+
+            var broadcastSection = document.querySelector('.broadcast-section');
+            if (broadcastSection) {
+                broadcastSection.style.display = showBroadcast ? '' : 'none';
+            }
+
+            if (!showBroadcast) {
+                renderHomeBroadcastTicker([]);
+                return;
+            }
+
+            return window.supabase
+                .from('broadcasts')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(10);
+        })
         .then(function (result) {
-            if (result.error) {
-                console.warn('加载首页广播失败:', result.error);
+            if (!result || result.error) {
+                if (result && result.error) {
+                    console.warn('加载首页广播失败:', result.error);
+                }
                 renderHomeBroadcastTicker([]);
                 return;
             }

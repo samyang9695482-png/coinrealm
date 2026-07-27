@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <!-- 立即捕获邀请链接 ref 参数，避免页面跳转时丢失 -->
@@ -1509,6 +1509,11 @@
 
         <section id="admin-panel-broadcasts" class="admin-panel hidden">
           <h2 class="admin-section-title" data-i18n="ad_broadcasts_title">广播管理</h2>
+          <div id="ad-broadcast-home-toggle" class="admin-ads-toggle">
+            <span class="admin-ads-toggle-text" data-i18n="ad_broadcast_show_on_home">首页展示广播</span>
+            <input type="checkbox" id="ad-broadcast-home-switch" class="admin-ads-toggle-input">
+            <span class="admin-ads-toggle-slider"></span>
+          </div>
           <div id="ad-broadcast-list" class="admin-list"></div>
         </section>
 
@@ -1826,7 +1831,7 @@
   <script src="js/pages/dividends.js?v=20260717"></script>
   <script src="js/pages/invite.js?v=20260724"></script>
   <script src="js/pages/admin.js?v=20260717"></script>
-  <script src="js/pages/home.js?v=20260725b"></script>
+  <script src="js/pages/home.js?v=20260726"></script>
   <script src="js/pages/publisher.js?v=20260717"></script>
   <script src="js/pages/task-detail.js?v=20260717"></script>
   <script src="js/pages/create-task.js?v=20260717"></script>
@@ -1834,6 +1839,6 @@
   <script src="js/pages/review.js?v=20260725"></script>
   <script src="js/pages/profile.js?v=20260717"></script>
   <script src="js/pages/my-tasks.js?v=20260717"></script>
-  <script src="app.js?v=20260724"></script>
+  <script src="app.js?v=20260726"></script>
 </body>
 </html>
