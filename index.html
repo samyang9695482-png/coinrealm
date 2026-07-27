@@ -39,7 +39,7 @@
   <title>CoinRealm</title>
   <link rel="manifest" href="/manifest.json">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <link rel="stylesheet" href="style.css?v=20260804">
+  <link rel="stylesheet" href="style.css?v=20260805">
   <style>
     .auth-area {
       display: flex;
@@ -1829,6 +1829,12 @@
       </div>
     </div>
   </main>
+
+  <!-- 装饰性半透明圆形背景元素 -->
+  <div class="bg-decor" aria-hidden="true">
+    <span class="bg-decor-circle bg-decor-circle-blue"></span>
+    <span class="bg-decor-circle bg-decor-circle-orange"></span>
+  </div>
 
   <!-- 首页右下角浮动半圆菜单（置于 main 外，避免 backdrop-filter 破坏 fixed 定位） -->
   <div class="floating-menu-container" id="floating-menu">
