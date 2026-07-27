@@ -687,6 +687,7 @@ img {
     border-radius: var(--card-radius);
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--color-border);
+    overflow: visible;
 }
 .search-box {
     position: relative;
@@ -712,9 +713,11 @@ img {
 .filter-tags {
     display: flex;
     gap: 8px;
-    overflow-x: auto;
+    overflow: visible;
     white-space: nowrap;
     padding-bottom: 4px;
+    flex-wrap: nowrap;
+    align-items: center;
 }
 .tag-btn {
     background-color: #ffffff;
@@ -744,7 +747,7 @@ img {
 
 .filter-more-dropdown {
     position: relative;
-    display: inline-block;
+    display: inline-flex;
 }
 
 .tag-btn-more {
@@ -754,15 +757,15 @@ img {
 
 .filter-more-menu {
     position: absolute;
-    top: calc(100% + 4px);
+    top: calc(100% + 8px);
     right: 0;
     background-color: #ffffff;
     border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    padding: 4px;
-    min-width: 100px;
-    z-index: 100;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    padding: 6px;
+    min-width: 120px;
+    z-index: 9999;
 }
 
 .filter-more-menu.hidden {
@@ -772,15 +775,15 @@ img {
 .filter-more-item {
     display: block;
     width: 100%;
-    padding: 8px 12px;
+    padding: 10px 14px;
     text-align: left;
     border: none;
     background: none;
-    border-radius: 6px;
+    border-radius: 8px;
     cursor: pointer;
     font-size: 14px;
     color: #333333;
-    transition: background-color 0.2s ease;
+    transition: background-color 0.15s ease;
 }
 
 .filter-more-item:hover {
