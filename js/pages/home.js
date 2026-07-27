@@ -810,6 +810,43 @@ function initHomePageLogic() {
     fetchTasks();
     loadHomeBroadcasts();
 
+    // C2. 更多筛选下拉菜单逻辑 - 始终执行，使用事件委托确保绑定有效
+    (function () {
+        const filterMoreMenu = document.querySelector('.filter-more-menu');
+        const filterTags = document.getElementById('filter-tags');
+        if (!filterTags || !filterMoreMenu) return;
+
+        const boundAttr = 'data-more-bound';
+        if (filterTags.getAttribute(boundAttr)) return;
+        filterTags.setAttribute(boundAttr, '1');
+
+        filterTags.addEventListener('click', function (e) {
+            var moreBtn = e.target.closest('#filter-more-btn');
+            if (moreBtn) {
+                e.stopPropagation();
+                filterMoreMenu.classList.toggle('hidden');
+                return;
+            }
+
+            var moreItem = e.target.closest('.filter-more-item');
+            if (moreItem) {
+                e.stopPropagation();
+                document.querySelectorAll('#filter-tags .tag-btn').forEach(btn => btn.classList.remove('active'));
+                document.querySelectorAll('.filter-more-item').forEach(i => i.classList.remove('active'));
+                moreItem.classList.add('active');
+                filterMoreMenu.classList.add('hidden');
+                applyFiltersAndSort();
+                return;
+            }
+        });
+
+        document.addEventListener('click', function (e) {
+            if (!e.target.closest('.filter-more-dropdown')) {
+                filterMoreMenu.classList.add('hidden');
+            }
+        });
+    })();
+
     if (!homeEventsBound) {
         homeEventsBound = true;
 
@@ -831,34 +868,6 @@ function initHomePageLogic() {
                 applyFiltersAndSort();
             });
         });
-
-        // C2. 更多筛选下拉菜单逻辑
-        const filterMoreBtn = document.getElementById('filter-more-btn');
-        const filterMoreMenu = document.querySelector('.filter-more-menu');
-
-        if (filterMoreBtn && filterMoreMenu) {
-            filterMoreBtn.addEventListener('click', function (e) {
-                e.stopPropagation();
-                filterMoreMenu.classList.toggle('hidden');
-            });
-
-            document.querySelectorAll('.filter-more-item').forEach(item => {
-                item.addEventListener('click', function (e) {
-                    e.stopPropagation();
-                    tagButtons.forEach(btn => btn.classList.remove('active'));
-                    document.querySelectorAll('.filter-more-item').forEach(i => i.classList.remove('active'));
-                    this.classList.add('active');
-                    filterMoreMenu.classList.add('hidden');
-                    applyFiltersAndSort();
-                });
-            });
-
-            document.addEventListener('click', function (e) {
-                if (!e.target.closest('.filter-more-dropdown')) {
-                    filterMoreMenu.classList.add('hidden');
-                }
-            });
-        }
 
         // D. 排序下拉交互
         const sortDropdown = document.getElementById('sort-dropdown');
