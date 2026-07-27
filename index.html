@@ -39,7 +39,7 @@
   <title>CoinRealm</title>
   <link rel="manifest" href="/manifest.json">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <link rel="stylesheet" href="style.css?v=20260801">
+  <link rel="stylesheet" href="style.css?v=20260803">
   <style>
     .auth-area {
       display: flex;
@@ -349,27 +349,6 @@
           <span class="copyright">© 2026 CoinRealm. All rights reserved.</span>
         </div>
       </footer>
-    </div>
-
-    <!-- 首页右下角浮动半圆菜单 -->
-    <div class="floating-menu-container" id="floating-menu">
-      <div class="floating-menu-items">
-        <a href="#my-tasks" class="floating-menu-item" data-nav-route="my-tasks">
-          <span class="fmi-icon">📋</span>
-          <span class="fmi-text" data-i18n="fm_my_tasks">我的任务</span>
-        </a>
-        <a href="#create-task" class="floating-menu-item" data-nav-route="create-task">
-          <span class="fmi-icon">✏️</span>
-          <span class="fmi-text" data-i18n="fm_publish_task">发布任务</span>
-        </a>
-        <a href="#publish-management" class="floating-menu-item" data-nav-route="publish-management">
-          <span class="fmi-icon">⚙️</span>
-          <span class="fmi-text" data-i18n="fm_manage_task">管理任务</span>
-        </a>
-      </div>
-      <button class="floating-menu-toggle" id="floating-toggle" aria-label="Toggle Menu">
-        <span class="fmt-arrow">▲</span>
-      </button>
     </div>
 
     <!-- 任务详情页 — 由路由 #task-detail 显示 -->
@@ -1850,6 +1829,28 @@
       </div>
     </div>
   </main>
+
+  <!-- 首页右下角浮动半圆菜单（置于 main 外，避免 backdrop-filter 破坏 fixed 定位） -->
+  <div class="floating-menu-container" id="floating-menu">
+    <div class="floating-menu-items" id="floating-menu-items">
+      <a href="#my-tasks" class="floating-menu-item" data-nav-route="my-tasks">
+        <span class="fmi-icon">📋</span>
+        <span class="fmi-text" data-i18n="fm_my_tasks">我的任务</span>
+      </a>
+      <a href="#create-task" class="floating-menu-item" data-nav-route="create-task">
+        <span class="fmi-icon">✏️</span>
+        <span class="fmi-text" data-i18n="fm_publish_task">发布任务</span>
+      </a>
+      <a href="#publish-management" class="floating-menu-item" data-nav-route="publish-management">
+        <span class="fmi-icon">⚙️</span>
+        <span class="fmi-text" data-i18n="fm_manage_task">管理任务</span>
+      </a>
+    </div>
+    <button class="floating-menu-toggle" id="floating-toggle" aria-label="Toggle Menu" type="button">
+      <span class="fmt-arrow">▲</span>
+    </button>
+  </div>
+
   <script src="js/i18n.js?v=20260717"></script>
   <script src="js/invite-logic.js?v=20260725j"></script>
   <script src="auth.js?v=20260717"></script>
@@ -1857,7 +1858,7 @@
   <script src="js/pages/dividends.js?v=20260717"></script>
   <script src="js/pages/invite.js?v=20260724"></script>
   <script src="js/pages/admin.js?v=20260717"></script>
-  <script src="js/pages/home.js?v=20260802"></script>
+  <script src="js/pages/home.js?v=20260803"></script>
   <script src="js/pages/publisher.js?v=20260717"></script>
   <script src="js/pages/task-detail.js?v=20260717"></script>
   <script src="js/pages/create-task.js?v=20260717"></script>

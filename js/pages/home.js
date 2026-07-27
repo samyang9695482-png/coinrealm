@@ -1018,6 +1018,24 @@ function initFloatingMenu() {
     var toggle = document.getElementById('floating-toggle');
     if (!container || !toggle) return;
 
+    // 防止重复绑定
+    if (container._fmBound) return;
+    container._fmBound = true;
+
+    // 根据路由控制菜单显隐（仅在首页显示）
+    function syncVisibility() {
+        var hash = (window.location.hash || '').replace(/^#/, '');
+        var route = (hash.split('?')[0] || 'home');
+        if (route === 'home') {
+            container.style.display = '';
+        } else {
+            container.style.display = 'none';
+            container.classList.remove('expanded');
+        }
+    }
+    syncVisibility();
+    window.addEventListener('hashchange', syncVisibility);
+
     toggle.addEventListener('click', function (e) {
         e.preventDefault();
         e.stopPropagation();
@@ -1030,11 +1048,18 @@ function initFloatingMenu() {
         }
     });
 
-    var items = document.querySelectorAll('.floating-menu-item');
+    var items = container.querySelectorAll('.floating-menu-item');
     items.forEach(function (item) {
         item.addEventListener('click', function () {
             container.classList.remove('expanded');
         });
     });
+}
+
+// DOM 就绪兜底绑定（菜单在 main 外，始终存在于 DOM）
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initFloatingMenu);
+} else {
+    initFloatingMenu();
 }
 

@@ -1401,46 +1401,50 @@ img {
 /* 首页右下角浮动半圆菜单 */
 .floating-menu-container {
     position: fixed;
-    right: 0;
-    bottom: 80px;
-    z-index: 10000;
+    right: 30px;
+    bottom: 30px;
+    z-index: 9999;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    transform: translateX(calc(100% - 40px));
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.floating-menu-container.expanded {
-    transform: translateX(0);
 }
 
 .floating-menu-toggle {
-    width: 40px;
-    height: 50px;
+    width: 56px;
+    height: 56px;
     background: linear-gradient(135deg, #FF6B35 0%, #E55A2B 100%);
     border: none;
-    border-radius: 25px 0 0 25px;
+    border-radius: 50% 0 0 50%;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     color: #FFFFFF;
-    font-size: 14px;
-    box-shadow: 0 4px 16px rgba(255, 107, 53, 0.4);
-    transition: all 0.3s ease;
+    box-shadow: 0 4px 16px rgba(255, 107, 53, 0.45);
+    transition: box-shadow 0.25s ease, transform 0.25s ease;
+    padding: 0;
+    margin: 0;
     position: relative;
     z-index: 2;
 }
 
 .floating-menu-toggle:hover {
-    box-shadow: 0 6px 20px rgba(255, 107, 53, 0.5);
-    transform: scale(1.05);
+    box-shadow: 0 6px 22px rgba(255, 107, 53, 0.55);
+}
+
+.floating-menu-toggle:active {
+    transform: scale(0.96);
 }
 
 .floating-menu-toggle .fmt-arrow {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    font-size: 16px;
+    line-height: 1;
     transition: transform 0.3s ease;
-    display: block;
 }
 
 .floating-menu-container.expanded .floating-menu-toggle .fmt-arrow {
@@ -1451,18 +1455,19 @@ img {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    margin-bottom: 8px;
-    margin-right: 4px;
+    margin-bottom: 10px;
     opacity: 0;
     visibility: hidden;
-    transform: translateY(10px);
-    transition: all 0.3s ease;
+    transform: translateY(12px);
+    transition: opacity 0.28s ease, transform 0.28s ease, visibility 0.28s ease;
+    pointer-events: none;
 }
 
 .floating-menu-container.expanded .floating-menu-items {
     opacity: 1;
     visibility: visible;
     transform: translateY(0);
+    pointer-events: auto;
 }
 
 .floating-menu-item {
@@ -1474,9 +1479,9 @@ img {
     color: #FFFFFF;
     text-decoration: none;
     border-radius: 8px;
-    border: 1px solid rgba(255, 107, 53, 0.3);
+    border: 1px solid rgba(255, 107, 53, 0.35);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    transition: all 0.2s ease;
+    transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
     min-width: 140px;
 }
 
@@ -1489,6 +1494,7 @@ img {
 
 .fmi-icon {
     font-size: 18px;
+    line-height: 1;
 }
 
 .fmi-text {
@@ -1499,13 +1505,13 @@ img {
 /* 响应式调整 */
 @media (max-width: 768px) {
     .floating-menu-container {
-        bottom: 70px;
-        transform: translateX(calc(100% - 36px));
+        right: 20px;
+        bottom: 20px;
     }
 
     .floating-menu-toggle {
-        width: 36px;
-        height: 44px;
+        width: 48px;
+        height: 48px;
     }
 
     .floating-menu-item {
