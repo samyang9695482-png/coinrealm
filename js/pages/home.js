@@ -611,7 +611,7 @@ function navigateToTaskDetail(taskId) {
 }
 
 function filterByOfficialTag() {
-    var tagButtons = document.querySelectorAll('#filter-tags .tag-btn');
+    var tagButtons = document.querySelectorAll('#filter-tags .tag-btn:not(#filter-more-btn)');
     tagButtons.forEach(function (btn) {
         btn.classList.toggle('active', btn.getAttribute('data-type') === 'official');
     });
@@ -821,13 +821,13 @@ function initHomePageLogic() {
         });
 
         // C. 类型筛选标签切换交互逻辑
-        const tagButtons = document.querySelectorAll('#filter-tags .tag-btn');
+        const tagButtons = document.querySelectorAll('#filter-tags .tag-btn:not(#filter-more-btn)');
 
         tagButtons.forEach(button => {
             button.addEventListener('click', () => {
                 tagButtons.forEach(btn => btn.classList.remove('active'));
-                button.classList.add('active');
                 document.querySelectorAll('.filter-more-item').forEach(item => item.classList.remove('active'));
+                button.classList.add('active');
                 applyFiltersAndSort();
             });
         });
