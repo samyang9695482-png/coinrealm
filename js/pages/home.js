@@ -615,6 +615,9 @@ function filterByOfficialTag() {
     tagButtons.forEach(function (btn) {
         btn.classList.toggle('active', btn.getAttribute('data-type') === 'official');
     });
+    document.querySelectorAll('.filter-more-item').forEach(function (item) {
+        item.classList.remove('active');
+    });
     applyFiltersAndSort();
     var filterBar = document.querySelector('.filter-search-bar');
     if (filterBar) {
@@ -644,7 +647,8 @@ function applyFiltersAndSort() {
     if (!taskGrid || !emptyState) return;
 
     const activeBtn = document.querySelector('#filter-tags .tag-btn.active');
-    const selectedCategory = activeBtn ? activeBtn.getAttribute('data-type') : 'all';
+    const activeMoreItem = document.querySelector('.filter-more-item.active');
+    const selectedCategory = activeBtn ? activeBtn.getAttribute('data-type') : (activeMoreItem ? activeMoreItem.getAttribute('data-type') : 'all');
     const sortDropdown = document.getElementById('sort-dropdown');
     const sortValue = sortDropdown ? sortDropdown.value : 'highest-value';
 
@@ -823,9 +827,38 @@ function initHomePageLogic() {
             button.addEventListener('click', () => {
                 tagButtons.forEach(btn => btn.classList.remove('active'));
                 button.classList.add('active');
+                document.querySelectorAll('.filter-more-item').forEach(item => item.classList.remove('active'));
                 applyFiltersAndSort();
             });
         });
+
+        // C2. 更多筛选下拉菜单逻辑
+        const filterMoreBtn = document.getElementById('filter-more-btn');
+        const filterMoreMenu = document.querySelector('.filter-more-menu');
+
+        if (filterMoreBtn && filterMoreMenu) {
+            filterMoreBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                filterMoreMenu.classList.toggle('hidden');
+            });
+
+            document.querySelectorAll('.filter-more-item').forEach(item => {
+                item.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    tagButtons.forEach(btn => btn.classList.remove('active'));
+                    document.querySelectorAll('.filter-more-item').forEach(i => i.classList.remove('active'));
+                    this.classList.add('active');
+                    filterMoreMenu.classList.add('hidden');
+                    applyFiltersAndSort();
+                });
+            });
+
+            document.addEventListener('click', function (e) {
+                if (!e.target.closest('.filter-more-dropdown')) {
+                    filterMoreMenu.classList.add('hidden');
+                }
+            });
+        }
 
         // D. 排序下拉交互
         const sortDropdown = document.getElementById('sort-dropdown');

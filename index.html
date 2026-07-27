@@ -196,10 +196,15 @@
           <button class="tag-btn" data-type="official" data-i18n="tag_official">官方</button>
           <button class="tag-btn" data-type="airdrop" data-i18n="tag_airdrop">空投</button>
           <button class="tag-btn" data-type="register" data-i18n="tag_register">注册</button>
-          <button class="tag-btn" data-type="trade" data-i18n="tag_trade">交易</button>
-          <button class="tag-btn" data-type="game" data-i18n="tag_game">游戏</button>
-          <button class="tag-btn" data-type="content" data-i18n="tag_content">内容</button>
-          <button class="tag-btn" data-type="test" data-i18n="tag_test">测试</button>
+          <div class="filter-more-dropdown">
+            <button class="tag-btn tag-btn-more" id="filter-more-btn">更多 ▼</button>
+            <div class="filter-more-menu hidden">
+              <button class="filter-more-item" data-type="trade" data-i18n="tag_trade">交易</button>
+              <button class="filter-more-item" data-type="game" data-i18n="tag_game">游戏</button>
+              <button class="filter-more-item" data-type="content" data-i18n="tag_content">内容</button>
+              <button class="filter-more-item" data-type="test" data-i18n="tag_test">测试</button>
+            </div>
+          </div>
         </div>
         <div class="sort-dropdown-wrapper">
           <select id="sort-dropdown">
@@ -1831,7 +1836,7 @@
   <script src="js/pages/dividends.js?v=20260717"></script>
   <script src="js/pages/invite.js?v=20260724"></script>
   <script src="js/pages/admin.js?v=20260717"></script>
-  <script src="js/pages/home.js?v=20260726"></script>
+  <script src="js/pages/home.js?v=20260727"></script>
   <script src="js/pages/publisher.js?v=20260717"></script>
   <script src="js/pages/task-detail.js?v=20260717"></script>
   <script src="js/pages/create-task.js?v=20260717"></script>
