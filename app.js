@@ -5142,6 +5142,10 @@ window.addEventListener('hashchange', function () {
       pf_ledger_icon_refund: '↩️',
       pf_ledger_icon_invite: '🎁',
       pf_ledger_type_invite: '邀请奖励',
+      pf_ledger_icon_withdraw: '💸',
+      pf_ledger_type_withdraw: '提币',
+      pf_ledger_icon_deposit: '💰',
+      pf_ledger_type_deposit: '充币',
       pf_ledger_balance_after: '余额 {amount} CRLM',
       pf_ledger_type_pin: '置顶费用',
       pf_ledger_desc_pin: '任务置顶 {days} 天',
@@ -5229,6 +5233,10 @@ window.addEventListener('hashchange', function () {
       pf_ledger_icon_refund: '↩️',
       pf_ledger_icon_invite: '🎁',
       pf_ledger_type_invite: 'Invite Reward',
+      pf_ledger_icon_withdraw: '💸',
+      pf_ledger_type_withdraw: 'Withdraw',
+      pf_ledger_icon_deposit: '💰',
+      pf_ledger_type_deposit: 'Deposit',
       pf_ledger_balance_after: 'Balance {amount} CRLM',
       pf_ledger_type_pin: 'Pin Fee',
       pf_ledger_desc_pin: 'Task pinned for {days} days',
@@ -5663,31 +5671,53 @@ window.addEventListener('hashchange', function () {
     }
 
     try {
-      var inviteRewardsResult = await window.supabase
+      var depositRecordsResult = await window.supabase
         .from('deposit_records')
         .select('amount, description, related_id, type, created_at')
         .eq('user_id', userId)
-        .eq('type', 'invite_reward')
         .order('created_at', { ascending: false })
         .limit(queryLimit);
 
-      console.log('余额明细：邀请奖励查询结果：', inviteRewardsResult);
+      console.log('余额明细：deposit_records 查询结果：', depositRecordsResult);
 
-      if (!inviteRewardsResult.error) {
-        (inviteRewardsResult.data || []).forEach(function (row) {
+      if (!depositRecordsResult.error) {
+        (depositRecordsResult.data || []).forEach(function (row) {
           var amount = Number(row.amount) || 0;
           if (amount <= 0) return;
+          var type = row.type || '';
+          var isIncome = true;
+          var icon = '';
+          var typeLabel = '';
+
+          if (type === 'withdraw') {
+            isIncome = false;
+            icon = pfT('pf_ledger_icon_withdraw');
+            typeLabel = pfT('pf_ledger_type_withdraw');
+          } else if (type === 'deposit') {
+            isIncome = true;
+            icon = pfT('pf_ledger_icon_deposit');
+            typeLabel = pfT('pf_ledger_type_deposit');
+          } else if (type === 'invite_reward') {
+            isIncome = true;
+            icon = pfT('pf_ledger_icon_invite');
+            typeLabel = pfT('pf_ledger_type_invite');
+          } else {
+            isIncome = true;
+            icon = '💰';
+            typeLabel = type || 'Record';
+          }
+
           entries.push({
             time: row.created_at || new Date().toISOString(),
-            icon: pfT('pf_ledger_icon_invite'),
-            description: row.description || pfT('pf_ledger_type_invite'),
+            icon: icon,
+            description: row.description || typeLabel,
             delta: amount,
-            income: true
+            income: isIncome
           });
         });
       }
-    } catch (inviteErr) {
-      console.warn('余额明细：邀请奖励查询失败', inviteErr);
+    } catch (depositErr) {
+      console.warn('余额明细：deposit_records 查询失败', depositErr);
     }
 
     console.log('余额明细最终条目（含任务奖励）：', entries);
