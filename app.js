@@ -11850,7 +11850,8 @@ window.addEventListener('hashchange', function () {
     task_reported: { title: '有任务被举报', link: 'admin', adminTab: 'tasks' },
     report_result: { title: '你举报的任务处理结果已出', link: 'my-tasks', adminTab: null },
     task_cancelled: { title: '你的任务被管理员下架', link: 'publish-management', adminTab: null },
-    withdraw_record: { title: '新的提币记录', link: 'admin', adminTab: 'withdraw' }
+    withdraw_record: { title: '新的提币记录', link: 'admin', adminTab: 'withdraw' },
+    withdraw_success: { title: '提币成功！', link: 'my-wallet', adminTab: null }
   };
 
   function isNotifTableMissing(error) {
@@ -12086,8 +12087,21 @@ window.addEventListener('hashchange', function () {
 
   function notifyWithdrawSuccess(info) {
     info = info || {};
+    var userId = info.userId || null;
+    var amount = info.amount || 0;
+
+    if (userId) {
+      createNotification({
+        user_id: userId,
+        type: 'withdraw_success',
+        title: '提币成功！' + (amount ? amount + ' CRLM 已发送到你的钱包' : ''),
+        link: 'my-wallet',
+        related_id: userId
+      });
+    }
+
     notifyAdmins('withdraw_record', {
-      related_id: info.userId || null,
+      related_id: userId,
       title: NOTIF_META.withdraw_record.title
     });
   }
