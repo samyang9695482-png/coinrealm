@@ -1012,7 +1012,7 @@ img {
 .official-card-reward {
     font-size: 22px;
     font-weight: 700;
-    color: #f0b90b;
+    color: #FF6B35;
     margin-bottom: 10px;
 }
 .official-card-desc {
@@ -1148,15 +1148,16 @@ img {
 }
 .reward-amount {
     font-size: 20px;
-    font-weight: 600;
-    color: var(--color-accent);
+    font-weight: 700;
+    color: #FF6B35;
     margin-bottom: 16px;
 }
 
 .reward-amount .per-task-reward {
-    font-size: 14px;
-    font-weight: 400;
-    color: var(--color-text-secondary);
+    font-size: 15px;
+    font-weight: 600;
+    color: #FF6B35;
+    opacity: 0.85;
 }
 .card-bottom {
     display: flex;
@@ -7704,7 +7705,7 @@ img {
 .simple-task-card-reward {
     font-size: 22px;
     font-weight: 700;
-    color: #fa8c16;
+    color: #FF6B35;
     margin-bottom: 10px;
 }
 
