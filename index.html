@@ -1792,6 +1792,10 @@
           <input type="number" id="withdraw-amount-input" class="td-twitter-token-input withdraw-input" min="10" step="1" inputmode="decimal" autocomplete="off">
           <label class="withdraw-field-label" for="withdraw-wallet-input" data-i18n="pf_withdraw_wallet_label">接收钱包地址</label>
           <input type="text" id="withdraw-wallet-input" class="td-twitter-token-input withdraw-input" placeholder="0x..." autocomplete="off" spellcheck="false">
+          <div id="withdraw-wallet-required" class="withdraw-wallet-required hidden">
+            <p class="withdraw-wallet-required-msg" data-i18n="pf_withdraw_wallet_required">请先绑定钱包地址后再提币</p>
+            <button type="button" id="withdraw-wallet-bind-btn" class="td-twitter-modal-btn td-twitter-modal-primary" data-i18n="pf_withdraw_wallet_bind_now">去绑定</button>
+          </div>
           <p id="withdraw-hint" class="withdraw-hint">最小提币 10 CRLM，预计几分钟内到账。</p>
           <p id="withdraw-error" class="td-twitter-modal-error hidden"></p>
           <div class="td-twitter-modal-actions">

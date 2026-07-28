@@ -5170,6 +5170,8 @@ window.addEventListener('hashchange', function () {
       pf_withdraw_err_wallet_format: '钱包地址必须是 0x 开头加 40 位十六进制字符',
       pf_withdraw_err_worker: '提币服务暂不可用，请稍后再试',
       pf_withdraw_err_failed: '提币失败：',
+      pf_withdraw_wallet_required: '请先绑定钱包地址后再提币',
+      pf_withdraw_wallet_bind_now: '去绑定',
       pf_balance_fetch_fail: '获取余额失败，请稍后重试',
       pf_deposit_title: '充值 CRLM',
       pf_deposit_address_label: '平台充币地址（Polygon）',
@@ -5261,6 +5263,8 @@ window.addEventListener('hashchange', function () {
       pf_withdraw_err_wallet_format: 'Wallet address must start with 0x followed by 40 hexadecimal characters',
       pf_withdraw_err_worker: 'Withdrawal service is unavailable. Please try again later.',
       pf_withdraw_err_failed: 'Withdrawal failed: ',
+      pf_withdraw_wallet_required: 'Please bind your wallet address before withdrawing',
+      pf_withdraw_wallet_bind_now: 'Link Now',
       pf_balance_fetch_fail: 'Failed to load balance. Please try again later.',
       pf_deposit_title: 'Deposit CRLM',
       pf_deposit_address_label: 'Platform deposit address (Polygon)',
@@ -5833,6 +5837,7 @@ window.addEventListener('hashchange', function () {
     var errorEl = document.getElementById('withdraw-error');
     var amountInput = document.getElementById('withdraw-amount-input');
     var walletInput = document.getElementById('withdraw-wallet-input');
+    var walletRequiredEl = document.getElementById('withdraw-wallet-required');
     var confirmBtn = document.getElementById('withdraw-confirm-btn');
 
     if (formWrap) formWrap.classList.remove('hidden');
@@ -5840,8 +5845,16 @@ window.addEventListener('hashchange', function () {
       errorEl.textContent = '';
       errorEl.classList.add('hidden');
     }
-    if (amountInput) amountInput.value = '';
-    if (walletInput) walletInput.value = '';
+    if (amountInput) {
+      amountInput.value = '';
+      amountInput.removeAttribute('min');
+      amountInput.removeAttribute('max');
+    }
+    if (walletInput) {
+      walletInput.value = '';
+      walletInput.removeAttribute('readonly');
+    }
+    if (walletRequiredEl) walletRequiredEl.classList.add('hidden');
     if (confirmBtn) {
       confirmBtn.disabled = false;
       confirmBtn.textContent = pfT('pf_withdraw_confirm');
@@ -5925,11 +5938,39 @@ window.addEventListener('hashchange', function () {
     if (balanceEl) balanceEl.textContent = formatNumber(balanceResult.balance);
     renderProfileCrlmBalanceDisplay(balanceResult);
 
-    if (amountInput) {
-      amountInput.min = String(minAmount);
-      amountInput.max = String(balanceResult.balance);
+    var walletInput = document.getElementById('withdraw-wallet-input');
+    var walletRequiredEl = document.getElementById('withdraw-wallet-required');
+    var walletAddress = '';
+    var userProfile = coinrealmCurrentUserProfile;
+
+    if (userProfile && userProfile.wallet_address) {
+      walletAddress = String(userProfile.wallet_address).trim();
     }
-    if (confirmBtn) confirmBtn.disabled = false;
+
+    if (isValidWithdrawWalletAddress(walletAddress)) {
+      if (walletInput) {
+        walletInput.value = walletAddress;
+        walletInput.setAttribute('readonly', 'readonly');
+      }
+      if (walletRequiredEl) walletRequiredEl.classList.add('hidden');
+
+      if (amountInput) {
+        amountInput.min = String(minAmount);
+        amountInput.max = String(balanceResult.balance);
+      }
+      if (confirmBtn) confirmBtn.disabled = false;
+    } else {
+      if (walletInput) {
+        walletInput.value = '';
+        walletInput.removeAttribute('readonly');
+      }
+      if (walletRequiredEl) walletRequiredEl.classList.remove('hidden');
+      if (amountInput) {
+        amountInput.removeAttribute('min');
+        amountInput.removeAttribute('max');
+      }
+      if (confirmBtn) confirmBtn.disabled = true;
+    }
   }
 
   function showWithdrawError(message) {
@@ -6108,6 +6149,15 @@ window.addEventListener('hashchange', function () {
       if (e.target.closest('#withdraw-confirm-btn')) {
         e.preventDefault();
         submitWithdrawRequest();
+      }
+      if (e.target.closest('#withdraw-wallet-bind-btn')) {
+        e.preventDefault();
+        hideWithdrawModal();
+        if (typeof bindProfileWalletAddress === 'function') {
+          bindProfileWalletAddress().then(function () {
+            openWithdrawModal();
+          });
+        }
       }
     });
   }

@@ -8038,6 +8038,24 @@ img {
     color: #888;
 }
 
+.withdraw-wallet-required {
+    margin: 8px 0;
+    padding: 12px;
+    background: #f8f8f8;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.withdraw-wallet-required.hidden {
+    display: none;
+}
+
+.withdraw-wallet-required-msg {
+    margin: 0 0 8px;
+    font-size: 13px;
+    color: #e74c3c;
+}
+
 .admin-withdraw-form {
     max-width: 420px;
 }
