@@ -777,12 +777,24 @@ body.mobile-app #create-task-page {
 
 body.mobile-app .invite-title { display: none; }
 body.mobile-app .invite-layout { display: flex; flex-direction: column; gap: var(--m-gap); }
+body.mobile-app .invite-column-left,
+body.mobile-app .invite-column-center,
+body.mobile-app .invite-column-right {
+  width: 100%;
+  max-width: 100%;
+  flex: none;
+}
 body.mobile-app .invite-panel {
   background: var(--m-card);
   border-radius: var(--m-radius);
   box-shadow: var(--m-shadow);
   padding: 16px;
   margin-bottom: var(--m-gap);
+}
+
+body.mobile-app .invite-leaderboard-panel,
+body.mobile-app .invite-earnings-panel {
+  display: none !important;
 }
 
 body.mobile-app #invite-mining-btn {

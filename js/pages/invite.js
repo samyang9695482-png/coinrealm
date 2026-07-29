@@ -877,11 +877,36 @@
     bindMiningEvents();
   }
 
+  function reorderInvitePanelsForMobile() {
+    if (!document.body.classList.contains('mobile-app')) return;
+    var layout = document.querySelector('#invite-page .invite-layout');
+    if (!layout) return;
+
+    var miningPanel = document.querySelector('.invite-mining-panel');
+    var linkPanel = document.querySelector('.invite-link-panel');
+    var recordsPanel = document.querySelector('.invite-records-panel');
+
+    if (miningPanel) layout.insertBefore(miningPanel, layout.firstChild);
+    if (linkPanel) layout.insertBefore(linkPanel, miningPanel ? miningPanel.nextSibling : layout.firstChild);
+    if (recordsPanel) {
+      var refNode = linkPanel ? linkPanel.nextSibling : (miningPanel ? miningPanel.nextSibling : layout.firstChild);
+      layout.insertBefore(recordsPanel, refNode);
+    }
+
+    var leftCol = document.querySelector('.invite-column-left');
+    var centerCol = document.querySelector('.invite-column-center');
+    var rightCol = document.querySelector('.invite-column-right');
+    if (leftCol) leftCol.style.display = 'none';
+    if (centerCol) centerCol.style.display = 'none';
+    if (rightCol) rightCol.style.display = 'none';
+  }
+
   function renderInvitePage() {
     initInviteEvents();
     applyInviteI18n();
     updateInviteRecordsTabsUI();
     updateAirdropHint();
+    reorderInvitePanelsForMobile();
 
     if (typeof processPendingInviteRegistration === 'function') {
       processPendingInviteRegistration();
