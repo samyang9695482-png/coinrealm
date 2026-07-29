@@ -420,7 +420,9 @@ body.mobile-app #filter-tags {
 }
 
 body.mobile-app #filter-tags > .tag-btn,
-body.mobile-app #filter-tags > .simple-tasks-more-link {
+body.mobile-app #filter-tags > .simple-tasks-more-link,
+body.mobile-app #filter-tags > .filter-more-dropdown,
+body.mobile-app .sort-dropdown-wrapper {
   display: none !important;
 }
 
