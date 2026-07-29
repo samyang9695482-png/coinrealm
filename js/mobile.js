@@ -159,7 +159,7 @@
     }
   }
 
-  var MOBILE_FILTER_PRIMARY = ['all', 'simple'];
+  var MOBILE_FILTER_PRIMARY = ['all'];
   var MOBILE_FILTER_ALL = [
     { type: 'all', zh: '全部', en: 'All' },
     { type: 'simple', zh: '简单任务', en: 'Simple' },
@@ -272,8 +272,7 @@
     bar.className = 'mobile-filter-bar';
 
     var primaryDefs = [
-      { type: 'all', zh: '全部', en: 'All' },
-      { type: 'simple', zh: '简单', en: 'Simple' }
+      { type: 'all', zh: '全部', en: 'All' }
     ];
 
     primaryDefs.forEach(function (def) {
@@ -376,8 +375,7 @@
       return;
     }
     var map = {
-      all: window.currentLang === 'en' ? 'All' : '全部',
-      simple: window.currentLang === 'en' ? 'Simple' : '简单'
+      all: window.currentLang === 'en' ? 'All' : '全部'
     };
     bar.querySelectorAll('.mobile-filter-chip[data-type]').forEach(function (chip) {
       var type = chip.getAttribute('data-type');
