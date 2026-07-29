@@ -159,7 +159,7 @@
     }
   }
 
-  var MOBILE_FILTER_PRIMARY = ['simple', 'official', 'airdrop'];
+  var MOBILE_FILTER_PRIMARY = ['all', 'simple', 'official', 'airdrop', 'register'];
   var MOBILE_FILTER_ALL = [
     { type: 'all', zh: '全部', en: 'All' },
     { type: 'simple', zh: '简单任务', en: 'Simple' },
@@ -250,9 +250,11 @@
     bar.className = 'mobile-filter-bar';
 
     var primaryDefs = [
+      { type: 'all', zh: '全部', en: 'All' },
       { type: 'simple', zh: '简单', en: 'Simple' },
       { type: 'official', zh: '官方', en: 'Official' },
-      { type: 'airdrop', zh: '空投', en: 'Airdrop' }
+      { type: 'airdrop', zh: '空投', en: 'Airdrop' },
+      { type: 'register', zh: '注册', en: 'Register' }
     ];
 
     primaryDefs.forEach(function (def) {
@@ -285,6 +287,7 @@
     var dropdown = document.createElement('div');
     dropdown.className = 'mobile-filter-dropdown';
     MOBILE_FILTER_ALL.forEach(function (def) {
+      if (MOBILE_FILTER_PRIMARY.indexOf(def.type) >= 0) return;
       var item = document.createElement('button');
       item.type = 'button';
       item.className = 'mobile-filter-dropdown-item';
@@ -314,9 +317,11 @@
       return;
     }
     var map = {
+      all: window.currentLang === 'en' ? 'All' : '全部',
       simple: window.currentLang === 'en' ? 'Simple' : '简单',
       official: window.currentLang === 'en' ? 'Official' : '官方',
-      airdrop: window.currentLang === 'en' ? 'Airdrop' : '空投'
+      airdrop: window.currentLang === 'en' ? 'Airdrop' : '空投',
+      register: window.currentLang === 'en' ? 'Register' : '注册'
     };
     bar.querySelectorAll('.mobile-filter-chip[data-type]').forEach(function (chip) {
       var type = chip.getAttribute('data-type');
