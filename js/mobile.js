@@ -172,19 +172,15 @@
     { type: 'test', zh: '测试', en: 'Test' }
   ];
 
-  function toggleMobileSortHighest() {
+  function applyMobileSort(sortValue) {
     var sortDropdown = document.getElementById('sort-dropdown');
     if (sortDropdown) {
-      sortDropdown.value = 'highest-value';
+      sortDropdown.value = sortValue;
       if (typeof applyFiltersAndSort === 'function') {
         applyFiltersAndSort();
       }
-      var bar = document.querySelector('.mobile-filter-bar');
-      if (bar) {
-        var sortBtn = bar.querySelector('.mobile-filter-sort-btn');
-        if (sortBtn) sortBtn.classList.add('active');
-      }
     }
+    syncMobileFilterChips();
   }
 
   function getMobileFilterLabel(type) {
@@ -242,20 +238,28 @@
         moreBtn.textContent = nextMoreText;
       }
     }
+    var sortDropdown = document.getElementById('sort-dropdown');
+    var sortValue = sortDropdown ? sortDropdown.value : 'highest-value';
     var sortBtn = bar.querySelector('.mobile-filter-sort-btn');
     if (sortBtn) {
-      var sortDropdown = document.getElementById('sort-dropdown');
-      var isHighest = sortDropdown && sortDropdown.value === 'highest-value';
-      sortBtn.classList.toggle('active', isHighest);
+      var sortText = (sortValue === 'latest')
+        ? (window.currentLang === 'en' ? 'Latest ▼' : '最新发布 ▼')
+        : (window.currentLang === 'en' ? 'Highest ▼' : '单价最高 ▼');
+      if (sortBtn.textContent !== sortText) sortBtn.textContent = sortText;
+      sortBtn.classList.toggle('active', true);
     }
-    bar.querySelectorAll('.mobile-filter-dropdown-item').forEach(function (item) {
+    bar.querySelectorAll('.mobile-filter-sort-dropdown-item, .mobile-filter-dropdown-item[data-sort]').forEach(function (item) {
+      item.classList.toggle('active', item.getAttribute('data-sort') === sortValue);
+    });
+    bar.querySelectorAll('.mobile-filter-dropdown-item[data-type]').forEach(function (item) {
       item.classList.toggle('active', item.getAttribute('data-type') === type);
     });
   }
 
   function closeMobileFilterDropdown() {
-    var dropdown = document.querySelector('.mobile-filter-dropdown');
-    if (dropdown) dropdown.classList.remove('open');
+    document.querySelectorAll('.mobile-filter-dropdown.open').forEach(function (d) {
+      d.classList.remove('open');
+    });
   }
 
   function setupMobileFilterTags() {
@@ -320,15 +324,44 @@
     moreWrap.appendChild(dropdown);
     bar.appendChild(moreWrap);
 
+    var sortWrap = document.createElement('div');
+    sortWrap.className = 'mobile-filter-more-wrap';
+
     var sortBtn = document.createElement('button');
     sortBtn.type = 'button';
     sortBtn.className = 'mobile-filter-chip mobile-filter-sort-btn';
-    sortBtn.textContent = window.currentLang === 'en' ? 'Highest' : '单价最高';
-    sortBtn.addEventListener('click', function () {
+    sortBtn.textContent = window.currentLang === 'en' ? 'Highest ▼' : '单价最高 ▼';
+    sortBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
       closeMobileFilterDropdown();
-      toggleMobileSortHighest();
+      var dropdown = sortWrap.querySelector('.mobile-filter-dropdown');
+      if (!dropdown) return;
+      dropdown.classList.toggle('open');
     });
-    bar.appendChild(sortBtn);
+
+    var sortDropdown = document.createElement('div');
+    sortDropdown.className = 'mobile-filter-dropdown mobile-filter-sort-dropdown';
+    var sortOptions = [
+      { value: 'highest-value', zh: '单价最高', en: 'Highest Value' },
+      { value: 'latest', zh: '最新发布', en: 'Latest' }
+    ];
+    sortOptions.forEach(function (opt) {
+      var item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'mobile-filter-dropdown-item';
+      item.setAttribute('data-sort', opt.value);
+      item.textContent = window.currentLang === 'en' ? opt.en : opt.zh;
+      item.addEventListener('click', function (e) {
+        e.stopPropagation();
+        closeMobileFilterDropdown();
+        applyMobileSort(opt.value);
+      });
+      sortDropdown.appendChild(item);
+    });
+
+    sortWrap.appendChild(sortBtn);
+    sortWrap.appendChild(sortDropdown);
+    bar.appendChild(sortWrap);
 
     host.insertBefore(bar, host.firstChild);
 
@@ -364,10 +397,24 @@
     }
     var sortBtn = bar.querySelector('.mobile-filter-sort-btn');
     if (sortBtn) {
-      var sortText = window.currentLang === 'en' ? 'Highest' : '单价最高';
+      var sortDropdown = document.getElementById('sort-dropdown');
+      var sortValue = sortDropdown ? sortDropdown.value : 'highest-value';
+      var sortText = (sortValue === 'latest')
+        ? (window.currentLang === 'en' ? 'Latest ▼' : '最新发布 ▼')
+        : (window.currentLang === 'en' ? 'Highest ▼' : '单价最高 ▼');
       if (sortBtn.textContent !== sortText) sortBtn.textContent = sortText;
     }
-    bar.querySelectorAll('.mobile-filter-dropdown-item').forEach(function (item) {
+    var sortItems = bar.querySelectorAll('.mobile-filter-dropdown-item[data-sort]');
+    var sortLabelMap = {
+      'highest-value': window.currentLang === 'en' ? 'Highest Value' : '单价最高',
+      'latest': window.currentLang === 'en' ? 'Latest' : '最新发布'
+    };
+    sortItems.forEach(function (item) {
+      var val = item.getAttribute('data-sort');
+      var label = sortLabelMap[val];
+      if (label && item.textContent !== label) item.textContent = label;
+    });
+    bar.querySelectorAll('.mobile-filter-dropdown-item[data-type]').forEach(function (item) {
       var label = getMobileFilterLabel(item.getAttribute('data-type'));
       if (item.textContent !== label) item.textContent = label;
     });
