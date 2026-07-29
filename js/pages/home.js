@@ -652,10 +652,28 @@ function applyFiltersAndSort() {
     const sortDropdown = document.getElementById('sort-dropdown');
     const sortValue = sortDropdown ? sortDropdown.value : 'highest-value';
 
+    const searchInput = document.getElementById('task-search');
+    const searchQuery = searchInput ? searchInput.value.trim().toLowerCase() : '';
+
     let filtered = allTasks.slice();
     if (selectedCategory !== 'all') {
         filtered = filtered.filter(function (task) {
             return getTaskCategory(task) === selectedCategory;
+        });
+    }
+
+    if (searchQuery) {
+        filtered = filtered.filter(function (task) {
+            var title = String(getTaskField(task, ['title', 'task_title'], '')).toLowerCase();
+            var desc = String(getTaskField(task, ['description', 'desc'], '')).toLowerCase();
+            var publisher = '';
+            var pubInfo = task.publisher || task.publisher_info || {};
+            if (typeof pubInfo === 'object' && pubInfo.username) {
+                publisher = String(pubInfo.username).toLowerCase();
+            }
+            return title.indexOf(searchQuery) !== -1 ||
+                desc.indexOf(searchQuery) !== -1 ||
+                publisher.indexOf(searchQuery) !== -1;
         });
     }
 

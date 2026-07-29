@@ -367,6 +367,19 @@
     syncMobileFilterChips(getActiveDesktopFilterType());
   }
 
+  var mobileSearchBound = false;
+  function bindMobileSearchInput() {
+    if (mobileSearchBound) return;
+    var searchInput = document.getElementById('task-search');
+    if (!searchInput) return;
+    mobileSearchBound = true;
+    searchInput.addEventListener('input', function () {
+      if (typeof applyFiltersAndSort === 'function') {
+        applyFiltersAndSort();
+      }
+    });
+  }
+
   function refreshMobileFilterLabels() {
     var bar = document.querySelector('.mobile-filter-bar');
     if (!bar) {
@@ -736,6 +749,7 @@
     observeHomeCardEnhancements();
     registerServiceWorker();
     setupMobileFilterTags();
+    bindMobileSearchInput();
 
     document.addEventListener('click', function (e) {
       if (!e.target.closest('.mobile-filter-more-wrap')) {
