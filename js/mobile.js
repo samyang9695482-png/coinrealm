@@ -598,10 +598,11 @@
     metamask: 'MetaMask'
   };
 
-  var OKX_DEEPLINK_CONNECT = 'okxweb3://wallet/connect';
-  var OKX_DEEPLINK_SIGN = 'okxweb3://wallet/sign';
-  var WALLET_CALLBACK_MARKER = 'wallet-callback';
+  // OKX Wallet 官方 Deep Link 格式（参考 https://web3.okx.com/zh-hans/build/docs/waas/app-universal-link）
+  var OKX_DEEPLINK_BASE = 'okx://wallet/dapp/url';
+  var OKX_DOWNLOAD_BASE = 'https://web3.okx.com/download';
   var WALLET_PENDING_KEY = 'coinrealm_wallet_pending';
+  var WALLET_PENDING_TIMEOUT = 10 * 60 * 1000; // 10 分钟过期
 
   var cachedWalletInviteSettings = null;
 
@@ -738,37 +739,24 @@
   }
 
   // ============ OKX Wallet Deep Link Flow ============
+  // 官方文档：https://web3.okx.com/zh-hans/build/docs/waas/app-universal-link
+  // 流程：
+  //   1. 普通浏览器中点击 OKX 登录 → 跳转 okx://wallet/dapp/url?dappUrl=<dapp>
+  //      → OKX App 打开 dApp URL（在内置浏览器中加载）
+  //   2. OKX App 内置浏览器自动注入 window.okxwallet Provider
+  //   3. 检测到 Provider + pending 标记 → 调用 eth_requestAccounts 连接钱包
+  //   4. 连接成功 → personal_sign 签名 → authenticateWalletWithWorker 完成登录
 
+  // 构建官方 Deep Link URL
+  // 格式：https://web3.okx.com/download?deeplink=okx://wallet/dapp/url?dappUrl=<encoded dapp>
   function buildOKXConnectDeeplink() {
     var dappUrl = window.location.origin + window.location.pathname + window.location.search;
-    var callbackUrl = dappUrl + '#wallet-callback';
-    return OKX_DEEPLINK_CONNECT
-      + '?url=' + encodeURIComponent(dappUrl)
-      + '&redirect=' + encodeURIComponent(callbackUrl);
+    var deepLink = OKX_DEEPLINK_BASE + '?dappUrl=' + encodeURIComponent(dappUrl);
+    return OKX_DOWNLOAD_BASE + '?deeplink=' + encodeURIComponent(deepLink);
   }
 
-  function buildOKXSignDeeplink(address, message) {
-    var dappUrl = window.location.origin + window.location.pathname + window.location.search;
-    var callbackUrl = dappUrl + '#wallet-callback';
-    var signRequest = JSON.stringify({
-      method: 'personal_sign',
-      params: [message, address]
-    });
-    return OKX_DEEPLINK_SIGN
-      + '?url=' + encodeURIComponent(dappUrl)
-      + '&redirect=' + encodeURIComponent(callbackUrl)
-      + '&data=' + encodeURIComponent(signRequest);
-  }
-
-  function buildWalletSignMessageForDeeplink(address) {
-    var t = typeof window.t === 'function' ? window.t : function (k) { return k; };
-    return (
-      t('welcomeSignMessage') + '\n\n' +
-      t('walletAddressLabel') + address + '\n' +
-      t('timestampLabel') + Date.now()
-    );
-  }
-
+  // 调起 OKX Wallet App
+  // 官方推荐使用 window.location.href 直接跳转（非 iframe）
   function openOKXDeeplink(url, onFailure) {
     var start = Date.now();
     var redirected = false;
@@ -780,155 +768,86 @@
       }
     }, 1500);
 
-    var iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.src = url;
-    document.body.appendChild(iframe);
+    // 官方文档使用 window.location.href 跳转
+    window.location.href = url;
 
     window.addEventListener('pagehide', function () {
       clearTimeout(timer);
     }, { once: true });
-
-    setTimeout(function () {
-      if (iframe && iframe.parentNode) {
-        iframe.parentNode.removeChild(iframe);
-      }
-    }, 2000);
   }
 
+  // 发起 OKX Deep Link 登录
+  // 设置 pending 标记，跳转到 OKX App
+  // 用户在 OKX App 内打开 dApp 后，checkWalletCallback 检测 Provider 并自动连接
   function tryOKXDeeplink() {
     var deeplink = buildOKXConnectDeeplink();
     sessionStorage.setItem(WALLET_PENDING_KEY, JSON.stringify({
       walletType: 'okx',
-      step: 'connect',
       timestamp: Date.now()
     }));
 
     openOKXDeeplink(deeplink, function () {
+      // 超时未跳转 → 钱包未安装，跳转推广下载链接
       sessionStorage.removeItem(WALLET_PENDING_KEY);
       redirectToWalletDownload('okx');
     });
   }
 
-  function parseWalletCallbackParams() {
-    var params = {};
-    var searchStr = window.location.search.slice(1);
-    if (searchStr) {
-      searchStr.split('&').forEach(function (kv) {
-        var parts = kv.split('=');
-        if (parts[0]) params[decodeURIComponent(parts[0])] = decodeURIComponent(parts[1] || '');
-      });
-    }
-
-    var hash = window.location.hash || '';
-    var hashParamStart = hash.indexOf('?');
-    if (hashParamStart !== -1) {
-      var hashParams = hash.slice(hashParamStart + 1);
-      hashParams.split('&').forEach(function (kv) {
-        var parts = kv.split('=');
-        if (parts[0]) params[decodeURIComponent(parts[0])] = decodeURIComponent(parts[1] || '');
-      });
-    }
-    return params;
-  }
-
-  function cleanWalletCallbackFromURL() {
-    var hash = window.location.hash || '';
-    var cleanHash = hash;
-    var callbackIdx = hash.indexOf('#' + WALLET_CALLBACK_MARKER);
-    if (callbackIdx !== -1) {
-      cleanHash = hash.slice(0, callbackIdx);
-    } else if (hash.indexOf(WALLET_CALLBACK_MARKER) !== -1) {
-      var markerIdx = hash.indexOf(WALLET_CALLBACK_MARKER);
-      cleanHash = hash.slice(0, markerIdx);
-      if (cleanHash.length > 0 && cleanHash.charAt(cleanHash.length - 1) === '#') {
-        cleanHash = cleanHash.slice(0, -1);
-      }
-    }
-    var cleanUrl = window.location.pathname + (window.location.search || '') + cleanHash;
-    window.history.replaceState({}, document.title, cleanUrl);
-  }
-
-  function checkWalletCallback() {
-    var hash = window.location.hash || '';
-    if (hash.indexOf(WALLET_CALLBACK_MARKER) === -1) return;
-
-    var params = parseWalletCallbackParams();
-
+  // 读取 pending 状态（含过期检查）
+  function getWalletPending() {
     var pending = null;
     try {
       pending = JSON.parse(sessionStorage.getItem(WALLET_PENDING_KEY) || 'null');
     } catch (_e) { pending = null; }
 
-    cleanWalletCallbackFromURL();
-
-    if (!pending) {
-      console.warn('[wallet] 回调收到但无 pending 状态，忽略');
-      return;
-    }
-
-    var address = params.address;
-    var signature = params.signature || params.sig;
-
-    if (pending.step === 'connect') {
-      if (!address) {
-        console.warn('[wallet] connect 回调缺少 address 参数');
-        sessionStorage.removeItem(WALLET_PENDING_KEY);
-        alert('钱包连接失败：未获取到钱包地址');
-        return;
-      }
-
-      var message = buildWalletSignMessageForDeeplink(address);
-      sessionStorage.setItem(WALLET_PENDING_KEY, JSON.stringify({
-        walletType: 'okx',
-        step: 'sign',
-        address: address,
-        timestamp: Date.now()
-      }));
-
-      var signDeeplink = buildOKXSignDeeplink(address, message);
-      openOKXDeeplink(signDeeplink, function () {
-        sessionStorage.removeItem(WALLET_PENDING_KEY);
-        alert('签名请求超时，请返回钱包重试');
-      });
-
-    } else if (pending.step === 'sign') {
-      if (!address || !signature) {
-        console.warn('[wallet] sign 回调缺少 address 或 signature 参数');
-        sessionStorage.removeItem(WALLET_PENDING_KEY);
-        alert('钱包签名失败，请重试');
-        return;
-      }
-
+    if (pending && pending.timestamp && Date.now() - pending.timestamp > WALLET_PENDING_TIMEOUT) {
       sessionStorage.removeItem(WALLET_PENDING_KEY);
-
-      var verifyMessage = buildWalletSignMessageForDeeplink(address);
-      if (typeof window.coinrealmAuthenticateWithSignature === 'function') {
-        window.coinrealmAuthenticateWithSignature(address, signature, verifyMessage)
-          .then(function () { navigateTo('home'); })
-          .catch(function (err) {
-            console.warn('OKX 登录失败', err);
-            alert('登录失败：' + (err && err.message ? err.message : String(err)));
-          });
-      } else {
-        alert('钱包认证服务暂不可用，请刷新页面重试');
-      }
+      return null;
     }
+    return pending;
+  }
+
+  // 检测 OKX App 环境：若 window.okxwallet 可用且有 pending 标记，自动连接钱包
+  // 此函数在 initMobileShell 和 handleRouteChange 中调用
+  function checkWalletCallback() {
+    var pending = getWalletPending();
+    if (!pending || pending.walletType !== 'okx') return;
+
+    // 检测是否已进入 OKX App 内置浏览器（window.okxwallet 自动注入）
+    var provider = getWalletProvider('okx');
+    if (!provider) return; // 尚未进入 OKX App，等待
+
+    // 已进入 OKX App，清除 pending 标记，自动发起 Provider 连接
+    sessionStorage.removeItem(WALLET_PENDING_KEY);
+    console.log('[wallet] 检测到 OKX App 环境，自动连接钱包');
+
+    connectWalletProvider(provider, 'OKX Wallet')
+      .then(function () {
+        navigateTo('home');
+      })
+      .catch(function (err) {
+        console.warn('OKX 自动连接失败', err);
+        alert((typeof window.t === 'function' ? window.t('walletConnectFail') : '钱包登录失败：') +
+          (err && err.message ? err.message : String(err)));
+      });
   }
 
   function handleWalletLogin(walletType) {
     var walletName = WALLET_NAMES[walletType] || walletType;
 
     if (walletType === 'okx') {
-      var provider = getWalletProvider('okx');
-      if (provider) {
-        connectWalletProvider(provider, walletName)
+      var okxProvider = getWalletProvider('okx');
+      if (okxProvider) {
+        // 已在 OKX App 内置浏览器中（window.okxwallet 可用），直接走 Provider 流程
+        connectWalletProvider(okxProvider, walletName)
           .then(function () { navigateTo('home'); })
           .catch(function (err) {
-            console.warn(walletName + ' Provider 登录失败，尝试 Deep Link', err);
-            tryOKXDeeplink();
+            console.warn(walletName + ' 登录失败', err);
+            alert((typeof window.t === 'function' ? window.t('walletConnectFail') : '钱包登录失败：') +
+              (err && err.message ? err.message : String(err)));
           });
       } else {
+        // 普通浏览器中，通过 Deep Link 跳转到 OKX App
         tryOKXDeeplink();
       }
       return;
