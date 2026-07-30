@@ -65,6 +65,7 @@
       td_pin_7d: '7天',
       td_pin_30d: '30天',
       td_pin_disclaimer: '置顶后展示在首页用户置顶区。如任务被官方下架，置顶费不退。',
+      td_pin_confirm: '确认置顶',
       td_high_risk: '⚠️ 高风险任务',
       td_risk_title: '⚠️ 风险提示',
       td_risk_content: 'CoinRealm 不对该任务的真实性做背书。请自行判断项目风险，切勿投入超出你承受能力的资金。如任务要求转账、提供私钥或助记词，请立即举报。',
@@ -227,6 +228,7 @@
       td_pin_7d: '7 Days',
       td_pin_30d: '30 Days',
       td_pin_disclaimer: 'Pinned tasks appear in the homepage user pin section. Pin fees are non-refundable if the task is removed by officials.',
+      td_pin_confirm: 'Confirm Pin',
       td_high_risk: '⚠️ High Risk Task',
       td_risk_title: '⚠️ Risk Warning',
       td_risk_content: 'CoinRealm does not endorse the authenticity of this task. Assess project risks yourself and never invest more than you can afford to lose. Report immediately if the task asks for transfers, private keys, or seed phrases.',
@@ -3655,12 +3657,38 @@
 
   function initPinPackageSelection() {
     var packageBtns = document.querySelectorAll('#task-detail-page .pin-package-btn');
+    var confirmBtn = document.getElementById('td-pin-confirm');
+
+    function updateConfirmState() {
+      var selected = document.querySelector('#task-detail-page .pin-package-btn.selected');
+      if (confirmBtn) {
+        confirmBtn.disabled = !selected;
+        confirmBtn.style.opacity = selected ? '1' : '0.5';
+        confirmBtn.style.cursor = selected ? 'pointer' : 'not-allowed';
+      }
+    }
+
     packageBtns.forEach(function (btn) {
       btn.addEventListener('click', function () {
         packageBtns.forEach(function (b) { b.classList.remove('selected'); });
         btn.classList.add('selected');
+        updateConfirmState();
       });
     });
+
+    if (confirmBtn && !confirmBtn.dataset.bound) {
+      confirmBtn.dataset.bound = '1';
+      confirmBtn.disabled = true;
+      confirmBtn.style.opacity = '0.5';
+      confirmBtn.style.cursor = 'not-allowed';
+      confirmBtn.addEventListener('click', function () {
+        var selected = document.querySelector('#task-detail-page .pin-package-btn.selected');
+        if (!selected) return;
+        if (typeof window.coinrealmOpenPinModal === 'function') {
+          window.coinrealmOpenPinModal(currentTaskRecord);
+        }
+      });
+    }
   }
 
   function restoreAppContentIfNeeded() {

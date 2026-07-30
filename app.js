@@ -7636,6 +7636,8 @@ window.addEventListener('hashchange', function () {
     applyPublishMgmtI18n();
   }
 
+  window.coinrealmOpenPinModal = openPinModal;
+
   function closePinModal() {
     pendingPinTask = null;
     selectedPinPackage = null;
