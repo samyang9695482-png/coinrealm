@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <!-- 立即捕获邀请链接 ref 参数，避免页面跳转时丢失 -->
@@ -54,6 +54,21 @@
       <h1 class="mobile-login-title">CoinRealm</h1>
       <p class="mobile-login-subtitle" id="mobile-login-subtitle">Web3 任务与空投平台</p>
       <button type="button" id="mobile-google-btn" class="mobile-btn mobile-btn-outline">Google 登录</button>
+      <div class="mobile-wallet-divider"><span>或选择钱包登录</span></div>
+      <div class="mobile-wallet-btns">
+        <button type="button" id="mobile-okx-btn" class="mobile-wallet-btn" data-wallet="okx">
+          <span class="mobile-wallet-icon mobile-wallet-icon-okx" aria-hidden="true">●</span>
+          <span class="mobile-wallet-name">OKX Wallet</span>
+        </button>
+        <button type="button" id="mobile-bitget-btn" class="mobile-wallet-btn" data-wallet="bitget">
+          <span class="mobile-wallet-icon mobile-wallet-icon-bitget" aria-hidden="true">●</span>
+          <span class="mobile-wallet-name">Bitget Wallet</span>
+        </button>
+        <button type="button" id="mobile-metamask-btn" class="mobile-wallet-btn" data-wallet="metamask">
+          <span class="mobile-wallet-icon mobile-wallet-icon-metamask" aria-hidden="true">●</span>
+          <span class="mobile-wallet-name">MetaMask</span>
+        </button>
+      </div>
       <button type="button" id="mobile-wallet-btn" class="mobile-btn mobile-btn-primary" data-i18n="connectWallet">连接钱包</button>
       <p class="mobile-login-legal">
         登录即表示同意

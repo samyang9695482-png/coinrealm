@@ -1476,6 +1476,7 @@
           <button type="button" class="admin-tab" data-admin-tab="invite" data-i18n="ad_tab_invite">邀请设置</button>
           <button type="button" class="admin-tab" data-admin-tab="pin" data-i18n="ad_tab_pin">付费置顶</button>
           <button type="button" class="admin-tab" data-admin-tab="ads" data-i18n="ad_tab_ads">广告管理</button>
+          <button type="button" class="admin-tab" data-admin-tab="wallet-invite" data-i18n="ad_tab_wallet_invite">钱包邀请</button>
         </div>
 
         <section id="admin-panel-dashboard" class="admin-panel">
@@ -1623,6 +1624,21 @@
             </div>
 
             <button type="button" id="ad-ads-save-btn" class="admin-primary-btn" data-i18n="ad_btn_save_ads">保存</button>
+          </form>
+        </section>
+
+        <section id="admin-panel-wallet-invite" class="admin-panel hidden">
+          <h2 class="admin-section-title" data-i18n="ad_wallet_invite_title">钱包邀请设置</h2>
+          <p class="admin-description" data-i18n="ad_wallet_invite_desc">设置各钱包的推广下载链接，用户点击钱包登录时若未安装将跳转到对应链接。</p>
+          <form id="ad-wallet-invite-form" class="admin-form admin-wallet-invite-form">
+            <label class="admin-label" for="ad-wallet-okx" data-i18n="ad_wallet_okx_label">OKX Wallet 推广链接</label>
+            <input type="url" id="ad-wallet-okx" class="admin-input" placeholder="https://web3.okx.com/join/xxx">
+            <label class="admin-label" for="ad-wallet-bitget" data-i18n="ad_wallet_bitget_label">Bitget Wallet 推广链接</label>
+            <input type="url" id="ad-wallet-bitget" class="admin-input" placeholder="https://bitget.com/join/xxx">
+            <label class="admin-label" for="ad-wallet-metamask" data-i18n="ad_wallet_metamask_label">MetaMask 推广链接</label>
+            <input type="url" id="ad-wallet-metamask" class="admin-input" placeholder="https://metamask.io/download">
+            <button type="button" id="ad-wallet-invite-save-btn" class="admin-primary-btn" data-i18n="ad_btn_save_wallet_invite">保存</button>
+            <p id="ad-wallet-invite-success" class="admin-success-message hidden" data-i18n="ad_wallet_invite_save_success">设置已保存</p>
           </form>
         </section>
 

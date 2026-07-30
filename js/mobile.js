@@ -571,6 +571,108 @@
         triggerHiddenAuthButton('connect-wallet-btn');
       });
     }
+
+    bindWalletLoginButtons();
+  }
+
+  var WALLET_SCHEMES = {
+    okx: 'okx://',
+    bitget: 'bitget://',
+    metamask: 'metamask://'
+  };
+
+  var WALLET_DEFAULTS = {
+    okx: 'https://web3.okx.com/join/CR2026',
+    bitget: '',
+    metamask: 'https://metamask.io/download'
+  };
+
+  var cachedWalletInviteSettings = null;
+
+  function fetchWalletInviteSettings() {
+    if (cachedWalletInviteSettings) return Promise.resolve(cachedWalletInviteSettings);
+
+    var defaults = Object.assign({}, WALLET_DEFAULTS);
+    if (!window.supabase) {
+      cachedWalletInviteSettings = defaults;
+      return Promise.resolve(defaults);
+    }
+
+    return window.supabase
+      .from('settings')
+      .select('key, value')
+      .in('key', ['wallet_invite_okx', 'wallet_invite_bitget', 'wallet_invite_metamask'])
+      .then(function (result) {
+        if (result.data) {
+          result.data.forEach(function (row) {
+            if (row.key === 'wallet_invite_okx') defaults.okx = row.value;
+            if (row.key === 'wallet_invite_bitget') defaults.bitget = row.value;
+            if (row.key === 'wallet_invite_metamask') defaults.metamask = row.value;
+          });
+        }
+        cachedWalletInviteSettings = defaults;
+        return defaults;
+      })
+      .catch(function (err) {
+        console.warn('加载钱包邀请设置失败:', err);
+        return defaults;
+      });
+  }
+
+  function invalidateWalletInviteCache() {
+    cachedWalletInviteSettings = null;
+  }
+
+  function tryOpenWallet(walletType) {
+    var scheme = WALLET_SCHEMES[walletType];
+    if (!scheme) return;
+
+    var start = Date.now();
+    var timer = setTimeout(function () {
+      if (Date.now() - start < 2500) {
+        fetchWalletInviteSettings().then(function (settings) {
+          var downloadUrl = settings[walletType] || WALLET_DEFAULTS[walletType];
+          if (downloadUrl) {
+            window.location.href = downloadUrl;
+          } else {
+            alert(t('wallet_not_installed') || '请先安装钱包');
+          }
+        });
+      }
+    }, 1500);
+
+    var iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = scheme;
+    document.body.appendChild(iframe);
+
+    window.addEventListener('pagehide', function () {
+      clearTimeout(timer);
+    }, { once: true });
+
+    setTimeout(function () {
+      if (iframe && iframe.parentNode) {
+        iframe.parentNode.removeChild(iframe);
+      }
+    }, 2000);
+  }
+
+  function handleWalletLogin(walletType) {
+    tryOpenWallet(walletType);
+  }
+
+  function bindWalletLoginButtons() {
+    var walletButtons = document.querySelectorAll('.mobile-wallet-btn');
+    walletButtons.forEach(function (btn) {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', function () {
+        var walletType = btn.getAttribute('data-wallet');
+        if (walletType) {
+          handleWalletLogin(walletType);
+        }
+      });
+    });
   }
 
   function setActiveTab(route) {

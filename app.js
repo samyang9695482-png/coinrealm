@@ -9838,6 +9838,7 @@ window.addEventListener('hashchange', function () {
       ad_tab_airdrop: '空投设置',
       ad_tab_features: '功能开关',
       ad_tab_ads: '广告管理',
+      ad_tab_wallet_invite: '钱包邀请',
       ad_ads_title: '广告管理',
       ad_ads_interval: '轮播间隔（秒）',
       ad_ads_slot1: '广告位 1',
@@ -9851,6 +9852,14 @@ window.addEventListener('hashchange', function () {
       ad_btn_save_ads: '保存',
       ad_ads_save_ok: '广告设置已保存',
       ad_ads_save_fail: '保存广告设置失败：',
+      ad_wallet_invite_title: '钱包邀请设置',
+      ad_wallet_invite_desc: '设置各钱包的推广下载链接，用户点击钱包登录时若未安装将跳转到对应链接。',
+      ad_wallet_okx_label: 'OKX Wallet 推广链接',
+      ad_wallet_bitget_label: 'Bitget Wallet 推广链接',
+      ad_wallet_metamask_label: 'MetaMask 推广链接',
+      ad_btn_save_wallet_invite: '保存',
+      ad_wallet_invite_save_success: '设置已保存',
+      ad_wallet_invite_save_fail: '保存钱包邀请设置失败：',
       ad_ads_invalid_interval: '请输入有效的轮播间隔（至少 2 秒）',
       ad_invite_title: '邀请设置',
       ad_invite_level1: '一级奖励金额（CRLM）',
@@ -9974,6 +9983,7 @@ window.addEventListener('hashchange', function () {
       ad_tab_airdrop: 'Airdrop Settings',
       ad_tab_features: 'Feature Toggles',
       ad_tab_ads: 'Ad Management',
+      ad_tab_wallet_invite: 'Wallet Invite',
       ad_ads_title: 'Ad Management',
       ad_ads_interval: 'Carousel interval (seconds)',
       ad_ads_slot1: 'Ad Slot 1',
@@ -9987,6 +9997,14 @@ window.addEventListener('hashchange', function () {
       ad_btn_save_ads: 'Save',
       ad_ads_save_ok: 'Ad settings saved',
       ad_ads_save_fail: 'Failed to save ad settings: ',
+      ad_wallet_invite_title: 'Wallet Invite Settings',
+      ad_wallet_invite_desc: 'Set wallet referral download links. Users will be redirected here if the wallet app is not installed.',
+      ad_wallet_okx_label: 'OKX Wallet Referral Link',
+      ad_wallet_bitget_label: 'Bitget Wallet Referral Link',
+      ad_wallet_metamask_label: 'MetaMask Referral Link',
+      ad_btn_save_wallet_invite: 'Save',
+      ad_wallet_invite_save_success: 'Settings saved',
+      ad_wallet_invite_save_fail: 'Failed to save wallet invite settings: ',
       ad_ads_invalid_interval: 'Please enter a valid interval (minimum 2 seconds)',
       ad_invite_title: 'Invite Settings',
       ad_invite_level1: 'Level 1 reward (CRLM)',
@@ -10724,6 +10742,8 @@ window.addEventListener('hashchange', function () {
       await loadAdminFeatureSettings();
     } else if (adminTab === 'ads') {
       await loadAdminAdsSettings();
+    } else if (adminTab === 'wallet-invite') {
+      await loadAdminWalletInviteSettings();
     }
   }
 
@@ -11178,6 +11198,90 @@ window.addEventListener('hashchange', function () {
     alert(adT('ad_ads_save_ok'));
   }
 
+  var WALLET_INVITE_DEFAULTS = {
+    wallet_invite_okx: 'https://web3.okx.com/join/CR2026',
+    wallet_invite_bitget: '',
+    wallet_invite_metamask: 'https://metamask.io/download'
+  };
+  var cachedWalletInviteSettings = null;
+
+  async function fetchWalletInviteSettings() {
+    if (cachedWalletInviteSettings) return cachedWalletInviteSettings;
+
+    var settings = Object.assign({}, WALLET_INVITE_DEFAULTS);
+    if (!window.supabase) {
+      cachedWalletInviteSettings = settings;
+      return settings;
+    }
+
+    try {
+      var keys = Object.keys(WALLET_INVITE_DEFAULTS);
+      var result = await window.supabase
+        .from('settings')
+        .select('key, value')
+        .in('key', keys);
+
+      if (result.data) {
+        result.data.forEach(function (row) {
+          if (row.key) settings[row.key] = row.value;
+        });
+      }
+    } catch (settingsErr) {
+      console.warn('加载钱包邀请设置失败:', settingsErr);
+    }
+
+    cachedWalletInviteSettings = settings;
+    return settings;
+  }
+
+  function invalidateWalletInviteCache() {
+    cachedWalletInviteSettings = null;
+  }
+
+  async function loadAdminWalletInviteSettings() {
+    var settings = await fetchWalletInviteSettings();
+    var okxEl = document.getElementById('ad-wallet-okx');
+    var bitgetEl = document.getElementById('ad-wallet-bitget');
+    var metamaskEl = document.getElementById('ad-wallet-metamask');
+
+    if (okxEl) okxEl.value = String(settings.wallet_invite_okx || '');
+    if (bitgetEl) bitgetEl.value = String(settings.wallet_invite_bitget || '');
+    if (metamaskEl) metamaskEl.value = String(settings.wallet_invite_metamask || '');
+  }
+
+  async function saveAdminWalletInviteSettings() {
+    if (!window.supabase) return;
+
+    var okx = String(document.getElementById('ad-wallet-okx') && document.getElementById('ad-wallet-okx').value || '').trim();
+    var bitget = String(document.getElementById('ad-wallet-bitget') && document.getElementById('ad-wallet-bitget').value || '').trim();
+    var metamask = String(document.getElementById('ad-wallet-metamask') && document.getElementById('ad-wallet-metamask').value || '').trim();
+
+    var rows = [
+      { key: 'wallet_invite_okx', value: okx },
+      { key: 'wallet_invite_bitget', value: bitget },
+      { key: 'wallet_invite_metamask', value: metamask }
+    ];
+
+    var result = await window.supabase
+      .from('settings')
+      .upsert(rows, { onConflict: 'key' });
+
+    if (result.error) {
+      alert(adT('ad_wallet_invite_save_fail') + result.error.message);
+      return;
+    }
+
+    invalidateWalletInviteCache();
+
+    var successEl = document.getElementById('ad-wallet-invite-success');
+    if (successEl) {
+      successEl.classList.remove('hidden');
+      setTimeout(function() {
+        successEl.classList.add('hidden');
+      }, 3000);
+    }
+  }
+
   function initAdminEvents() {
     if (adminInitialized) return;
     adminInitialized = true;
@@ -11296,6 +11400,11 @@ window.addEventListener('hashchange', function () {
     var adsSaveBtn = document.getElementById('ad-ads-save-btn');
     if (adsSaveBtn) {
       adsSaveBtn.addEventListener('click', saveAdminAdsSettings);
+    }
+
+    var walletInviteSaveBtn = document.getElementById('ad-wallet-invite-save-btn');
+    if (walletInviteSaveBtn) {
+      walletInviteSaveBtn.addEventListener('click', saveAdminWalletInviteSettings);
     }
 
     document.querySelectorAll('#ad-cancel-modal .admin-modal-overlay, #ad-official-modal .admin-modal-overlay, #ad-grant-modal .admin-modal-overlay').forEach(function (overlay) {
