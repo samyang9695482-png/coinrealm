@@ -1146,6 +1146,7 @@
   window.coinrealmEnsureWalletAuth = ensureWalletAuthSession;
   window.coinrealmRefreshAuthArea = renderAuthArea;
   window.coinrealmConnectWalletByProvider = connectWalletByProvider;
+  window.coinrealmAuthenticateWithSignature = authenticateWalletWithWorker;
 
   // 外部 hash 变化时，若页面被占位内容覆盖则恢复并跳转
   window.addEventListener('hashchange', function () {
