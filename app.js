@@ -7606,7 +7606,7 @@ window.addEventListener('hashchange', function () {
     }
   }
 
-  async function openPinModal(task) {
+  async function openPinModal(task, anchorEl) {
     pendingPinTask = task;
     selectedPinPackage = null;
     clearPmModalError('pm-pin-error');
@@ -7632,6 +7632,55 @@ window.addEventListener('hashchange', function () {
     if (modal) {
       modal.classList.remove('hidden');
       modal.setAttribute('aria-hidden', 'false');
+
+      var card = modal.querySelector('.pm-action-modal-card');
+      var container = document.getElementById('publish-management-page');
+      if (card && container) {
+        var containerRect = container.getBoundingClientRect();
+        var isMobile = window.innerWidth <= 768;
+
+        card.style.top = '';
+        card.style.left = '';
+        card.style.right = '';
+        card.style.bottom = '';
+        card.style.transform = '';
+
+        if (anchorEl) {
+          var anchorRect = anchorEl.getBoundingClientRect();
+          var cardWidth = card.offsetWidth || 380;
+          var cardHeight = card.offsetHeight || 200;
+          var gap = 8;
+
+          if (isMobile) {
+            var topPos = anchorRect.bottom - containerRect.top + gap;
+            if (topPos + cardHeight > containerRect.height) {
+              topPos = Math.max(10, anchorRect.top - containerRect.top - cardHeight - gap);
+            }
+            card.style.top = Math.max(10, topPos) + 'px';
+            card.style.left = '8px';
+            card.style.right = '8px';
+            card.style.width = 'auto';
+          } else {
+            var leftPos = anchorRect.right - containerRect.left + gap;
+            var topPosD = anchorRect.top - containerRect.top;
+
+            if (leftPos + cardWidth > containerRect.width) {
+              leftPos = anchorRect.left - containerRect.left - cardWidth - gap;
+              if (leftPos < 0) {
+                leftPos = Math.max(10, containerRect.width - cardWidth - 10);
+              }
+            }
+            if (leftPos < 10) leftPos = 10;
+
+            card.style.left = leftPos + 'px';
+            card.style.top = Math.max(10, topPosD) + 'px';
+          }
+        } else {
+          card.style.top = '50%';
+          card.style.left = '50%';
+          card.style.transform = 'translate(-50%, -50%)';
+        }
+      }
     }
     applyPublishMgmtI18n();
   }
@@ -7644,6 +7693,15 @@ window.addEventListener('hashchange', function () {
     clearPmModalError('pm-pin-error');
     var modal = document.getElementById('pm-pin-modal');
     if (modal) {
+      var card = modal.querySelector('.pm-action-modal-card');
+      if (card) {
+        card.style.top = '';
+        card.style.left = '';
+        card.style.right = '';
+        card.style.bottom = '';
+        card.style.width = '';
+        card.style.transform = '';
+      }
       modal.classList.add('hidden');
       modal.setAttribute('aria-hidden', 'true');
     }
@@ -8329,7 +8387,7 @@ window.addEventListener('hashchange', function () {
             return;
           }
           if (actionBtn.classList.contains('pm-action-pin')) {
-            openPinModal(entry.task);
+            openPinModal(entry.task, actionBtn);
             return;
           }
           if (actionBtn.classList.contains('pm-action-boost')) {
