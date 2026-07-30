@@ -598,6 +598,11 @@
     metamask: 'MetaMask'
   };
 
+  var OKX_DEEPLINK_CONNECT = 'okxweb3://wallet/connect';
+  var OKX_DEEPLINK_SIGN = 'okxweb3://wallet/sign';
+  var WALLET_CALLBACK_MARKER = 'wallet-callback';
+  var WALLET_PENDING_KEY = 'coinrealm_wallet_pending';
+
   var cachedWalletInviteSettings = null;
 
   function fetchWalletInviteSettings() {
@@ -732,15 +737,207 @@
     }, 2000);
   }
 
+  // ============ OKX Wallet Deep Link Flow ============
+
+  function buildOKXConnectDeeplink() {
+    var dappUrl = window.location.origin + window.location.pathname + window.location.search;
+    var callbackUrl = dappUrl + '#wallet-callback';
+    return OKX_DEEPLINK_CONNECT
+      + '?url=' + encodeURIComponent(dappUrl)
+      + '&redirect=' + encodeURIComponent(callbackUrl);
+  }
+
+  function buildOKXSignDeeplink(address, message) {
+    var dappUrl = window.location.origin + window.location.pathname + window.location.search;
+    var callbackUrl = dappUrl + '#wallet-callback';
+    var signRequest = JSON.stringify({
+      method: 'personal_sign',
+      params: [message, address]
+    });
+    return OKX_DEEPLINK_SIGN
+      + '?url=' + encodeURIComponent(dappUrl)
+      + '&redirect=' + encodeURIComponent(callbackUrl)
+      + '&data=' + encodeURIComponent(signRequest);
+  }
+
+  function buildWalletSignMessageForDeeplink(address) {
+    var t = typeof window.t === 'function' ? window.t : function (k) { return k; };
+    return (
+      t('welcomeSignMessage') + '\n\n' +
+      t('walletAddressLabel') + address + '\n' +
+      t('timestampLabel') + Date.now()
+    );
+  }
+
+  function openOKXDeeplink(url, onFailure) {
+    var start = Date.now();
+    var redirected = false;
+
+    var timer = setTimeout(function () {
+      if (!redirected && Date.now() - start < 2500) {
+        redirected = true;
+        onFailure();
+      }
+    }, 1500);
+
+    var iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = url;
+    document.body.appendChild(iframe);
+
+    window.addEventListener('pagehide', function () {
+      clearTimeout(timer);
+    }, { once: true });
+
+    setTimeout(function () {
+      if (iframe && iframe.parentNode) {
+        iframe.parentNode.removeChild(iframe);
+      }
+    }, 2000);
+  }
+
+  function tryOKXDeeplink() {
+    var deeplink = buildOKXConnectDeeplink();
+    sessionStorage.setItem(WALLET_PENDING_KEY, JSON.stringify({
+      walletType: 'okx',
+      step: 'connect',
+      timestamp: Date.now()
+    }));
+
+    openOKXDeeplink(deeplink, function () {
+      sessionStorage.removeItem(WALLET_PENDING_KEY);
+      redirectToWalletDownload('okx');
+    });
+  }
+
+  function parseWalletCallbackParams() {
+    var params = {};
+    var searchStr = window.location.search.slice(1);
+    if (searchStr) {
+      searchStr.split('&').forEach(function (kv) {
+        var parts = kv.split('=');
+        if (parts[0]) params[decodeURIComponent(parts[0])] = decodeURIComponent(parts[1] || '');
+      });
+    }
+
+    var hash = window.location.hash || '';
+    var hashParamStart = hash.indexOf('?');
+    if (hashParamStart !== -1) {
+      var hashParams = hash.slice(hashParamStart + 1);
+      hashParams.split('&').forEach(function (kv) {
+        var parts = kv.split('=');
+        if (parts[0]) params[decodeURIComponent(parts[0])] = decodeURIComponent(parts[1] || '');
+      });
+    }
+    return params;
+  }
+
+  function cleanWalletCallbackFromURL() {
+    var hash = window.location.hash || '';
+    var cleanHash = hash;
+    var callbackIdx = hash.indexOf('#' + WALLET_CALLBACK_MARKER);
+    if (callbackIdx !== -1) {
+      cleanHash = hash.slice(0, callbackIdx);
+    } else if (hash.indexOf(WALLET_CALLBACK_MARKER) !== -1) {
+      var markerIdx = hash.indexOf(WALLET_CALLBACK_MARKER);
+      cleanHash = hash.slice(0, markerIdx);
+      if (cleanHash.length > 0 && cleanHash.charAt(cleanHash.length - 1) === '#') {
+        cleanHash = cleanHash.slice(0, -1);
+      }
+    }
+    var cleanUrl = window.location.pathname + (window.location.search || '') + cleanHash;
+    window.history.replaceState({}, document.title, cleanUrl);
+  }
+
+  function checkWalletCallback() {
+    var hash = window.location.hash || '';
+    if (hash.indexOf(WALLET_CALLBACK_MARKER) === -1) return;
+
+    var params = parseWalletCallbackParams();
+
+    var pending = null;
+    try {
+      pending = JSON.parse(sessionStorage.getItem(WALLET_PENDING_KEY) || 'null');
+    } catch (_e) { pending = null; }
+
+    cleanWalletCallbackFromURL();
+
+    if (!pending) {
+      console.warn('[wallet] 回调收到但无 pending 状态，忽略');
+      return;
+    }
+
+    var address = params.address;
+    var signature = params.signature || params.sig;
+
+    if (pending.step === 'connect') {
+      if (!address) {
+        console.warn('[wallet] connect 回调缺少 address 参数');
+        sessionStorage.removeItem(WALLET_PENDING_KEY);
+        alert('钱包连接失败：未获取到钱包地址');
+        return;
+      }
+
+      var message = buildWalletSignMessageForDeeplink(address);
+      sessionStorage.setItem(WALLET_PENDING_KEY, JSON.stringify({
+        walletType: 'okx',
+        step: 'sign',
+        address: address,
+        timestamp: Date.now()
+      }));
+
+      var signDeeplink = buildOKXSignDeeplink(address, message);
+      openOKXDeeplink(signDeeplink, function () {
+        sessionStorage.removeItem(WALLET_PENDING_KEY);
+        alert('签名请求超时，请返回钱包重试');
+      });
+
+    } else if (pending.step === 'sign') {
+      if (!address || !signature) {
+        console.warn('[wallet] sign 回调缺少 address 或 signature 参数');
+        sessionStorage.removeItem(WALLET_PENDING_KEY);
+        alert('钱包签名失败，请重试');
+        return;
+      }
+
+      sessionStorage.removeItem(WALLET_PENDING_KEY);
+
+      var verifyMessage = buildWalletSignMessageForDeeplink(address);
+      if (typeof window.coinrealmAuthenticateWithSignature === 'function') {
+        window.coinrealmAuthenticateWithSignature(address, signature, verifyMessage)
+          .then(function () { navigateTo('home'); })
+          .catch(function (err) {
+            console.warn('OKX 登录失败', err);
+            alert('登录失败：' + (err && err.message ? err.message : String(err)));
+          });
+      } else {
+        alert('钱包认证服务暂不可用，请刷新页面重试');
+      }
+    }
+  }
+
   function handleWalletLogin(walletType) {
     var walletName = WALLET_NAMES[walletType] || walletType;
-    var provider = getWalletProvider(walletType);
 
+    if (walletType === 'okx') {
+      var provider = getWalletProvider('okx');
+      if (provider) {
+        connectWalletProvider(provider, walletName)
+          .then(function () { navigateTo('home'); })
+          .catch(function (err) {
+            console.warn(walletName + ' Provider 登录失败，尝试 Deep Link', err);
+            tryOKXDeeplink();
+          });
+      } else {
+        tryOKXDeeplink();
+      }
+      return;
+    }
+
+    var provider = getWalletProvider(walletType);
     if (provider) {
       connectWalletProvider(provider, walletName)
-        .then(function () {
-          navigateTo('home');
-        })
+        .then(function () { navigateTo('home'); })
         .catch(function (err) {
           console.warn(walletName + ' 登录失败', err);
           alert((typeof window.t === 'function' ? window.t('walletConnectFail') : '钱包登录失败：') +
@@ -873,6 +1070,7 @@
     var route = getRouteBase();
     updateHeader(route);
     syncLoginScreen();
+    checkWalletCallback();
     if (typeof window.coinrealmRefreshNotifications === 'function') {
       window.coinrealmRefreshNotifications();
     }
@@ -942,6 +1140,7 @@
     registerServiceWorker();
     setupMobileFilterTags();
     bindMobileSearchInput();
+    checkWalletCallback();
 
     document.addEventListener('click', function (e) {
       if (!e.target.closest('.mobile-filter-more-wrap')) {
