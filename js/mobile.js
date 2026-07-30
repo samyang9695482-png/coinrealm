@@ -587,6 +587,18 @@
     metamask: 'https://metamask.io/download'
   };
 
+  var WALLET_PROVIDER_MAP = {
+    okx: ['okxwallet', 'ethereum'],
+    bitget: ['bitgetverse', 'ethereum'],
+    metamask: ['ethereum']
+  };
+
+  var WALLET_NAMES = {
+    okx: 'OKX Wallet',
+    bitget: 'Bitget Wallet',
+    metamask: 'MetaMask'
+  };
+
   var cachedWalletInviteSettings = null;
 
   function fetchWalletInviteSettings() {
@@ -623,19 +635,50 @@
     cachedWalletInviteSettings = null;
   }
 
+  function getWalletProvider(walletType) {
+    var keys = WALLET_PROVIDER_MAP[walletType] || [];
+    for (var i = 0; i < keys.length; i++) {
+      var provider = window[keys[i]];
+      if (provider && typeof provider.request === 'function') {
+        return provider;
+      }
+    }
+    return null;
+  }
+
   function tryOpenWallet(walletType) {
     var scheme = WALLET_SCHEMES[walletType];
     if (!scheme) return;
 
+    var walletName = WALLET_NAMES[walletType] || walletType;
     var start = Date.now();
+    var redirected = false;
+
+    var onVisible = function () {
+      if (document.visibilityState === 'visible' && !redirected) {
+        var provider = getWalletProvider(walletType);
+        if (provider && typeof window.coinrealmConnectWalletByProvider === 'function') {
+          document.removeEventListener('visibilitychange', onVisible);
+          window.coinrealmConnectWalletByProvider(provider, walletName)
+            .then(function () { navigateTo('home'); })
+            .catch(function () {
+              tryOpenWallet(walletType);
+            });
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
     var timer = setTimeout(function () {
-      if (Date.now() - start < 2500) {
+      if (!redirected && Date.now() - start < 2500) {
+        redirected = true;
+        document.removeEventListener('visibilitychange', onVisible);
         fetchWalletInviteSettings().then(function (settings) {
           var downloadUrl = settings[walletType] || WALLET_DEFAULTS[walletType];
           if (downloadUrl) {
             window.location.href = downloadUrl;
           } else {
-            alert(t('wallet_not_installed') || '请先安装钱包');
+            alert(walletName + (typeof window.t === 'function' ? window.t('walletNotInstalled') : ' 未安装，请先安装钱包'));
           }
         });
       }
@@ -648,6 +691,7 @@
 
     window.addEventListener('pagehide', function () {
       clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
     }, { once: true });
 
     setTimeout(function () {
@@ -658,7 +702,24 @@
   }
 
   function handleWalletLogin(walletType) {
-    tryOpenWallet(walletType);
+    var provider = getWalletProvider(walletType);
+    var walletName = WALLET_NAMES[walletType] || walletType;
+
+    if (provider) {
+      if (typeof window.coinrealmConnectWalletByProvider === 'function') {
+        window.coinrealmConnectWalletByProvider(provider, walletName)
+          .then(function () {
+            navigateTo('home');
+          })
+          .catch(function (err) {
+            console.warn(walletName + ' 登录失败', err);
+          });
+      } else {
+        alert(typeof window.t === 'function' ? window.t('walletServiceUnavailable') : '钱包连接服务暂不可用，请刷新页面重试');
+      }
+    } else {
+      tryOpenWallet(walletType);
+    }
   }
 
   function bindWalletLoginButtons() {
