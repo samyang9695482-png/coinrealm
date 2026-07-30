@@ -65,6 +65,8 @@
       connectWallet: '连接钱包',
       walletConnectFail: '钱包登录失败：',
       metamaskNotInstalled: '请安装 MetaMask 浏览器插件',
+      walletNotInstalled: ' 未安装，请先安装钱包',
+      walletServiceUnavailable: '钱包连接服务暂不可用，请刷新页面重试',
       welcomeSignMessage: '欢迎来到 CoinRealm！签名以验证你的身份。',
       walletAddressLabel: '钱包地址：',
       timestampLabel: '时间戳：',
@@ -87,6 +89,8 @@
       connectWallet: 'Connect Wallet',
       walletConnectFail: 'Wallet sign-in failed: ',
       metamaskNotInstalled: 'Please install the MetaMask browser extension',
+      walletNotInstalled: ' is not installed. Please install the wallet first.',
+      walletServiceUnavailable: 'Wallet connection service is unavailable. Please refresh the page.',
       welcomeSignMessage: 'Welcome to CoinRealm! Sign to verify your identity.',
       walletAddressLabel: 'Wallet address: ',
       timestampLabel: 'Timestamp: ',
@@ -707,6 +711,37 @@
       });
   }
 
+  // 通用钱包连接函数 — 支持 OKX / Bitget / MetaMask 等 EIP-1193 兼容钱包
+  // 通过注入的 provider 进行连接、签名验证，完成安全登录
+  function connectWalletByProvider(provider, walletName) {
+    if (!provider || typeof provider.request !== 'function') {
+      return Promise.reject(new Error(walletName + ' provider not available'));
+    }
+
+    return provider.request({ method: 'eth_requestAccounts' })
+      .then(function (accounts) {
+        if (!accounts || !accounts[0]) {
+          throw new Error('No accounts returned from ' + walletName);
+        }
+        var address = accounts[0];
+        var message = buildWalletSignMessage(address);
+        return provider.request({
+          method: 'personal_sign',
+          params: [message, address]
+        }).then(function (signature) {
+          return authenticateWalletWithWorker(address, signature, message);
+        });
+      })
+      .catch(function (err) {
+        console.warn(walletName + ' 钱包连接失败', err);
+        alert((t('walletConnectFail') || '钱包登录失败：') + (err && err.message ? err.message : String(err)));
+        walletAddress = null;
+        clearWalletStorage();
+        renderAuthArea();
+        throw err;
+      });
+  }
+
   // 获取当前登录状态的展示名称（谷歌用户名或钱包地址）
   function getDisplayInfo() {
     if (currentUser) {
@@ -1110,6 +1145,7 @@
   window.coinrealmApplyRoute = applyAuthRoute;
   window.coinrealmEnsureWalletAuth = ensureWalletAuthSession;
   window.coinrealmRefreshAuthArea = renderAuthArea;
+  window.coinrealmConnectWalletByProvider = connectWalletByProvider;
 
   // 外部 hash 变化时，若页面被占位内容覆盖则恢复并跳转
   window.addEventListener('hashchange', function () {
