@@ -390,21 +390,26 @@ body.mobile-app.sub-page .mobile-tab-bar {
   transform: scale(0.96);
 }
 
+/* hidden 属性需要覆盖 display: flex 才能生效 */
+.mobile-wallet-btn[hidden] {
+  display: none !important;
+}
+
 .mobile-wallet-icon {
   width: 28px;
   height: 28px;
-  border-radius: 50%;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 700;
+  overflow: hidden;
 }
 
-.mobile-wallet-icon-okx { background: #00b578; }
-.mobile-wallet-icon-bitget { background: #f0b90b; }
-.mobile-wallet-icon-metamask { background: #f6851b; }
+.mobile-wallet-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
 
 .mobile-wallet-name {
   font-size: 11px;
