@@ -299,21 +299,22 @@ body.mobile-app.sub-page .mobile-tab-bar {
 .mobile-login-inner { width: 100%; max-width: 320px; text-align: center; }
 
 .mobile-login-logo {
-  width: 72px;
-  height: 72px;
+  width: auto;
+  height: 40px;
   margin: 0 auto 16px;
-  border-radius: 20px;
+  border-radius: 10px;
   overflow: hidden;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   box-shadow: var(--m-shadow-lg);
+  vertical-align: middle;
 }
 
 .mobile-login-logo img {
-  width: 100%;
+  width: auto;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
 }
 
