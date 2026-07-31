@@ -594,19 +594,23 @@
   };
 
   // 钱包 Deep Link 配置
-  // OKX: 官方 Universal Link 格式
-  // Bitget: 类似 OKX，使用 bitkeep://open/dapp?url=...
+  // OKX: 官方 Universal Link 格式（https://web3.okx.com/download?deeplink=okx://wallet/dapp/url?dappUrl=...）
+  // Bitget: 官方仅提供 bitkeep:// scheme（无 Universal Link 端点），直接使用 scheme + 超时检测
   // MetaMask: 无 dApp URL Deep Link，使用 Provider 检测 + URL Scheme 回退
   var WALLET_DEEPLINK_CONFIG = {
     okx: {
       base: 'okx://wallet/dapp/url',
       download: 'https://web3.okx.com/download',
-      paramKey: 'dappUrl'
+      paramKey: 'dappUrl',
+      // Universal Link 方式：download?deeplink=<base>?<paramKey>=<dapp>
+      type: 'universal'
     },
     bitget: {
       base: 'bitkeep://open/dapp',
-      download: 'https://web3.bitget.com',
-      paramKey: 'url'
+      download: 'https://web3.bitget.com/download',
+      paramKey: 'url',
+      // 直接 scheme 方式：<base>?<paramKey>=<dapp>，配合超时检测判断是否安装
+      type: 'scheme'
     }
   };
 
@@ -700,22 +704,43 @@
   }
 
   // ============ 钱包 Deep Link 登录流程 ============
-  // OKX / Bitget: 使用 Universal Link 跳转到钱包 App 打开 dApp
-  //   流程：Deep Link → 钱包 App 打开 dApp → Provider 自动注入 → 自动连接
+  // OKX: 使用 Universal Link（download?deeplink=...）跳转，未安装自动显示下载页
+  // Bitget: 官方无 Universal Link 端点，直接使用 bitkeep:// scheme + 超时检测 + 下载链接回退
   // MetaMask: 无 dApp URL 功能，使用 Provider 检测 + URL Scheme 检测安装 + 下载链接回退
 
-  // 构建钱包 Deep Link URL（OKX / Bitget 通用）
-  function buildWalletDeeplink(walletType) {
+  // 构建钱包 Deep Link 的 scheme 部分：<base>?<paramKey>=<dapp>
+  function buildWalletScheme(walletType) {
     var config = WALLET_DEEPLINK_CONFIG[walletType];
     if (!config) return null;
 
     var dappUrl = window.location.origin + window.location.pathname + window.location.search;
-    var deepLink = config.base + '?' + config.paramKey + '=' + encodeURIComponent(dappUrl);
-    return config.download + '?deeplink=' + encodeURIComponent(deepLink);
+    return config.base + '?' + config.paramKey + '=' + encodeURIComponent(dappUrl);
   }
 
-  // 调起钱包 App（OKX / Bitget 通用）
+  // 构建钱包 Deep Link 完整 URL（仅 universal 类型需要包裹 download 链接）
+  function buildWalletDeeplink(walletType) {
+    var config = WALLET_DEEPLINK_CONFIG[walletType];
+    if (!config) return null;
+
+    var scheme = buildWalletScheme(walletType);
+
+    // Universal Link 方式（OKX）：download?deeplink=<scheme>
+    if (config.type === 'universal') {
+      return config.download + '?deeplink=' + encodeURIComponent(scheme);
+    }
+
+    // Scheme 方式（Bitget）：直接返回 scheme
+    return scheme;
+  }
+
+  // 调起钱包 App
   function openWalletDeeplink(walletType, onFailure) {
+    var config = WALLET_DEEPLINK_CONFIG[walletType];
+    if (!config) {
+      onFailure();
+      return;
+    }
+
     var deeplink = buildWalletDeeplink(walletType);
     if (!deeplink) {
       onFailure();
@@ -732,17 +757,38 @@
       }
     }, 1500);
 
-    window.location.href = deeplink;
+    if (config.type === 'scheme') {
+      // Scheme 方式（Bitget）：使用 iframe 触发，避免浏览器显示"无法打开此页面"
+      var iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.src = deeplink;
+      document.body.appendChild(iframe);
 
-    window.addEventListener('pagehide', function () {
-      clearTimeout(timer);
-    }, { once: true });
+      // 用户从钱包 App 返回页面时，清除超时定时器
+      window.addEventListener('pagehide', function () {
+        clearTimeout(timer);
+      }, { once: true });
+
+      // 清理 iframe
+      setTimeout(function () {
+        if (iframe && iframe.parentNode) {
+          iframe.parentNode.removeChild(iframe);
+        }
+      }, 2000);
+    } else {
+      // Universal Link 方式（OKX）：直接跳转
+      window.location.href = deeplink;
+
+      window.addEventListener('pagehide', function () {
+        clearTimeout(timer);
+      }, { once: true });
+    }
   }
 
   // 发起 Deep Link 登录（OKX / Bitget 通用）
   function tryWalletDeeplink(walletType) {
-    var deeplink = buildWalletDeeplink(walletType);
-    if (!deeplink) {
+    var config = WALLET_DEEPLINK_CONFIG[walletType];
+    if (!config) {
       redirectToWalletDownload(walletType);
       return;
     }
@@ -753,6 +799,7 @@
     }));
 
     openWalletDeeplink(walletType, function () {
+      // 超时未跳转 → 钱包未安装，清除 pending 状态并跳转推广下载链接
       sessionStorage.removeItem(WALLET_PENDING_KEY);
       redirectToWalletDownload(walletType);
     });
