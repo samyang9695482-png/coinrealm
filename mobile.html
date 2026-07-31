@@ -44,8 +44,10 @@
     window.SUPABASE_ANON_KEY = 'sb_publishable_XXFWPmwswaH4ESVjcBSIfg_6X7h7S4a';
     window.supabase = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
   </script>
-  <!-- WalletConnect v2 Ethereum Provider（Bitget / MetaMask 手机版扫码连接） -->
+  <!-- WalletConnect v2 Ethereum Provider（Bitget 手机版扫码连接） -->
   <script src="https://cdn.jsdelivr.net/npm/@walletconnect/ethereum-provider@2.23.10/dist/index.umd.js"></script>
+  <!-- MetaMask SDK（小狐狸钱包手机版 Deep Link 调起与回调） -->
+  <script src="https://cdn.jsdelivr.net/npm/@metamask/sdk@0.29.0/dist/browser/umd/metamask-sdk.min.js"></script>
   <link rel="stylesheet" href="style.css?v=20260724">
   <link rel="stylesheet" href="css/mobile.css?v=20260717">
 </head>
