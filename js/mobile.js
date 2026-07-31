@@ -611,11 +611,12 @@
   };
 
   // 使用 WalletConnect 协议登录的钱包列表
-  var WALLETCONNECT_WALLETS = ['bitget', 'metamask'];
+  // MetaMask 已改用官方 SDK（@metamask/sdk），不再走 WalletConnect
+  var WALLETCONNECT_WALLETS = ['bitget'];
 
   // WalletConnect v2 配置
   // projectId 需要在 https://cloud.walletconnect.com/ 申请，替换下方占位符
-  var WALLETCONNECT_PROJECT_ID = 'YOUR_WALLETCONNECT_PROJECT_ID';
+  var WALLETCONNECT_PROJECT_ID = '4b6a3d8bfca4801504c4c6be44524bee';
   var WALLETCONNECT_CHAINS = [1]; // Ethereum mainnet
   var WALLETCONNECT_RPC_MAP = {
     1: 'https://cloudflare-eth.com'
@@ -625,6 +626,15 @@
     description: 'CoinRealm Web3 Task Platform',
     url: window.location.origin,
     icons: [window.location.origin + '/img/crlm-logo.png']
+  };
+
+  // MetaMask SDK 配置
+  // UMD 版本将 SDK 挂载到 window.browser.MetaMaskSDK
+  // SDK 会自动检测环境：移动端调起 App + 回调，桌面端连接浏览器扩展或显示 QR 码
+  var METAMASK_SDK_DAPP_METADATA = {
+    name: 'CoinRealm',
+    url: window.location.host,
+    iconUrl: window.location.origin + '/img/crlm-logo.png'
   };
 
   var WALLET_PENDING_KEY = 'coinrealm_wallet_pending';
@@ -868,6 +878,84 @@
       });
   }
 
+  // ============ MetaMask SDK 登录流程 ============
+  // 使用 @metamask/sdk 官方 SDK 处理完整的连接-签名-回调流程
+  // SDK 自动检测环境：
+  //   - MetaMask App 内置浏览器 → 直接使用 window.ethereum
+  //   - 手机普通浏览器 → Deep Link 调起 MetaMask App → 用户确认后自动返回网站
+  //   - 桌面浏览器 → 连接 MetaMask 扩展或显示 QR 码
+  //   - 未安装 → 显示 QR 码或提示下载
+  // 参考文档：https://docs.metamask.io/wallet/how-to/connect/connect-and-sign/
+
+  var mmSdkPromise = null; // 单例缓存 MetaMask SDK 实例
+
+  function isMetaMaskSdkAvailable() {
+    return !!(window.browser && typeof window.browser.MetaMaskSDK === 'function');
+  }
+
+  // 初始化 MetaMask SDK（单例）
+  function getMetaMaskSdk() {
+    if (mmSdkPromise) return mmSdkPromise;
+
+    if (!isMetaMaskSdkAvailable()) {
+      mmSdkPromise = Promise.reject(new Error('MetaMask SDK 库未加载'));
+      return mmSdkPromise;
+    }
+
+    try {
+      var sdk = new window.browser.MetaMaskSDK({
+        dappMetadata: METAMASK_SDK_DAPP_METADATA,
+        // 移动端不立即检查安装，等用户主动点击登录时再触发 Deep Link
+        checkInstallationImmediately: false,
+        // 兼容旧版 web3 调用
+        shouldShimWeb3Request: true
+      });
+      mmSdkPromise = Promise.resolve(sdk);
+    } catch (err) {
+      mmSdkPromise = Promise.reject(err);
+    }
+
+    return mmSdkPromise;
+  }
+
+  // 发起 MetaMask SDK 登录
+  function tryMetaMaskSdkLogin() {
+    var walletName = WALLET_NAMES['metamask'];
+
+    getMetaMaskSdk()
+      .then(function (sdk) {
+        // getProvider() 返回 EIP-1193 兼容的 provider
+        // SDK 会在移动端自动处理 Deep Link 调起与回调
+        var provider = sdk.getProvider();
+        if (!provider || typeof provider.request !== 'function') {
+          throw new Error('MetaMask provider 不可用');
+        }
+        // 复用 connectWalletProvider 完成 eth_requestAccounts + personal_sign + 验签登录
+        return connectWalletProvider(provider, walletName);
+      })
+      .then(function () {
+        navigateTo('home');
+      })
+      .catch(function (err) {
+        console.warn(walletName + ' SDK 登录失败', err);
+        var msg = err && err.message ? err.message : String(err);
+        // 用户取消连接/签名时，仅提示不跳转下载页
+        if (msg.indexOf('reject') !== -1 || msg.indexOf('cancel') !== -1 ||
+            msg.indexOf('User') !== -1 || msg.indexOf('denied') !== -1) {
+          alert((typeof window.t === 'function' ? window.t('walletConnectFail') : '钱包登录失败：') + msg);
+          return;
+        }
+        // SDK 库未加载 → 回退到推广下载链接
+        if (msg.indexOf('SDK 库未加载') !== -1 || msg.indexOf('provider 不可用') !== -1) {
+          alert((typeof window.t === 'function' ? window.t('walletServiceUnavailable') :
+            '钱包连接服务暂不可用，请刷新页面重试') + '\n' + msg);
+          redirectToWalletDownload('metamask');
+          return;
+        }
+        alert((typeof window.t === 'function' ? window.t('walletConnectFail') : '钱包登录失败：') + msg);
+      });
+  }
+
   // 读取 pending 状态（含过期检查）
   function getWalletPending() {
     var pending = null;
@@ -936,7 +1024,26 @@
       return;
     }
 
-    // Bitget / MetaMask: WalletConnect 协议
+    // MetaMask: 使用官方 SDK（自动处理移动端 Deep Link 调起与回调）
+    if (walletType === 'metamask') {
+      // 优先检测注入的 Provider（用户已在 MetaMask App 内置浏览器中）
+      var mmProvider = getWalletProvider(walletType);
+      if (mmProvider) {
+        connectWalletProvider(mmProvider, walletName)
+          .then(function () { navigateTo('home'); })
+          .catch(function (err) {
+            console.warn(walletName + ' 登录失败', err);
+            alert((typeof window.t === 'function' ? window.t('walletConnectFail') : '钱包登录失败：') +
+              (err && err.message ? err.message : String(err)));
+          });
+        return;
+      }
+      // 普通浏览器中，使用 MetaMask SDK 调起 App 并完成连接-签名-回调
+      tryMetaMaskSdkLogin();
+      return;
+    }
+
+    // Bitget: WalletConnect 协议
     if (WALLETCONNECT_WALLETS.indexOf(walletType) !== -1) {
       // 优先检测注入的 Provider（用户已在钱包 App 内置浏览器中）
       var wcProvider = getWalletProvider(walletType);
