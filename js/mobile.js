@@ -792,45 +792,64 @@
   }
 
   // ============ WalletConnect v2 登录流程 ============
-  // 用于 Bitget / MetaMask：通过 WalletConnect 中继服务器与钱包 App 通信
-  // 流程：初始化 EthereumProvider → enable() 弹出 QR 码 → 用户钱包扫码配对
-  //       → 获取账户地址 → personal_sign 签名 → authenticateWalletWithWorker 完成登录
-  // WalletConnect EthereumProvider 实现 EIP-1193 接口，可直接复用 connectWalletProvider
+  // 用于 Bitget：通过 WalletConnect 中继服务器与钱包 App 通信
+  // 流程：动态 import() 加载 EthereumProvider → init() → enable() 弹出 QR 码
+  //       → 用户钱包扫码配对 → 获取账户地址 → personal_sign 签名 → 验签登录
+  //
+  // ⚠️ WalletConnect UMD 版本（dist/index.umd.js）依赖外部全局变量（bs58/viem/lit 等），
+  //    在浏览器中无法直接使用。改用动态 import() 从 esm.sh 加载，esm.sh 会自动打包所有依赖。
+
+  // esm.sh URL — 自动打包 WalletConnect 及其所有依赖为自包含的 ES Module
+  var WALLETCONNECT_ESM_URL = 'https://esm.sh/@walletconnect/ethereum-provider@2.23.10';
 
   var wcProviderPromise = null; // 单例缓存 WalletConnect provider
 
-  function isWalletConnectAvailable() {
-    return typeof window.EthereumProvider !== 'undefined';
-  }
-
   // 初始化 WalletConnect EthereumProvider（单例）
+  // 使用动态 import() 从 esm.sh 加载模块（自动打包依赖），无需 <script src> 引入
   function getWalletConnectProvider() {
     if (wcProviderPromise) return wcProviderPromise;
-
-    if (!isWalletConnectAvailable()) {
-      wcProviderPromise = Promise.reject(new Error('WalletConnect 库未加载'));
-      return wcProviderPromise;
-    }
 
     if (WALLETCONNECT_PROJECT_ID === 'YOUR_WALLETCONNECT_PROJECT_ID' || !WALLETCONNECT_PROJECT_ID) {
       wcProviderPromise = Promise.reject(new Error('WalletConnect projectId 未配置'));
       return wcProviderPromise;
     }
 
-    wcProviderPromise = window.EthereumProvider.init({
-      projectId: WALLETCONNECT_PROJECT_ID,
-      chains: WALLETCONNECT_CHAINS,
-      optionalChains: WALLETCONNECT_CHAINS,
-      showQrModal: true,
-      rpcMap: WALLETCONNECT_RPC_MAP,
-      metadata: WALLETCONNECT_METADATA,
-      methods: ['eth_requestAccounts', 'personal_sign'],
-      events: ['accountsChanged', 'chainChanged']
-    }).catch(function (err) {
-      // 初始化失败时清空缓存，允许下次重试
-      wcProviderPromise = null;
-      throw err;
-    });
+    console.log('[wallet] 开始加载 WalletConnect 模块:', WALLETCONNECT_ESM_URL);
+
+    // 动态 import() 加载 ES Module（esm.sh 自动打包所有依赖）
+    wcProviderPromise = import(WALLETCONNECT_ESM_URL)
+      .then(function (module) {
+        // esm.sh 导出：{ EthereumProvider, default, ... }
+        var EthereumProvider = module.EthereumProvider || module.default;
+        if (!EthereumProvider || typeof EthereumProvider.init !== 'function') {
+          console.error('[wallet] WalletConnect 模块加载成功但 EthereumProvider 不可用', module);
+          throw new Error('WalletConnect EthereumProvider 不可用');
+        }
+        console.log('[wallet] WalletConnect 模块加载成功，开始初始化 provider');
+        return EthereumProvider.init({
+          projectId: WALLETCONNECT_PROJECT_ID,
+          chains: WALLETCONNECT_CHAINS,
+          optionalChains: WALLETCONNECT_CHAINS,
+          showQrModal: true,
+          rpcMap: WALLETCONNECT_RPC_MAP,
+          metadata: WALLETCONNECT_METADATA,
+          methods: ['eth_requestAccounts', 'personal_sign'],
+          events: ['accountsChanged', 'chainChanged']
+        });
+      })
+      .then(function (provider) {
+        if (!provider || typeof provider.request !== 'function') {
+          throw new Error('WalletConnect provider 初始化失败');
+        }
+        console.log('[wallet] WalletConnect provider 初始化成功');
+        return provider;
+      })
+      .catch(function (err) {
+        // 加载/初始化失败时清空缓存，允许下次重试
+        wcProviderPromise = null;
+        console.error('[wallet] WalletConnect 加载或初始化失败:', err);
+        throw err;
+      });
 
     return wcProviderPromise;
   }
@@ -841,11 +860,13 @@
 
     getWalletConnectProvider()
       .then(function (provider) {
+        console.log('[wallet] ' + walletName + ' 开始 WalletConnect 配对（弹出 QR 码）');
         // enable() 会弹出 QR 码模态框，等待用户在钱包 App 中扫码配对
         return provider.enable().then(function (accounts) {
           if (!accounts || !accounts[0]) {
             throw new Error(walletName + ' 未返回账户地址');
           }
+          console.log('[wallet] ' + walletName + ' 配对成功，地址:', accounts[0]);
           // 复用 connectWalletProvider 完成 personal_sign + 验签登录
           return connectWalletProvider(provider, walletName);
         });
@@ -853,24 +874,26 @@
       .then(function () {
         // 关闭可能仍打开的 QR 码模态框
         try {
-          if (window.EthereumProvider && typeof window.EthereumProvider.closeModal === 'function') {
-            window.EthereumProvider.closeModal();
+          var wcProvider = wcProviderPromise && wcProviderPromise._result;
+          if (wcProvider && typeof wcProvider.disconnect === 'function') {
+            // 不主动断开会话，仅尝试关闭模态框（如有）
           }
         } catch (_e) { /* ignore */ }
         navigateTo('home');
       })
       .catch(function (err) {
-        console.warn(walletName + ' WalletConnect 登录失败', err);
+        console.warn('[wallet] ' + walletName + ' WalletConnect 登录失败:', err);
         // 用户取消配对时不跳转下载页，仅提示
         var msg = err && err.message ? err.message : String(err);
         if (msg.indexOf('reject') !== -1 || msg.indexOf('cancel') !== -1 || msg.indexOf('User') !== -1) {
           alert((typeof window.t === 'function' ? window.t('walletConnectFail') : '钱包登录失败：') + msg);
           return;
         }
-        // 库未加载或 projectId 未配置 → 回退到推广下载链接
-        if (msg.indexOf('WalletConnect') !== -1) {
+        // 模块加载失败或初始化失败 → 回退到推广下载链接
+        if (msg.indexOf('WalletConnect') !== -1 || msg.indexOf('Failed to fetch') !== -1 ||
+            msg.indexOf('fetch') !== -1 || msg.indexOf('network') !== -1) {
           alert((typeof window.t === 'function' ? window.t('walletServiceUnavailable') :
-            '钱包连接服务暂不可用，请刷新页面重试') + '\n' + msg);
+            '钱包连接服务暂不可用，请检查网络后重试') + '\n' + msg);
           redirectToWalletDownload(walletType);
           return;
         }
