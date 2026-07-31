@@ -1146,6 +1146,10 @@
   window.coinrealmEnsureWalletAuth = ensureWalletAuthSession;
   window.coinrealmRefreshAuthArea = renderAuthArea;
   window.coinrealmConnectWalletByProvider = connectWalletByProvider;
+  // 暴露给 WalletConnect 流程：mobile.js 获取到 WC provider 后，
+  // 可直接调用这两个函数完成签名消息构建与验签登录
+  window.coinrealmBuildWalletSignMessage = buildWalletSignMessage;
+  window.coinrealmAuthenticateWalletWithWorker = authenticateWalletWithWorker;
 
   // 外部 hash 变化时，若页面被占位内容覆盖则恢复并跳转
   window.addEventListener('hashchange', function () {

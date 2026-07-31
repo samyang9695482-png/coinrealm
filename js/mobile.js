@@ -593,10 +593,13 @@
     metamask: 'MetaMask'
   };
 
-  // 钱包 Deep Link 配置
-  // OKX: 官方 Universal Link 格式（https://web3.okx.com/download?deeplink=okx://wallet/dapp/url?dappUrl=...）
-  // Bitget: 官方仅提供 bitkeep:// scheme（无 Universal Link 端点），直接使用 scheme + 超时检测
-  // MetaMask: 无 dApp URL Deep Link，使用 Provider 检测 + URL Scheme 回退
+  // 钱包登录方式配置
+  // okx:    使用 OKX 官方 Universal Link（download?deeplink=okx://wallet/dapp/url?dappUrl=...）
+  //         在 OKX App 内置浏览器中加载网站 → window.okxwallet 自动注入 → 自动连接
+  // bitget: 使用 WalletConnect v2 协议（QR 码扫码 / Deep Link 配对）
+  //         Bitget 官方无 Universal Link 端点，WalletConnect 是跨钱包通用方案
+  // metamask: 使用 WalletConnect v2 协议（QR 码扫码 / Deep Link 配对）
+  //           MetaMask 无 dApp URL Deep Link，WalletConnect 可调起 App 并完成配对
   var WALLET_DEEPLINK_CONFIG = {
     okx: {
       base: 'okx://wallet/dapp/url',
@@ -604,18 +607,25 @@
       paramKey: 'dappUrl',
       // Universal Link 方式：download?deeplink=<base>?<paramKey>=<dapp>
       type: 'universal'
-    },
-    bitget: {
-      base: 'bitkeep://open/dapp',
-      download: 'https://web3.bitget.com/download',
-      paramKey: 'url',
-      // 直接 scheme 方式：<base>?<paramKey>=<dapp>，配合超时检测判断是否安装
-      type: 'scheme'
     }
   };
 
-  // MetaMask URL Scheme（仅用于检测是否安装，无 dApp URL 功能）
-  var METAMASK_SCHEME = 'metamask://';
+  // 使用 WalletConnect 协议登录的钱包列表
+  var WALLETCONNECT_WALLETS = ['bitget', 'metamask'];
+
+  // WalletConnect v2 配置
+  // projectId 需要在 https://cloud.walletconnect.com/ 申请，替换下方占位符
+  var WALLETCONNECT_PROJECT_ID = 'YOUR_WALLETCONNECT_PROJECT_ID';
+  var WALLETCONNECT_CHAINS = [1]; // Ethereum mainnet
+  var WALLETCONNECT_RPC_MAP = {
+    1: 'https://cloudflare-eth.com'
+  };
+  var WALLETCONNECT_METADATA = {
+    name: 'CoinRealm',
+    description: 'CoinRealm Web3 Task Platform',
+    url: window.location.origin,
+    icons: [window.location.origin + '/img/crlm-logo.png']
+  };
 
   var WALLET_PENDING_KEY = 'coinrealm_wallet_pending';
   var WALLET_PENDING_TIMEOUT = 10 * 60 * 1000; // 10 分钟过期
@@ -703,10 +713,9 @@
     });
   }
 
-  // ============ 钱包 Deep Link 登录流程 ============
-  // OKX: 使用 Universal Link（download?deeplink=...）跳转，未安装自动显示下载页
-  // Bitget: 官方无 Universal Link 端点，直接使用 bitkeep:// scheme + 超时检测 + 下载链接回退
-  // MetaMask: 无 dApp URL 功能，使用 Provider 检测 + URL Scheme 检测安装 + 下载链接回退
+  // ============ OKX Deep Link 登录流程 ============
+  // OKX: 使用官方 Universal Link（download?deeplink=...）跳转，未安装自动显示下载页
+  //      在 OKX App 内置浏览器中加载网站 → window.okxwallet 自动注入 → 自动连接
 
   // 构建钱包 Deep Link 的 scheme 部分：<base>?<paramKey>=<dapp>
   function buildWalletScheme(walletType) {
@@ -717,30 +726,17 @@
     return config.base + '?' + config.paramKey + '=' + encodeURIComponent(dappUrl);
   }
 
-  // 构建钱包 Deep Link 完整 URL（仅 universal 类型需要包裹 download 链接）
+  // 构建钱包 Deep Link 完整 URL（Universal Link 方式：download?deeplink=<scheme>）
   function buildWalletDeeplink(walletType) {
     var config = WALLET_DEEPLINK_CONFIG[walletType];
     if (!config) return null;
 
     var scheme = buildWalletScheme(walletType);
-
-    // Universal Link 方式（OKX）：download?deeplink=<scheme>
-    if (config.type === 'universal') {
-      return config.download + '?deeplink=' + encodeURIComponent(scheme);
-    }
-
-    // Scheme 方式（Bitget）：直接返回 scheme
-    return scheme;
+    return config.download + '?deeplink=' + encodeURIComponent(scheme);
   }
 
-  // 调起钱包 App
+  // 调起 OKX 钱包 App（Universal Link 方式）
   function openWalletDeeplink(walletType, onFailure) {
-    var config = WALLET_DEEPLINK_CONFIG[walletType];
-    if (!config) {
-      onFailure();
-      return;
-    }
-
     var deeplink = buildWalletDeeplink(walletType);
     if (!deeplink) {
       onFailure();
@@ -757,35 +753,15 @@
       }
     }, 1500);
 
-    if (config.type === 'scheme') {
-      // Scheme 方式（Bitget）：使用 iframe 触发，避免浏览器显示"无法打开此页面"
-      var iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      iframe.src = deeplink;
-      document.body.appendChild(iframe);
+    // Universal Link 方式（OKX）：直接跳转
+    window.location.href = deeplink;
 
-      // 用户从钱包 App 返回页面时，清除超时定时器
-      window.addEventListener('pagehide', function () {
-        clearTimeout(timer);
-      }, { once: true });
-
-      // 清理 iframe
-      setTimeout(function () {
-        if (iframe && iframe.parentNode) {
-          iframe.parentNode.removeChild(iframe);
-        }
-      }, 2000);
-    } else {
-      // Universal Link 方式（OKX）：直接跳转
-      window.location.href = deeplink;
-
-      window.addEventListener('pagehide', function () {
-        clearTimeout(timer);
-      }, { once: true });
-    }
+    window.addEventListener('pagehide', function () {
+      clearTimeout(timer);
+    }, { once: true });
   }
 
-  // 发起 Deep Link 登录（OKX / Bitget 通用）
+  // 发起 OKX Deep Link 登录
   function tryWalletDeeplink(walletType) {
     var config = WALLET_DEEPLINK_CONFIG[walletType];
     if (!config) {
@@ -805,69 +781,91 @@
     });
   }
 
-  // MetaMask: 检测安装 + Provider 连接 + 下载链接回退
-  function tryMetaMaskLogin() {
-    var provider = getWalletProvider('metamask');
-    var walletName = WALLET_NAMES['metamask'];
+  // ============ WalletConnect v2 登录流程 ============
+  // 用于 Bitget / MetaMask：通过 WalletConnect 中继服务器与钱包 App 通信
+  // 流程：初始化 EthereumProvider → enable() 弹出 QR 码 → 用户钱包扫码配对
+  //       → 获取账户地址 → personal_sign 签名 → authenticateWalletWithWorker 完成登录
+  // WalletConnect EthereumProvider 实现 EIP-1193 接口，可直接复用 connectWalletProvider
 
-    if (provider) {
-      // Provider 可用，直接连接
-      connectWalletProvider(provider, walletName)
-        .then(function () { navigateTo('home'); })
-        .catch(function (err) {
-          console.warn(walletName + ' 登录失败', err);
-          alert((typeof window.t === 'function' ? window.t('walletConnectFail') : '钱包登录失败：') +
-            (err && err.message ? err.message : String(err)));
-        });
-      return;
+  var wcProviderPromise = null; // 单例缓存 WalletConnect provider
+
+  function isWalletConnectAvailable() {
+    return typeof window.EthereumProvider !== 'undefined';
+  }
+
+  // 初始化 WalletConnect EthereumProvider（单例）
+  function getWalletConnectProvider() {
+    if (wcProviderPromise) return wcProviderPromise;
+
+    if (!isWalletConnectAvailable()) {
+      wcProviderPromise = Promise.reject(new Error('WalletConnect 库未加载'));
+      return wcProviderPromise;
     }
 
-    // Provider 不可用，尝试通过 URL Scheme 检测是否安装 MetaMask
-    var start = Date.now();
-    var redirected = false;
+    if (WALLETCONNECT_PROJECT_ID === 'YOUR_WALLETCONNECT_PROJECT_ID' || !WALLETCONNECT_PROJECT_ID) {
+      wcProviderPromise = Promise.reject(new Error('WalletConnect projectId 未配置'));
+      return wcProviderPromise;
+    }
 
-    var timer = setTimeout(function () {
-      if (!redirected && Date.now() - start < 2500) {
-        redirected = true;
-        redirectToWalletDownload('metamask');
-      }
-    }, 1500);
+    wcProviderPromise = window.EthereumProvider.init({
+      projectId: WALLETCONNECT_PROJECT_ID,
+      chains: WALLETCONNECT_CHAINS,
+      optionalChains: WALLETCONNECT_CHAINS,
+      showQrModal: true,
+      rpcMap: WALLETCONNECT_RPC_MAP,
+      metadata: WALLETCONNECT_METADATA,
+      methods: ['eth_requestAccounts', 'personal_sign'],
+      events: ['accountsChanged', 'chainChanged']
+    }).catch(function (err) {
+      // 初始化失败时清空缓存，允许下次重试
+      wcProviderPromise = null;
+      throw err;
+    });
 
-    var iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.src = METAMASK_SCHEME;
-    document.body.appendChild(iframe);
+    return wcProviderPromise;
+  }
 
-    // 如果用户返回页面（未跳转到 MetaMask），重新检测 Provider
-    var onVisible = function () {
-      if (document.visibilityState === 'visible' && !redirected) {
-        var mmProvider = getWalletProvider('metamask');
-        if (mmProvider) {
-          document.removeEventListener('visibilitychange', onVisible);
-          clearTimeout(timer);
-          redirected = true;
-          connectWalletProvider(mmProvider, walletName)
-            .then(function () { navigateTo('home'); })
-            .catch(function (err) {
-              console.warn(walletName + ' 登录失败', err);
-              alert((typeof window.t === 'function' ? window.t('walletConnectFail') : '钱包登录失败：') +
-                (err && err.message ? err.message : String(err)));
-            });
+  // 发起 WalletConnect 登录
+  function tryWalletConnectLogin(walletType) {
+    var walletName = WALLET_NAMES[walletType] || walletType;
+
+    getWalletConnectProvider()
+      .then(function (provider) {
+        // enable() 会弹出 QR 码模态框，等待用户在钱包 App 中扫码配对
+        return provider.enable().then(function (accounts) {
+          if (!accounts || !accounts[0]) {
+            throw new Error(walletName + ' 未返回账户地址');
+          }
+          // 复用 connectWalletProvider 完成 personal_sign + 验签登录
+          return connectWalletProvider(provider, walletName);
+        });
+      })
+      .then(function () {
+        // 关闭可能仍打开的 QR 码模态框
+        try {
+          if (window.EthereumProvider && typeof window.EthereumProvider.closeModal === 'function') {
+            window.EthereumProvider.closeModal();
+          }
+        } catch (_e) { /* ignore */ }
+        navigateTo('home');
+      })
+      .catch(function (err) {
+        console.warn(walletName + ' WalletConnect 登录失败', err);
+        // 用户取消配对时不跳转下载页，仅提示
+        var msg = err && err.message ? err.message : String(err);
+        if (msg.indexOf('reject') !== -1 || msg.indexOf('cancel') !== -1 || msg.indexOf('User') !== -1) {
+          alert((typeof window.t === 'function' ? window.t('walletConnectFail') : '钱包登录失败：') + msg);
+          return;
         }
-      }
-    };
-    document.addEventListener('visibilitychange', onVisible);
-
-    window.addEventListener('pagehide', function () {
-      clearTimeout(timer);
-      document.removeEventListener('visibilitychange', onVisible);
-    }, { once: true });
-
-    setTimeout(function () {
-      if (iframe && iframe.parentNode) {
-        iframe.parentNode.removeChild(iframe);
-      }
-    }, 2000);
+        // 库未加载或 projectId 未配置 → 回退到推广下载链接
+        if (msg.indexOf('WalletConnect') !== -1) {
+          alert((typeof window.t === 'function' ? window.t('walletServiceUnavailable') :
+            '钱包连接服务暂不可用，请刷新页面重试') + '\n' + msg);
+          redirectToWalletDownload(walletType);
+          return;
+        }
+        alert((typeof window.t === 'function' ? window.t('walletConnectFail') : '钱包登录失败：') + msg);
+      });
   }
 
   // 读取 pending 状态（含过期检查）
@@ -884,15 +882,17 @@
     return pending;
   }
 
-  // 检测钱包 App 环境：若 Provider 可用且有 pending 标记，自动连接钱包
+  // 检测 OKX App 环境：若 Provider 可用且有 pending 标记，自动连接钱包
   // 此函数在 initMobileShell 和 handleRouteChange 中调用
+  // 仅适用于 OKX（Universal Link 在 App 内置浏览器加载网站的场景）
+  // Bitget / MetaMask 使用 WalletConnect，无需此回调检测
   function checkWalletCallback() {
     var pending = getWalletPending();
     if (!pending || !pending.walletType) return;
 
     var walletType = pending.walletType;
 
-    // 仅处理有 Deep Link 功能的钱包（okx / bitget）
+    // 仅处理有 Deep Link 功能的钱包（okx）
     if (!WALLET_DEEPLINK_CONFIG[walletType]) return;
 
     var provider = getWalletProvider(walletType);
@@ -917,11 +917,11 @@
   function handleWalletLogin(walletType) {
     var walletName = WALLET_NAMES[walletType] || walletType;
 
-    // OKX / Bitget: Deep Link 流程
+    // OKX: Deep Link 流程（Universal Link 跳转到 OKX App）
     if (WALLET_DEEPLINK_CONFIG[walletType]) {
       var provider = getWalletProvider(walletType);
       if (provider) {
-        // 已在钱包 App 内置浏览器中，直接走 Provider 流程
+        // 已在 OKX App 内置浏览器中，直接走 Provider 流程
         connectWalletProvider(provider, walletName)
           .then(function () { navigateTo('home'); })
           .catch(function (err) {
@@ -930,15 +930,28 @@
               (err && err.message ? err.message : String(err)));
           });
       } else {
-        // 普通浏览器中，通过 Deep Link 跳转到钱包 App
+        // 普通浏览器中，通过 Deep Link 跳转到 OKX App
         tryWalletDeeplink(walletType);
       }
       return;
     }
 
-    // MetaMask: Provider + URL Scheme + 下载链接
-    if (walletType === 'metamask') {
-      tryMetaMaskLogin();
+    // Bitget / MetaMask: WalletConnect 协议
+    if (WALLETCONNECT_WALLETS.indexOf(walletType) !== -1) {
+      // 优先检测注入的 Provider（用户已在钱包 App 内置浏览器中）
+      var wcProvider = getWalletProvider(walletType);
+      if (wcProvider) {
+        connectWalletProvider(wcProvider, walletName)
+          .then(function () { navigateTo('home'); })
+          .catch(function (err) {
+            console.warn(walletName + ' 登录失败', err);
+            alert((typeof window.t === 'function' ? window.t('walletConnectFail') : '钱包登录失败：') +
+              (err && err.message ? err.message : String(err)));
+          });
+        return;
+      }
+      // 普通浏览器中，使用 WalletConnect 协议配对
+      tryWalletConnectLogin(walletType);
       return;
     }
 
