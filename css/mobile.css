@@ -299,20 +299,19 @@ body.mobile-app.sub-page .mobile-tab-bar {
 .mobile-login-inner { width: 100%; max-width: 320px; text-align: center; }
 
 .mobile-login-logo {
-  width: auto;
-  height: 40px;
+  width: 200px;
+  height: 200px;
   margin: 0 auto 16px;
-  border-radius: 10px;
+  border-radius: 44px;
   overflow: hidden;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: var(--m-shadow-lg);
-  vertical-align: middle;
 }
 
 .mobile-login-logo img {
-  width: auto;
+  width: 100%;
   height: 100%;
   object-fit: contain;
   display: block;
