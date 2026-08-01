@@ -1336,4 +1336,15 @@
   } else {
     initMobileShell();
   }
+
+  // 暴露 WalletConnect「仅连接取址」能力给 app.js（用于个人中心绑定钱包，不签名、不登录）
+  window.coinrealmRequestWalletAddressViaWalletConnect = function () {
+    return getWalletConnectProvider().then(function (provider) {
+      // enable() 弹出 QR 码模态框，用户扫码配对后返回 accounts，等价于 eth_requestAccounts
+      return provider.enable();
+    }).then(function (accounts) {
+      if (!accounts || !accounts[0]) throw new Error('未返回账户地址');
+      return String(accounts[0]).toLowerCase();
+    });
+  };
 })();
