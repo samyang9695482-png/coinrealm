@@ -1005,6 +1005,25 @@ function twT(key) {
     return dict[key] || key;
 }
 
+// 绑定功能专用的 userId 解析（与 save 函数保持一致，避免 getCurrentUserId / getAuthenticatedUserId 不一致）
+async function resolveBindUserId() {
+    var userId = await getAuthenticatedUserId();
+    if (userId) return userId;
+    return await getCurrentUserId();
+}
+
+// 绑定成功后刷新完整用户信息（强制从 DB 重新加载，确保前端与数据库一致）
+async function reloadProfileAfterBind() {
+    try {
+        await loadCurrentUserProfileCache();
+    } catch (e) {
+        console.warn('绑定后刷新用户信息失败:', e);
+    }
+    if (typeof window.coinrealmRefreshAuthArea === 'function') {
+        window.coinrealmRefreshAuthArea();
+    }
+}
+
 function normalizeTwitterUsername(value) {
     var text = String(value || '').trim();
     if (!text) return '';
@@ -1097,18 +1116,16 @@ function updateTwitterBindStatusUi(username) {
 }
 
 async function refreshTwitterBindStatusUi() {
-    var userId = await getCurrentUserId();
+    var userId = await resolveBindUserId();
     if (!userId) {
         updateTwitterBindStatusUi('');
         return;
     }
 
-    var cached = coinrealmCurrentUserProfile && coinrealmCurrentUserProfile.twitter_username
-        ? normalizeTwitterUsername(coinrealmCurrentUserProfile.twitter_username)
-        : '';
-    var username = cached || await fetchUserTwitterUsername(userId);
+    // 强制从 DB 查询最新状态，避免缓存导致显示"未绑定"
+    var username = await fetchUserTwitterUsername(userId);
 
-    if (coinrealmCurrentUserProfile && username) {
+    if (coinrealmCurrentUserProfile) {
         coinrealmCurrentUserProfile.twitter_username = username;
     }
 
@@ -1135,10 +1152,8 @@ async function saveUserTwitterUsername(username) {
         coinrealmCurrentUserProfile.twitter_username = username;
     }
 
+    await reloadProfileAfterBind();
     await refreshTwitterBindStatusUi();
-    if (typeof window.coinrealmRefreshAuthArea === 'function') {
-        window.coinrealmRefreshAuthArea();
-    }
 
     return { success: true, username: username };
 }
@@ -1394,18 +1409,16 @@ function updateTelegramBindStatusUi(username) {
 }
 
 async function refreshTelegramBindStatusUi() {
-    var userId = await getCurrentUserId();
+    var userId = await resolveBindUserId();
     if (!userId) {
         updateTelegramBindStatusUi('');
         return;
     }
 
-    var cached = coinrealmCurrentUserProfile && coinrealmCurrentUserProfile.telegram_username
-        ? normalizeTelegramUsername(coinrealmCurrentUserProfile.telegram_username)
-        : '';
-    var username = cached || await fetchUserTelegramUsername(userId);
+    // 强制从 DB 查询最新状态，避免缓存导致显示"未绑定"
+    var username = await fetchUserTelegramUsername(userId);
 
-    if (coinrealmCurrentUserProfile && username) {
+    if (coinrealmCurrentUserProfile) {
         coinrealmCurrentUserProfile.telegram_username = username;
     }
 
@@ -1432,6 +1445,7 @@ async function saveUserTelegramUsername(username) {
         coinrealmCurrentUserProfile.telegram_username = username;
     }
 
+    await reloadProfileAfterBind();
     await refreshTelegramBindStatusUi();
     return { success: true, username: username };
 }
@@ -1712,19 +1726,14 @@ function updateDiscordBindStatusUi(account) {
 }
 
 async function refreshDiscordBindStatusUi() {
-    var userId = await getCurrentUserId();
+    var userId = await resolveBindUserId();
     if (!userId) {
         updateDiscordBindStatusUi(null);
         return;
     }
 
-    var cached = coinrealmCurrentUserProfile && coinrealmCurrentUserProfile.discord_user_id
-        ? {
-            userId: String(coinrealmCurrentUserProfile.discord_user_id),
-            username: normalizeDiscordUsername(coinrealmCurrentUserProfile.discord_username || '')
-        }
-        : null;
-    var account = cached && cached.userId ? cached : await fetchUserDiscordAccount(userId);
+    // 强制从 DB 查询最新状态，避免缓存导致显示"未绑定"
+    var account = await fetchUserDiscordAccount(userId);
 
     if (coinrealmCurrentUserProfile && account.userId) {
         coinrealmCurrentUserProfile.discord_user_id = account.userId;
@@ -1884,8 +1893,85 @@ async function startDiscordOAuthFlow(options) {
     if (taskId) {
         sessionStorage.setItem(DISCORD_OAUTH_RESUME_TASK, String(taskId));
     }
+
+    // 优先使用弹窗打开授权页（500x600），被拦截时回退到整页跳转
+    var popup = openDiscordOAuthPopup(authorizeUrl);
+    if (popup) {
+        console.log('[discord-oauth] 已打开弹窗进行授权');
+        return { success: true, popup: true };
+    }
+
+    console.log('[discord-oauth] 弹窗被拦截，回退到整页跳转');
     window.location.href = authorizeUrl;
     return { success: true, redirecting: true };
+}
+
+// 打开 Discord OAuth 弹窗（500x600 居中）
+function openDiscordOAuthPopup(url) {
+    var width = 500;
+    var height = 600;
+    var screenLeft = window.screenLeft || window.screenX || 0;
+    var screenTop = window.screenTop || window.screenY || 0;
+    var outerWidth = window.outerWidth || document.documentElement.clientWidth || width;
+    var outerHeight = window.outerHeight || document.documentElement.clientHeight || height;
+    var left = screenLeft + Math.max(0, Math.round((outerWidth - width) / 2));
+    var top = screenTop + Math.max(0, Math.round((outerHeight - height) / 2));
+    var features = 'width=' + width + ',height=' + height + ',left=' + left + ',top=' + top +
+        ',resizable=yes,scrollbars=yes,status=yes';
+
+    var popup = window.open(url, 'coinrealm_discord_oauth', features);
+    if (popup) {
+        popup.focus();
+    }
+    return popup;
+}
+
+// 弹窗中处理完毕后通知父窗口并关闭弹窗
+function notifyParentAndClosePopup(payload) {
+    if (!window.opener || window.opener.closed) return;
+    try {
+        window.opener.postMessage(Object.assign({ type: 'coinrealm-discord-oauth-complete' }, payload || {}),
+            window.location.origin);
+    } catch (_msgErr) {
+        console.warn('[discord-oauth] postMessage to opener failed:', _msgErr);
+    }
+    setTimeout(function () { window.close(); }, 100);
+}
+
+// 父窗口监听弹窗 OAuth 完成消息
+var discordOAuthPopupListenerBound = false;
+function bindDiscordOAuthPopupListener() {
+    if (discordOAuthPopupListenerBound) return;
+    discordOAuthPopupListenerBound = true;
+
+    window.addEventListener('message', function (event) {
+        if (!event.data || event.data.type !== 'coinrealm-discord-oauth-complete') return;
+        // 仅接受同源消息
+        if (event.origin !== window.location.origin) return;
+
+        console.log('[discord-oauth] 收到弹窗授权完成消息:', event.data);
+
+        if (event.data.success) {
+            // 授权成功：刷新绑定状态和个人中心
+            if (event.data.discord_user_id && coinrealmCurrentUserProfile) {
+                coinrealmCurrentUserProfile.discord_user_id = event.data.discord_user_id;
+                coinrealmCurrentUserProfile.discord_username = event.data.discord_username || '';
+            }
+            reloadProfileAfterBind().then(function () {
+                refreshDiscordBindStatusUi();
+            });
+
+            // 如果不是从任务详情页发起的，显示成功提示
+            var resumeTaskId = sessionStorage.getItem(DISCORD_OAUTH_RESUME_TASK);
+            if (!resumeTaskId) {
+                alert(dcT('dc_bind_oauth_success') +
+                    (event.data.discord_username ? '（' + event.data.discord_username + '）' : ''));
+            }
+        } else {
+            // 授权失败：仅刷新状态，不额外提示（弹窗内已 alert）
+            refreshDiscordBindStatusUi();
+        }
+    });
 }
 
 async function callDiscordOAuthWorker(payload) {
@@ -1968,7 +2054,10 @@ async function handleDiscordOAuthReturn() {
             targetHash: resolveDiscordOAuthReturnHash(params, sessionStorage.getItem(DISCORD_OAUTH_SESSION_RETURN)),
             resumeTaskId: sessionStorage.getItem(DISCORD_OAUTH_RESUME_TASK)
         });
-        alert(dcT('dc_bind_oauth_cancelled'));
+        notifyParentAndClosePopup({ success: false, error: oauthError });
+        if (!(window.opener && !window.opener.closed)) {
+            alert(dcT('dc_bind_oauth_cancelled'));
+        }
         return true;
     }
 
@@ -1983,7 +2072,10 @@ async function handleDiscordOAuthReturn() {
             targetHash: resolveDiscordOAuthReturnHash(params, sessionStorage.getItem(DISCORD_OAUTH_SESSION_RETURN)),
             resumeTaskId: sessionStorage.getItem(DISCORD_OAUTH_RESUME_TASK)
         });
-        alert(dcT('dc_bind_oauth_cancelled'));
+        notifyParentAndClosePopup({ success: false, error: 'empty_code' });
+        if (!(window.opener && !window.opener.closed)) {
+            alert(dcT('dc_bind_oauth_cancelled'));
+        }
         return true;
     }
 
@@ -2036,10 +2128,14 @@ async function handleDiscordOAuthReturn() {
         sessionStorage.removeItem(DISCORD_OAUTH_RESUME_SUBTASK);
         sessionStorage.removeItem(DISCORD_OAUTH_RESUME_TASK);
         var failReason = (workerResult && (workerResult.reason || workerResult.error)) || '';
-        if (String(failReason).indexOf('缺少 code') !== -1) {
-            alert(dcT('dc_bind_oauth_cancelled'));
-        } else {
-            alert(dcT('dc_bind_oauth_fail') + failReason);
+        var inPopup = !!(window.opener && !window.opener.closed);
+        notifyParentAndClosePopup({ success: false, error: failReason });
+        if (!inPopup) {
+            if (String(failReason).indexOf('缺少 code') !== -1) {
+                alert(dcT('dc_bind_oauth_cancelled'));
+            } else {
+                alert(dcT('dc_bind_oauth_fail') + failReason);
+            }
         }
         return true;
     }
@@ -2051,12 +2147,21 @@ async function handleDiscordOAuthReturn() {
         coinrealmCurrentUserProfile.discord_username = workerResult.discord_username || '';
     }
 
+    await reloadProfileAfterBind();
     await refreshDiscordBindStatusUi();
 
     var resumeTaskIdAfterBind = sessionStorage.getItem(DISCORD_OAUTH_RESUME_TASK);
-    if (!resumeTaskIdAfterBind) {
+    var inPopupSuccess = !!(window.opener && !window.opener.closed);
+    if (!resumeTaskIdAfterBind && !inPopupSuccess) {
         alert(dcT('dc_bind_oauth_success') + (workerResult.discord_username ? '（' + workerResult.discord_username + '）' : ''));
     }
+
+    // 如果在弹窗中运行，通知父窗口并关闭弹窗
+    notifyParentAndClosePopup({
+        success: true,
+        discord_user_id: workerResult.discord_user_id || '',
+        discord_username: workerResult.discord_username || ''
+    });
 
     discordBindOnSuccessCallback = null;
     return true;
@@ -2072,6 +2177,9 @@ async function handleDiscordOAuthReturn() {
 function initDiscordBindModal() {
     if (discordBindInitialized) return;
     discordBindInitialized = true;
+
+    // 绑定弹窗 OAuth 完成消息监听（父窗口侧）
+    bindDiscordOAuthPopupListener();
 
     document.addEventListener('click', function (e) {
         if (e.target.closest('#pf-discord-bind-item')) {
@@ -5188,6 +5296,19 @@ window.addEventListener('hashchange', function () {
       pf_wallet_bound: '已绑定',
       pf_wallet_bind_fail: '绑定钱包失败：',
       pf_wallet_metamask_missing: '请安装 MetaMask 浏览器插件',
+      pf_wallet_bind_title: '绑定钱包地址',
+      pf_wallet_connect_btn: '🔗 连接钱包',
+      pf_wallet_connect_hint: '手机版弹出扫码，桌面版弹出钱包插件',
+      pf_wallet_manual_btn: '✏️ 手动输入钱包地址',
+      pf_wallet_manual_placeholder: '粘贴钱包地址 0x...',
+      pf_wallet_confirm_bind: '确认绑定',
+      pf_wallet_change_btn: '更换',
+      pf_wallet_unbind_btn: '解绑',
+      pf_wallet_unbind_confirm: '确定要解绑当前钱包地址吗？',
+      pf_wallet_err_format: '钱包地址格式无效，需为 0x 开头加 40 位十六进制字符',
+      pf_wallet_connecting: '连接中...',
+      pf_wallet_no_provider: '未检测到钱包插件，请改用「手动输入」或安装 MetaMask / OKX Wallet',
+      pf_wallet_cancel: '取消',
       pf_deposit_bind_required: '请先绑定你的 Polygon 钱包地址，充币需要从你的钱包地址转账。',
       pf_deposit_go_bind: '去绑定'
     },
@@ -5281,6 +5402,19 @@ window.addEventListener('hashchange', function () {
       pf_wallet_bound: 'Linked',
       pf_wallet_bind_fail: 'Failed to link wallet: ',
       pf_wallet_metamask_missing: 'Please install the MetaMask browser extension',
+      pf_wallet_bind_title: 'Link wallet address',
+      pf_wallet_connect_btn: '🔗 Connect wallet',
+      pf_wallet_connect_hint: 'Mobile: scan QR code; Desktop: wallet plugin popup',
+      pf_wallet_manual_btn: '✏️ Enter wallet address manually',
+      pf_wallet_manual_placeholder: 'Paste wallet address 0x...',
+      pf_wallet_confirm_bind: 'Confirm',
+      pf_wallet_change_btn: 'Change',
+      pf_wallet_unbind_btn: 'Unlink',
+      pf_wallet_unbind_confirm: 'Unlink your wallet address?',
+      pf_wallet_err_format: 'Invalid address (must start with 0x followed by 40 hex characters)',
+      pf_wallet_connecting: 'Connecting...',
+      pf_wallet_no_provider: 'No wallet plugin detected. Please use manual entry or install MetaMask / OKX Wallet.',
+      pf_wallet_cancel: 'Cancel',
       pf_deposit_bind_required: 'Please link your Polygon wallet first. Deposits must come from your linked address.',
       pf_deposit_go_bind: 'Link wallet'
     }
@@ -6153,11 +6287,7 @@ window.addEventListener('hashchange', function () {
       if (e.target.closest('#withdraw-wallet-bind-btn')) {
         e.preventDefault();
         hideWithdrawModal();
-        if (typeof bindProfileWalletAddress === 'function') {
-          bindProfileWalletAddress().then(function () {
-            openWithdrawModal();
-          });
-        }
+        openWalletBindModal(openWithdrawModal);
       }
     });
   }
@@ -6181,7 +6311,9 @@ window.addEventListener('hashchange', function () {
       '<span id="pf-wallet-label" class="profile-wallet-label" style="color:#999;" data-i18n="pf_wallet_label">钱包地址</span>' +
       '<span id="pf-wallet-value" class="profile-wallet-value"></span>' +
       '<button type="button" id="pf-wallet-bind-btn" class="profile-deposit-btn profile-wallet-bind-btn hidden" style="padding:4px 12px;font-size:12px;" data-i18n="pf_wallet_bind_btn">去绑定</button>' +
-      '<span id="pf-wallet-bound-tag" class="profile-menu-status profile-menu-status-bound hidden" data-i18n="pf_wallet_bound">已绑定</span>';
+      '<span id="pf-wallet-bound-tag" class="profile-menu-status profile-menu-status-bound hidden" data-i18n="pf_wallet_bound">已绑定</span>' +
+      '<button type="button" id="pf-wallet-change-btn" class="profile-deposit-btn profile-wallet-action-btn hidden" style="padding:4px 12px;font-size:12px;" data-i18n="pf_wallet_change_btn">更换</button>' +
+      '<button type="button" id="pf-wallet-unbind-btn" class="profile-deposit-btn profile-wallet-action-btn hidden" style="padding:4px 12px;font-size:12px;" data-i18n="pf_wallet_unbind_btn">解绑</button>';
 
     var usdtEl = document.getElementById('pf-usdt-value');
     if (usdtEl && usdtEl.parentNode === assetLeft) {
@@ -6201,6 +6333,8 @@ window.addEventListener('hashchange', function () {
     var valueEl = document.getElementById('pf-wallet-value');
     var bindBtn = document.getElementById('pf-wallet-bind-btn');
     var boundTag = document.getElementById('pf-wallet-bound-tag');
+    var changeBtn = document.getElementById('pf-wallet-change-btn');
+    var unbindBtn = document.getElementById('pf-wallet-unbind-btn');
     var labelEl = document.getElementById('pf-wallet-label');
     var address = user ? String(user.wallet_address || '').trim() : '';
     var isBound = isValidWithdrawWalletAddress(address);
@@ -6213,9 +6347,16 @@ window.addEventListener('hashchange', function () {
         valueEl.style.color = '#e8e8e8';
       }
       if (bindBtn) bindBtn.classList.add('hidden');
-      if (boundTag) {
-        boundTag.textContent = pfT('pf_wallet_bound');
-        boundTag.classList.remove('hidden');
+      if (boundTag) boundTag.classList.add('hidden');
+      if (changeBtn) {
+        changeBtn.textContent = pfT('pf_wallet_change_btn');
+        changeBtn.classList.remove('hidden');
+        changeBtn.disabled = false;
+      }
+      if (unbindBtn) {
+        unbindBtn.textContent = pfT('pf_wallet_unbind_btn');
+        unbindBtn.classList.remove('hidden');
+        unbindBtn.disabled = false;
       }
     } else {
       if (valueEl) {
@@ -6228,61 +6369,198 @@ window.addEventListener('hashchange', function () {
         bindBtn.disabled = false;
       }
       if (boundTag) boundTag.classList.add('hidden');
+      if (changeBtn) changeBtn.classList.add('hidden');
+      if (unbindBtn) unbindBtn.classList.add('hidden');
     }
   }
 
-  async function bindProfileWalletAddress() {
-    if (walletBindSubmitting) return;
+  var walletBindOnBoundCallback = null;
 
-    if (!window.ethereum) {
-      alert(pfT('pf_wallet_metamask_missing'));
-      return;
+  function applyWalletBindModalI18n() {
+    var map = {
+      'wallet-bind-title': 'pf_wallet_bind_title',
+      'wallet-bind-connect-btn': 'pf_wallet_connect_btn',
+      'wallet-bind-connect-hint': 'pf_wallet_connect_hint',
+      'wallet-bind-manual-btn': 'pf_wallet_manual_btn',
+      'wallet-bind-confirm-btn': 'pf_wallet_confirm_bind',
+      'wallet-bind-cancel-btn': 'pf_wallet_cancel'
+    };
+    Object.keys(map).forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.textContent = pfT(map[id]);
+    });
+    var input = document.getElementById('wallet-bind-input');
+    if (input) input.setAttribute('placeholder', pfT('pf_wallet_manual_placeholder'));
+  }
+
+  function openWalletBindModal(onBoundCb) {
+    var modal = document.getElementById('wallet-bind-modal');
+    if (!modal) return;
+    var manualWrap = document.getElementById('wallet-bind-manual-wrap');
+    var input = document.getElementById('wallet-bind-input');
+    var errorEl = document.getElementById('wallet-bind-error');
+    var connectBtn = document.getElementById('wallet-bind-connect-btn');
+    if (manualWrap) manualWrap.classList.add('hidden');
+    if (input) input.value = '';
+    if (errorEl) { errorEl.textContent = ''; errorEl.classList.add('hidden'); }
+    if (connectBtn) { connectBtn.disabled = false; connectBtn.textContent = pfT('pf_wallet_connect_btn'); }
+    walletBindOnBoundCallback = typeof onBoundCb === 'function' ? onBoundCb : null;
+    applyWalletBindModalI18n();
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+  }
+
+  function hideWalletBindModal() {
+    var modal = document.getElementById('wallet-bind-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+
+  function showWalletBindError(msg) {
+    var errorEl = document.getElementById('wallet-bind-error');
+    var manualWrap = document.getElementById('wallet-bind-manual-wrap');
+    var inlineVisible = errorEl && manualWrap && !manualWrap.classList.contains('hidden');
+    if (inlineVisible) {
+      errorEl.textContent = msg;
+      errorEl.classList.remove('hidden');
+    } else {
+      alert(msg);
     }
+  }
 
+  function toggleWalletManualInput() {
+    var wrap = document.getElementById('wallet-bind-manual-wrap');
+    if (!wrap) return;
+    wrap.classList.toggle('hidden');
+    var errorEl = document.getElementById('wallet-bind-error');
+    if (errorEl) { errorEl.textContent = ''; errorEl.classList.add('hidden'); }
+  }
+
+  // 连接钱包获取地址（仅 eth_requestAccounts，不签名、不登录）
+  function requestWalletAddressForBind() {
+    // 手机版：WalletConnect 扫码
+    if (document.body.classList.contains('mobile-app') && typeof window.coinrealmRequestWalletAddressViaWalletConnect === 'function') {
+      return window.coinrealmRequestWalletAddressViaWalletConnect();
+    }
+    // 桌面版：注入钱包插件（MetaMask / OKX 等）
+    var provider = window.ethereum || window.okxwallet;
+    if (!provider || typeof provider.request !== 'function') {
+      return Promise.reject(new Error(pfT('pf_wallet_no_provider')));
+    }
+    return provider.request({ method: 'eth_requestAccounts' }).then(function (accounts) {
+      var addr = accounts && accounts[0] ? String(accounts[0]).trim() : '';
+      if (!isValidWithdrawWalletAddress(addr)) throw new Error(pfT('pf_wallet_err_format'));
+      return addr.toLowerCase();
+    });
+  }
+
+  async function saveProfileWalletAddress(address) {
+    if (walletBindSubmitting) return false;
+    address = String(address || '').trim().toLowerCase();
+    if (!isValidWithdrawWalletAddress(address)) {
+      showWalletBindError(pfT('pf_wallet_err_format'));
+      return false;
+    }
     var userId = await getCurrentUserId();
     if (!userId) {
       alert(pfT('pf_withdraw_err_login'));
-      return;
+      return false;
     }
-
     walletBindSubmitting = true;
-    var bindBtn = document.getElementById('pf-wallet-bind-btn');
-    if (bindBtn) bindBtn.disabled = true;
-
     try {
-      var accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-      var address = accounts && accounts[0] ? String(accounts[0]).trim() : '';
-      if (!isValidWithdrawWalletAddress(address)) {
-        alert(pfT('pf_wallet_bind_fail') + '无效地址');
-        return;
-      }
-
-      address = address.toLowerCase();
-
       var result = await window.supabase
         .from('users')
         .update({ wallet_address: address })
         .eq('id', userId)
         .select()
         .single();
-
       if (result.error) {
-        alert(pfT('pf_wallet_bind_fail') + (result.error.message || ''));
-        return;
+        showWalletBindError(pfT('pf_wallet_bind_fail') + (result.error.message || ''));
+        return false;
       }
-
       coinrealmCurrentUserProfile = result.data || Object.assign({}, coinrealmCurrentUserProfile || {}, {
         wallet_address: address
       });
       renderProfileWalletRow(coinrealmCurrentUserProfile);
-    } catch (bindErr) {
-      console.error('绑定钱包失败:', bindErr);
-      if (!bindErr || bindErr.code !== 4001) {
-        alert(pfT('pf_wallet_bind_fail') + (bindErr && bindErr.message ? bindErr.message : String(bindErr)));
+      hideWalletBindModal();
+      var cb = walletBindOnBoundCallback;
+      walletBindOnBoundCallback = null;
+      if (typeof cb === 'function') {
+        try { cb(); } catch (e) { console.warn('钱包绑定回调执行失败', e); }
       }
+      return true;
+    } catch (err) {
+      console.error('保存钱包地址失败:', err);
+      showWalletBindError(pfT('pf_wallet_bind_fail') + (err && err.message ? err.message : String(err)));
+      return false;
     } finally {
       walletBindSubmitting = false;
-      if (bindBtn) bindBtn.disabled = false;
+    }
+  }
+
+  // 触发“连接钱包”绑定流程
+  async function handleWalletConnectBind() {
+    if (walletBindSubmitting) return;
+    var connectBtn = document.getElementById('wallet-bind-connect-btn');
+    if (connectBtn) { connectBtn.disabled = true; connectBtn.textContent = pfT('pf_wallet_connecting'); }
+    // 手机版 WC 扫码会渲染在 DOM 中，先关闭自身弹窗避免遮挡；桌面版靠插件弹窗，无需关闭
+    var isMobileWc = document.body.classList.contains('mobile-app') && typeof window.coinrealmRequestWalletAddressViaWalletConnect === 'function';
+    if (isMobileWc) hideWalletBindModal();
+    try {
+      var address = await requestWalletAddressForBind();
+      var ok = await saveProfileWalletAddress(address);
+      if (!ok && isMobileWc) openWalletBindModal(walletBindOnBoundCallback);
+    } catch (err) {
+      console.warn('连接钱包失败:', err);
+      if (!err || err.code !== 4001) {
+        alert(pfT('pf_wallet_bind_fail') + (err && err.message ? err.message : String(err)));
+      }
+      if (isMobileWc) openWalletBindModal(walletBindOnBoundCallback);
+    } finally {
+      if (connectBtn) { connectBtn.disabled = false; connectBtn.textContent = pfT('pf_wallet_connect_btn'); }
+    }
+  }
+
+  async function handleWalletManualConfirm() {
+    if (walletBindSubmitting) return;
+    var input = document.getElementById('wallet-bind-input');
+    var errorEl = document.getElementById('wallet-bind-error');
+    if (errorEl) { errorEl.textContent = ''; errorEl.classList.add('hidden'); }
+    var address = input ? String(input.value || '').trim() : '';
+    await saveProfileWalletAddress(address);
+  }
+
+  async function unbindProfileWallet() {
+    if (walletBindSubmitting) return;
+    if (!confirm(pfT('pf_wallet_unbind_confirm'))) return;
+    var userId = await getCurrentUserId();
+    if (!userId) {
+      alert(pfT('pf_withdraw_err_login'));
+      return;
+    }
+    walletBindSubmitting = true;
+    var unbindBtn = document.getElementById('pf-wallet-unbind-btn');
+    if (unbindBtn) unbindBtn.disabled = true;
+    try {
+      var result = await window.supabase
+        .from('users')
+        .update({ wallet_address: null })
+        .eq('id', userId)
+        .select()
+        .single();
+      if (result.error) {
+        alert(pfT('pf_wallet_bind_fail') + (result.error.message || ''));
+        return;
+      }
+      coinrealmCurrentUserProfile = result.data || Object.assign({}, coinrealmCurrentUserProfile || {}, { wallet_address: null });
+      renderProfileWalletRow(coinrealmCurrentUserProfile);
+    } catch (err) {
+      console.error('解绑钱包失败:', err);
+      alert(pfT('pf_wallet_bind_fail') + (err && err.message ? err.message : String(err)));
+    } finally {
+      walletBindSubmitting = false;
+      if (unbindBtn) unbindBtn.disabled = false;
     }
   }
 
@@ -6517,9 +6795,34 @@ window.addEventListener('hashchange', function () {
         openDepositModal();
         return;
       }
-      if (e.target.closest('#pf-wallet-bind-btn')) {
+      if (e.target.closest('#pf-wallet-bind-btn') || e.target.closest('#pf-wallet-change-btn')) {
         e.preventDefault();
-        bindProfileWalletAddress();
+        openWalletBindModal();
+        return;
+      }
+      if (e.target.closest('#pf-wallet-unbind-btn')) {
+        e.preventDefault();
+        unbindProfileWallet();
+        return;
+      }
+      if (e.target.closest('#wallet-bind-connect-btn')) {
+        e.preventDefault();
+        handleWalletConnectBind();
+        return;
+      }
+      if (e.target.closest('#wallet-bind-manual-btn')) {
+        e.preventDefault();
+        toggleWalletManualInput();
+        return;
+      }
+      if (e.target.closest('#wallet-bind-confirm-btn')) {
+        e.preventDefault();
+        handleWalletManualConfirm();
+        return;
+      }
+      if (e.target.closest('#wallet-bind-cancel-btn') || e.target.closest('#wallet-bind-modal .td-twitter-modal-overlay')) {
+        e.preventDefault();
+        hideWalletBindModal();
         return;
       }
       if (e.target.closest('#deposit-go-bind-btn')) {

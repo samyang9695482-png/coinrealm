@@ -39,7 +39,7 @@
   <title>CoinRealm</title>
   <link rel="manifest" href="/manifest.json">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <link rel="stylesheet" href="style.css?v=20260806">
+  <link rel="stylesheet" href="style.css?v=20260802">
   <style>
     .auth-area {
       display: flex;
@@ -1849,6 +1849,24 @@
         </div>
       </div>
     </div>
+
+    <div id="wallet-bind-modal" class="td-twitter-modal hidden" aria-hidden="true">
+      <div class="td-twitter-modal-overlay" id="wallet-bind-overlay"></div>
+      <div class="td-twitter-modal-panel wallet-bind-panel">
+        <h3 id="wallet-bind-title" class="td-twitter-modal-title" data-i18n="pf_wallet_bind_title">绑定钱包地址</h3>
+        <button type="button" id="wallet-bind-connect-btn" class="td-twitter-modal-btn td-twitter-modal-primary wallet-bind-connect-btn" data-i18n="pf_wallet_connect_btn">🔗 连接钱包</button>
+        <p id="wallet-bind-connect-hint" class="wallet-bind-hint" data-i18n="pf_wallet_connect_hint">手机版弹出扫码，桌面版弹出钱包插件</p>
+        <button type="button" id="wallet-bind-manual-btn" class="wallet-bind-manual-btn" data-i18n="pf_wallet_manual_btn">✏️ 手动输入钱包地址</button>
+        <div id="wallet-bind-manual-wrap" class="wallet-bind-manual-wrap hidden">
+          <input type="text" id="wallet-bind-input" class="td-twitter-token-input" placeholder="0x..." autocomplete="off" spellcheck="false">
+          <p id="wallet-bind-error" class="td-twitter-modal-error hidden"></p>
+          <button type="button" id="wallet-bind-confirm-btn" class="td-twitter-modal-btn td-twitter-modal-primary wallet-bind-confirm-btn" data-i18n="pf_wallet_confirm_bind">确认绑定</button>
+        </div>
+        <div class="td-twitter-modal-actions">
+          <button type="button" id="wallet-bind-cancel-btn" class="td-twitter-modal-btn td-twitter-modal-cancel" data-i18n="pf_wallet_cancel">取消</button>
+        </div>
+      </div>
+    </div>
   </main>
 
   <!-- 装饰性半透明圆形背景元素 -->
@@ -1893,6 +1911,6 @@
   <script src="js/pages/review.js?v=20260725"></script>
   <script src="js/pages/profile.js?v=20260717"></script>
   <script src="js/pages/my-tasks.js?v=20260717"></script>
-  <script src="app.js?v=20260726"></script>
+  <script src="app.js?v=20260802"></script>
 </body>
 </html>

@@ -2213,6 +2213,72 @@ img {
     font-weight: 600;
 }
 
+/* 个人中心 — 绑定钱包地址弹窗 */
+.wallet-bind-panel {
+    text-align: center;
+}
+
+.wallet-bind-connect-btn {
+    display: block;
+    width: 100%;
+    min-height: 48px;
+    margin: 16px 0 8px;
+    font-size: 15px;
+}
+
+.wallet-bind-hint {
+    margin: 0 0 16px;
+    font-size: 12px;
+    color: #999;
+    line-height: 1.5;
+}
+
+.wallet-bind-manual-btn {
+    display: inline-block;
+    background: transparent;
+    border: none;
+    color: #999;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 6px 4px;
+    text-decoration: underline;
+}
+
+.wallet-bind-manual-btn:hover {
+    color: #666;
+}
+
+.wallet-bind-manual-wrap {
+    margin-top: 14px;
+    text-align: left;
+}
+
+.wallet-bind-manual-wrap .td-twitter-token-input {
+    margin-bottom: 10px;
+}
+
+.wallet-bind-confirm-btn {
+    display: block;
+    width: 100%;
+    min-height: 42px;
+    font-size: 14px;
+}
+
+.wallet-bind-panel .td-twitter-modal-actions {
+    margin-top: 18px;
+}
+
+/* 个人中心钱包行操作按钮（更换/解绑） */
+.profile-wallet-action-btn {
+    background: #f5f5f5;
+    color: #333;
+}
+
+#pf-wallet-bind-btn,
+#pf-wallet-change-btn {
+    margin-left: auto;
+}
+
 .td-btn-disabled {
     background-color: #f0f0f0;
     color: #999;
