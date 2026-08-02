@@ -21,6 +21,14 @@
    CREATE POLICY IF NOT EXISTS "invites_update_inviter" ON invites
      FOR UPDATE TO authenticated USING (inviter_id = auth.uid()) WITH CHECK (inviter_id = auth.uid());
 
+   -- 4.1 ★★ 必须配置：允许任何认证用户更新 invites 记录 ★★
+   -- 原因：管理员审核通过后调用 activateInviteRewards 时，当前登录用户是管理员
+   -- （非 invitee 也非 inviter），策略 3/4 都不允许管理员更新，导致 RLS 静默阻止
+   -- （不报错但 0 行受影响），is_activated 和 is_effective 无法写入。
+   -- 此策略放开 UPDATE 权限，确保发奖后状态标记能正确写入。
+   CREATE POLICY IF NOT EXISTS "invites_update_all" ON invites
+     FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+
    -- 5. 允许认证用户插入邀请记录
    CREATE POLICY IF NOT EXISTS "invites_insert_authenticated" ON invites
      FOR INSERT TO authenticated WITH CHECK (true);
@@ -591,15 +599,15 @@ async function activateInviteRewards(userId, options) {
       if (dupCheck.granted) {
         console.log('[ActivateInvite] ✅ 防重复命中 - deposit_records 已有记录，奖励已发放过，跳过 | is_activated=' + invite.is_activated);
         // 确保 is_activated 标记为 true（保持数据一致性，补救之前可能失败的标记）
-        if (!invite.is_activated) {
+        if (!invite.is_activated || !invite.is_effective) {
           try {
             await window.supabase
               .from('invites')
-              .update({ is_activated: true, is_effective: level === 1 ? true : invite.is_effective })
+              .update({ is_activated: true, is_effective: true })
               .eq('id', invite.id);
-            console.log('[ActivateInvite] ✅ 已将 is_activated 补救标记为 true');
+            console.log('[ActivateInvite] ✅ 已将 is_activated 和 is_effective 补救标记为 true');
           } catch (markErr) {
-            console.warn('[ActivateInvite] ⚠️ is_activated 补救标记失败:', markErr);
+            console.warn('[ActivateInvite] ⚠️ 补救标记失败:', markErr);
           }
         }
         skipCount++;
@@ -677,11 +685,8 @@ async function activateInviteRewards(userId, options) {
         console.warn('[ActivateInvite] ⚠️ 交易明细记录失败（余额已更新，但明细未记录，需人工核对）');
       }
 
-      // 标记 invites 记录：is_activated = true；一级奖励同时标记 is_effective = true
-      var invitePatch = { is_activated: true };
-      if (level === 1) {
-        invitePatch.is_effective = true;
-      }
+      // 标记 invites 记录：is_activated = true, is_effective = true（无论一级/二级，发奖成功即标记）
+      var invitePatch = { is_activated: true, is_effective: true };
 
       var updateInviteResult = await window.supabase
         .from('invites')
@@ -690,8 +695,22 @@ async function activateInviteRewards(userId, options) {
 
       if (updateInviteResult.error) {
         console.warn('[ActivateInvite] ⚠️ 邀请记录状态更新失败:', updateInviteResult.error);
+        console.warn('[ActivateInvite] 🚨 请检查 RLS 策略，可能需要：CREATE POLICY IF NOT EXISTS "invites_update_all" ON invites FOR UPDATE TO authenticated USING (true) WITH CHECK (true);');
       } else {
-        console.log('[ActivateInvite] ✅ invites 记录已标记 is_activated=true' + (level === 1 ? ', is_effective=true' : ''));
+        // ★ RLS 可能静默阻止更新（不报错但不生效），必须验证
+        var verifyResult = await window.supabase
+          .from('invites')
+          .select('is_activated, is_effective')
+          .eq('id', invite.id)
+          .maybeSingle();
+        if (verifyResult.error || !verifyResult.data) {
+          console.warn('[ActivateInvite] ⚠️ 验证查询失败:', verifyResult.error);
+        } else if (!verifyResult.data.is_activated || !verifyResult.data.is_effective) {
+          console.error('[ActivateInvite] 🚨 更新未生效！is_activated=' + verifyResult.data.is_activated + ' is_effective=' + verifyResult.data.is_effective + ' | RLS 策略可能阻止了更新');
+          console.error('[ActivateInvite] 🚨 请执行：CREATE POLICY IF NOT EXISTS "invites_update_all" ON invites FOR UPDATE TO authenticated USING (true) WITH CHECK (true);');
+        } else {
+          console.log('[ActivateInvite] ✅ invites 记录已标记 is_activated=true, is_effective=true（已验证）');
+        }
       }
 
       // 发送通知
@@ -899,8 +918,8 @@ async function grantLevel2Reward(params) {
 
     if (dupCheck.granted) {
       console.log('[Level2Reward] 跳过 - deposit_records 已有记录（奖励已发放过）');
-      // 确保 is_activated 标记为 true（保持数据一致性）
-      await window.supabase.from('invites').update({ is_activated: true }).eq('id', inviteId);
+      // 确保 is_activated 和 is_effective 标记为 true（保持数据一致性）
+      await window.supabase.from('invites').update({ is_activated: true, is_effective: true }).eq('id', inviteId);
       return false;
     }
 
@@ -950,16 +969,17 @@ async function grantLevel2Reward(params) {
       console.warn('[Level2Reward] ⚠️ 交易明细记录失败（余额已更新，需人工核对）');
     }
 
-    // 标记 is_activated = true
+    // 标记 is_activated = true, is_effective = true
     var updateInviteResult = await window.supabase
       .from('invites')
-      .update({ is_activated: true })
+      .update({ is_activated: true, is_effective: true })
       .eq('id', inviteId);
 
     if (updateInviteResult.error) {
-      console.warn('[Level2Reward] ⚠️ is_activated 标记失败:', updateInviteResult.error);
+      console.warn('[Level2Reward] ⚠️ is_activated/is_effective 标记失败:', updateInviteResult.error);
+      console.warn('[Level2Reward] 🚨 请检查 RLS 策略，可能需要：CREATE POLICY IF NOT EXISTS "invites_update_all" ON invites FOR UPDATE TO authenticated USING (true) WITH CHECK (true);');
     } else {
-      console.log('[Level2Reward] ✅ is_activated 已标记为 true');
+      console.log('[Level2Reward] ✅ is_activated 和 is_effective 已标记为 true');
     }
 
     // 发送通知
