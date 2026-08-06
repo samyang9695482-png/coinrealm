@@ -934,15 +934,20 @@ window.invalidateAdsConfigCache = invalidateAdsConfigCache;
 
 async function fetchDepositWalletAddress(userId, userObj) {
   var user = userObj || null;
+  console.log('[deposit] fetchDepositWalletAddress 开始, userId:', userId, 'user.deposit_address:', user ? user.deposit_address : '(无 user 对象)');
 
   // 1. 如果用户已有独立充币地址，直接返回
   if (user && user.deposit_address) {
     var existing = String(user.deposit_address).trim();
-    if (existing && existing.indexOf('0x') === 0) return existing;
+    if (existing && existing.indexOf('0x') === 0) {
+      console.log('[deposit] 命中本地缓存，直接返回已有地址:', existing);
+      return existing;
+    }
   }
 
   // 2. 如果没有 userId，直接返回固定地址（降级）
   if (!userId) {
+    console.warn('[deposit] 无 userId，降级为固定地址');
     return fetchFixedDepositWalletAddress();
   }
 
@@ -950,16 +955,20 @@ async function fetchDepositWalletAddress(userId, userObj) {
   try {
     var workerUrl = String(DEPOSIT_ADDRESS_WORKER_URL || '').replace(/\/$/, '');
     if (workerUrl) {
+      console.log('[deposit] 调用 Worker:', workerUrl + '/generate-address');
       var resp = await fetch(workerUrl + '/generate-address', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: userId }),
         signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
       });
+      console.log('[deposit] Worker 响应状态:', resp.status);
       if (resp.ok) {
         var data = await resp.json();
+        console.log('[deposit] Worker 响应体:', data);
         if (data && data.deposit_address && String(data.deposit_address).indexOf('0x') === 0) {
           var addr = String(data.deposit_address).trim();
+          console.log('[deposit] 获取到独立充币地址:', addr, 'cached:', !!data.cached);
           // 缓存到用户对象，避免重复生成
           if (user) user.deposit_address = addr;
           if (coinrealmCurrentUserProfile && coinrealmCurrentUserProfile.id === userId) {
@@ -981,12 +990,15 @@ async function fetchDepositWalletAddress(userId, userObj) {
       } else {
         console.warn('[deposit] Worker generate-address 返回非 ok 状态:', resp.status);
       }
+    } else {
+      console.warn('[deposit] 未配置 DEPOSIT_ADDRESS_WORKER_URL，降级为固定地址');
     }
   } catch (workerErr) {
     console.warn('[deposit] Worker generate-address 调用失败，降级为固定地址:', workerErr.message);
   }
 
   // 4. Worker 不可用或失败 → 降级为固定地址
+  console.warn('[deposit] 最终降级为固定地址');
   return fetchFixedDepositWalletAddress();
 }
 
