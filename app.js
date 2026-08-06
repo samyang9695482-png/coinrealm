@@ -10163,6 +10163,16 @@ window.addEventListener('hashchange', function () {
       ad_btn_save_wallet_invite: '保存',
       ad_wallet_invite_save_success: '设置已保存',
       ad_wallet_invite_save_fail: '保存钱包邀请设置失败：',
+      ad_tab_deposit: '充币设置',
+      ad_deposit_title: '充币设置',
+      ad_deposit_desc: '设置充币监听地址和自动归集阈值。子地址余额达到阈值时会自动归集到主地址，归集时主地址会自动给子地址转 POL 作为 Gas 费。',
+      ad_deposit_address_label: '充币监听地址',
+      ad_deposit_threshold_label: '自动归集阈值（CRLM）',
+      ad_deposit_threshold_hint: '子地址余额达到此值时触发归集到主地址',
+      ad_btn_save_deposit: '保存',
+      ad_deposit_save_success: '设置已保存',
+      ad_deposit_save_fail: '保存充币设置失败：',
+      ad_deposit_invalid_threshold: '请输入有效的归集阈值（大于 0）',
       ad_ads_invalid_interval: '请输入有效的轮播间隔（至少 2 秒）',
       ad_invite_title: '邀请设置',
       ad_invite_level1: '一级奖励金额（CRLM）',
@@ -10308,6 +10318,16 @@ window.addEventListener('hashchange', function () {
       ad_btn_save_wallet_invite: 'Save',
       ad_wallet_invite_save_success: 'Settings saved',
       ad_wallet_invite_save_fail: 'Failed to save wallet invite settings: ',
+      ad_tab_deposit: 'Deposit',
+      ad_deposit_title: 'Deposit Settings',
+      ad_deposit_desc: 'Configure the deposit monitoring address and auto-collection threshold. When a sub-address balance reaches the threshold, funds will be auto-collected to the master address, and POL gas will be sent from the master address.',
+      ad_deposit_address_label: 'Deposit Monitoring Address',
+      ad_deposit_threshold_label: 'Auto-Collection Threshold (CRLM)',
+      ad_deposit_threshold_hint: 'Triggers collection to the master address when sub-address balance reaches this value',
+      ad_btn_save_deposit: 'Save',
+      ad_deposit_save_success: 'Settings saved',
+      ad_deposit_save_fail: 'Failed to save deposit settings: ',
+      ad_deposit_invalid_threshold: 'Please enter a valid threshold (greater than 0)',
       ad_ads_invalid_interval: 'Please enter a valid interval (minimum 2 seconds)',
       ad_invite_title: 'Invite Settings',
       ad_invite_level1: 'Level 1 reward (CRLM)',
@@ -11047,6 +11067,8 @@ window.addEventListener('hashchange', function () {
       await loadAdminAdsSettings();
     } else if (adminTab === 'wallet-invite') {
       await loadAdminWalletInviteSettings();
+    } else if (adminTab === 'deposit') {
+      await loadAdminDepositSettings();
     }
   }
 
@@ -11585,6 +11607,70 @@ window.addEventListener('hashchange', function () {
     }
   }
 
+  var DEPOSIT_SETTINGS_DEFAULTS = {
+    auto_collect_threshold: '100000',
+    deposit_wallet_address: ''
+  };
+
+  async function loadAdminDepositSettings() {
+    var settings = Object.assign({}, DEPOSIT_SETTINGS_DEFAULTS);
+    if (window.supabase) {
+      try {
+        var keys = Object.keys(DEPOSIT_SETTINGS_DEFAULTS);
+        var result = await window.supabase
+          .from('settings')
+          .select('key, value')
+          .in('key', keys);
+        if (result.data) {
+          result.data.forEach(function (row) {
+            if (row.key) settings[row.key] = row.value;
+          });
+        }
+      } catch (settingsErr) {
+        console.warn('加载充币设置失败:', settingsErr);
+      }
+    }
+
+    var addressEl = document.getElementById('ad-deposit-address');
+    var thresholdEl = document.getElementById('ad-deposit-threshold');
+    if (addressEl) addressEl.value = String(settings.deposit_wallet_address || '');
+    if (thresholdEl) thresholdEl.value = String(settings.auto_collect_threshold || '');
+  }
+
+  async function saveAdminDepositSettings() {
+    if (!window.supabase) return;
+
+    var address = String((document.getElementById('ad-deposit-address') || {}).value || '').trim();
+    var thresholdRaw = String((document.getElementById('ad-deposit-threshold') || {}).value || '').trim();
+    var thresholdNum = Number(thresholdRaw);
+    if (!Number.isFinite(thresholdNum) || thresholdNum <= 0) {
+      alert(adT('ad_deposit_invalid_threshold'));
+      return;
+    }
+
+    var rows = [
+      { key: 'deposit_wallet_address', value: address },
+      { key: 'auto_collect_threshold', value: String(thresholdNum) }
+    ];
+
+    var result = await window.supabase
+      .from('settings')
+      .upsert(rows, { onConflict: 'key' });
+
+    if (result.error) {
+      alert(adT('ad_deposit_save_fail') + result.error.message);
+      return;
+    }
+
+    var successEl = document.getElementById('ad-deposit-success');
+    if (successEl) {
+      successEl.classList.remove('hidden');
+      setTimeout(function () {
+        successEl.classList.add('hidden');
+      }, 3000);
+    }
+  }
+
   function initAdminEvents() {
     if (adminInitialized) return;
     adminInitialized = true;
@@ -11708,6 +11794,11 @@ window.addEventListener('hashchange', function () {
     var walletInviteSaveBtn = document.getElementById('ad-wallet-invite-save-btn');
     if (walletInviteSaveBtn) {
       walletInviteSaveBtn.addEventListener('click', saveAdminWalletInviteSettings);
+    }
+
+    var depositSaveBtn = document.getElementById('ad-deposit-save-btn');
+    if (depositSaveBtn) {
+      depositSaveBtn.addEventListener('click', saveAdminDepositSettings);
     }
 
     document.querySelectorAll('#ad-cancel-modal .admin-modal-overlay, #ad-official-modal .admin-modal-overlay, #ad-grant-modal .admin-modal-overlay').forEach(function (overlay) {

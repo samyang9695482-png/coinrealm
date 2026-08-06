@@ -1477,6 +1477,7 @@
           <button type="button" class="admin-tab" data-admin-tab="pin" data-i18n="ad_tab_pin">付费置顶</button>
           <button type="button" class="admin-tab" data-admin-tab="ads" data-i18n="ad_tab_ads">广告管理</button>
           <button type="button" class="admin-tab" data-admin-tab="wallet-invite" data-i18n="ad_tab_wallet_invite">钱包邀请</button>
+          <button type="button" class="admin-tab" data-admin-tab="deposit" data-i18n="ad_tab_deposit">充币设置</button>
         </div>
 
         <section id="admin-panel-dashboard" class="admin-panel">
@@ -1639,6 +1640,20 @@
             <input type="url" id="ad-wallet-metamask" class="admin-input" placeholder="https://metamask.io/download">
             <button type="button" id="ad-wallet-invite-save-btn" class="admin-primary-btn" data-i18n="ad_btn_save_wallet_invite">保存</button>
             <p id="ad-wallet-invite-success" class="admin-success-message hidden" data-i18n="ad_wallet_invite_save_success">设置已保存</p>
+          </form>
+        </section>
+
+        <section id="admin-panel-deposit" class="admin-panel hidden">
+          <h2 class="admin-section-title" data-i18n="ad_deposit_title">充币设置</h2>
+          <p class="admin-description" data-i18n="ad_deposit_desc">设置充币监听地址和自动归集阈值。子地址余额达到阈值时会自动归集到主地址，归集时主地址会自动给子地址转 POL 作为 Gas 费。</p>
+          <form id="ad-deposit-form" class="admin-form">
+            <label class="admin-label" for="ad-deposit-address" data-i18n="ad_deposit_address_label">充币监听地址</label>
+            <input type="text" id="ad-deposit-address" class="admin-input" placeholder="0x...">
+            <label class="admin-label" for="ad-deposit-threshold" data-i18n="ad_deposit_threshold_label">自动归集阈值（CRLM）</label>
+            <input type="number" id="ad-deposit-threshold" class="admin-input" min="1" step="1" placeholder="100000">
+            <p class="admin-description" data-i18n="ad_deposit_threshold_hint">子地址余额达到此值时触发归集到主地址</p>
+            <button type="button" id="ad-deposit-save-btn" class="admin-primary-btn" data-i18n="ad_btn_save_deposit">保存</button>
+            <p id="ad-deposit-success" class="admin-success-message hidden" data-i18n="ad_deposit_save_success">设置已保存</p>
           </form>
         </section>
 
