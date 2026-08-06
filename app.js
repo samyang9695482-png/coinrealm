@@ -312,8 +312,9 @@ var DISCORD_OAUTH_PROCESSED_CODE = 'coinrealm_discord_oauth_processed_code';
 var CRLM_CONTRACT_ADDRESS = '0x1378bbf6CC9f2A624f0B1c2Fd478Aa6F7B153d2e';
 var CRLM_POLYGON_RPC = 'https://polygon.llamarpc.com';
 var WITHDRAW_WORKER_URL = 'https://coinrealm-withdraw.samyang9695482.workers.dev';
-// 平台充币收款地址（Polygon）
-var DEPOSIT_WALLET_ADDRESS = '0x6f6ecc7fe6a3c5f8a50b5bd9a91dfd76e4ecf5b2';
+var DEPOSIT_ADDRESS_WORKER_URL = 'https://coinrealm-deposit.samyang9695482.workers.dev';
+// 固定充币地址（仅作为降级兜底，正常应使用用户独立地址）
+var DEPOSIT_WALLET_ADDRESS = '0x6f6ec7fe6a3c5f8a50b5b9a91dfd76e4ecf5b2';
 // 平台提币出款地址（Polygon，Worker 使用 PLATFORM_PRIVATE_KEY 对应钱包）
 var WITHDRAW_WALLET_ADDRESS = '0x29a186c7824f2d60601676c3530e7cdee6832f67';
 var PLATFORM_WALLET_ADDRESS = WITHDRAW_WALLET_ADDRESS;
@@ -931,7 +932,65 @@ async function initAdsCarousel() {
 window.initAdsCarousel = initAdsCarousel;
 window.invalidateAdsConfigCache = invalidateAdsConfigCache;
 
-async function fetchDepositWalletAddress() {
+async function fetchDepositWalletAddress(userId, userObj) {
+  var user = userObj || null;
+
+  // 1. 如果用户已有独立充币地址，直接返回
+  if (user && user.deposit_address) {
+    var existing = String(user.deposit_address).trim();
+    if (existing && existing.indexOf('0x') === 0) return existing;
+  }
+
+  // 2. 如果没有 userId，直接返回固定地址（降级）
+  if (!userId) {
+    return fetchFixedDepositWalletAddress();
+  }
+
+  // 3. 调用 Worker 生成/获取独立充币地址
+  try {
+    var workerUrl = String(DEPOSIT_ADDRESS_WORKER_URL || '').replace(/\/$/, '');
+    if (workerUrl) {
+      var resp = await fetch(workerUrl + '/generate-address', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId }),
+        signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
+      });
+      if (resp.ok) {
+        var data = await resp.json();
+        if (data && data.deposit_address && String(data.deposit_address).indexOf('0x') === 0) {
+          var addr = String(data.deposit_address).trim();
+          // 缓存到用户对象，避免重复生成
+          if (user) user.deposit_address = addr;
+          if (coinrealmCurrentUserProfile && coinrealmCurrentUserProfile.id === userId) {
+            coinrealmCurrentUserProfile.deposit_address = addr;
+          }
+          // 同时更新 Supabase 中的用户记录
+          if (window.supabase) {
+            try {
+              await window.supabase
+                .from('users')
+                .update({ deposit_address: addr })
+                .eq('id', userId);
+            } catch (updateErr) {
+              console.warn('更新用户 deposit_address 失败:', updateErr);
+            }
+          }
+          return addr;
+        }
+      } else {
+        console.warn('[deposit] Worker generate-address 返回非 ok 状态:', resp.status);
+      }
+    }
+  } catch (workerErr) {
+    console.warn('[deposit] Worker generate-address 调用失败，降级为固定地址:', workerErr.message);
+  }
+
+  // 4. Worker 不可用或失败 → 降级为固定地址
+  return fetchFixedDepositWalletAddress();
+}
+
+async function fetchFixedDepositWalletAddress() {
   var configured = String(DEPOSIT_WALLET_ADDRESS || '').trim();
   if (configured) return configured;
 
@@ -946,7 +1005,7 @@ async function fetchDepositWalletAddress() {
         return String(result.data.value).trim();
       }
     } catch (settingsErr) {
-      console.warn('读取充币地址失败:', settingsErr);
+      console.warn('读取固定充币地址失败:', settingsErr);
     }
   }
   return '';
@@ -5282,7 +5341,7 @@ window.addEventListener('hashchange', function () {
       pf_withdraw_wallet_bind_now: '去绑定',
       pf_balance_fetch_fail: '获取余额失败，请稍后重试',
       pf_deposit_title: '充值 CRLM',
-      pf_deposit_address_label: '平台充币地址（Polygon）',
+      pf_deposit_address_label: '我的充币地址（Polygon）',
       pf_deposit_copy: '复制地址',
       pf_deposit_copy_ok: '地址已复制',
       pf_deposit_hint: '请从你绑定的钱包地址向上述地址转账 CRLM。仅支持 Polygon 网络，到账后自动增加余额。',
@@ -5388,7 +5447,7 @@ window.addEventListener('hashchange', function () {
       pf_withdraw_wallet_bind_now: 'Link Now',
       pf_balance_fetch_fail: 'Failed to load balance. Please try again later.',
       pf_deposit_title: 'Deposit CRLM',
-      pf_deposit_address_label: 'Platform deposit address (Polygon)',
+      pf_deposit_address_label: 'My Deposit Address (Polygon)',
       pf_deposit_copy: 'Copy address',
       pf_deposit_copy_ok: 'Address copied',
       pf_deposit_hint: 'Send CRLM from your linked wallet to the address above. Polygon network only. Balance updates automatically.',
@@ -6731,7 +6790,7 @@ window.addEventListener('hashchange', function () {
 
     setDepositModalContentVisible(true);
 
-    var depositAddress = await fetchDepositWalletAddress();
+    var depositAddress = await fetchDepositWalletAddress(userId, user);
     var addressEl = document.getElementById('deposit-wallet-address');
     var qrEl = document.getElementById('deposit-qr-image');
     var copyTip = document.getElementById('deposit-copy-tip');
