@@ -313,8 +313,6 @@ var CRLM_CONTRACT_ADDRESS = '0x1378bbf6CC9f2A624f0B1c2Fd478Aa6F7B153d2e';
 var CRLM_POLYGON_RPC = 'https://polygon.llamarpc.com';
 var WITHDRAW_WORKER_URL = 'https://coinrealm-withdraw.samyang9695482.workers.dev';
 var DEPOSIT_ADDRESS_WORKER_URL = 'https://coinrealm-deposit.samyang9695482.workers.dev';
-// 固定充币地址（仅作为降级兜底，正常应使用用户独立地址）
-var DEPOSIT_WALLET_ADDRESS = '0x6f6ec7fe6a3c5f8a50b5b9a91dfd76e4ecf5b2';
 // 平台提币出款地址（Polygon，Worker 使用 PLATFORM_PRIVATE_KEY 对应钱包）
 var WITHDRAW_WALLET_ADDRESS = '0x29a186c7824f2d60601676c3530e7cdee6832f67';
 var PLATFORM_WALLET_ADDRESS = WITHDRAW_WALLET_ADDRESS;
@@ -945,82 +943,72 @@ async function fetchDepositWalletAddress(userId, userObj) {
     }
   }
 
-  // 2. 如果没有 userId，直接返回固定地址（降级）
+  // 2. 没有 userId → 无法获取独立地址，抛错（不降级到固定地址）
   if (!userId) {
-    console.warn('[deposit] 无 userId，降级为固定地址');
-    return fetchFixedDepositWalletAddress();
+    throw new Error('无法获取用户ID，不能生成独立充币地址');
   }
 
-  // 3. 调用 Worker 生成/获取独立充币地址
+  // 3. 调用 Worker 生成/获取独立充币地址（不降级到固定地址）
+  var workerUrl = String(DEPOSIT_ADDRESS_WORKER_URL || '').replace(/\/$/, '');
+  if (!workerUrl) {
+    throw new Error('未配置充币地址服务（DEPOSIT_ADDRESS_WORKER_URL）');
+  }
+
+  console.log('[deposit] 调用 Worker:', workerUrl + '/generate-address');
+  var resp;
   try {
-    var workerUrl = String(DEPOSIT_ADDRESS_WORKER_URL || '').replace(/\/$/, '');
-    if (workerUrl) {
-      console.log('[deposit] 调用 Worker:', workerUrl + '/generate-address');
-      var resp = await fetch(workerUrl + '/generate-address', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId }),
-        signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
-      });
-      console.log('[deposit] Worker 响应状态:', resp.status);
-      if (resp.ok) {
-        var data = await resp.json();
-        console.log('[deposit] Worker 响应体:', data);
-        if (data && data.deposit_address && String(data.deposit_address).indexOf('0x') === 0) {
-          var addr = String(data.deposit_address).trim();
-          console.log('[deposit] 获取到独立充币地址:', addr, 'cached:', !!data.cached);
-          // 缓存到用户对象，避免重复生成
-          if (user) user.deposit_address = addr;
-          if (coinrealmCurrentUserProfile && coinrealmCurrentUserProfile.id === userId) {
-            coinrealmCurrentUserProfile.deposit_address = addr;
-          }
-          // 同时更新 Supabase 中的用户记录
-          if (window.supabase) {
-            try {
-              await window.supabase
-                .from('users')
-                .update({ deposit_address: addr })
-                .eq('id', userId);
-            } catch (updateErr) {
-              console.warn('更新用户 deposit_address 失败:', updateErr);
-            }
-          }
-          return addr;
-        }
-      } else {
-        console.warn('[deposit] Worker generate-address 返回非 ok 状态:', resp.status);
-      }
-    } else {
-      console.warn('[deposit] 未配置 DEPOSIT_ADDRESS_WORKER_URL，降级为固定地址');
-    }
+    resp = await fetch(workerUrl + '/generate-address', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId }),
+      signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
+    });
   } catch (workerErr) {
-    console.warn('[deposit] Worker generate-address 调用失败，降级为固定地址:', workerErr.message);
+    console.error('[deposit] Worker generate-address 调用失败:', workerErr.message);
+    throw new Error('充币地址服务暂不可用：' + (workerErr.message || workerErr));
   }
 
-  // 4. Worker 不可用或失败 → 降级为固定地址
-  console.warn('[deposit] 最终降级为固定地址');
-  return fetchFixedDepositWalletAddress();
-}
+  console.log('[deposit] Worker 响应状态:', resp.status);
+  if (!resp.ok) {
+    var errText = '';
+    try { errText = await resp.text(); } catch (e) {}
+    console.error('[deposit] Worker generate-address 返回非 ok:', resp.status, errText);
+    throw new Error('充币地址服务返回错误（' + resp.status + '）：' + errText);
+  }
 
-async function fetchFixedDepositWalletAddress() {
-  var configured = String(DEPOSIT_WALLET_ADDRESS || '').trim();
-  if (configured) return configured;
+  var data;
+  try {
+    data = await resp.json();
+  } catch (parseErr) {
+    console.error('[deposit] Worker 响应解析失败:', parseErr.message);
+    throw new Error('充币地址服务响应解析失败');
+  }
+  console.log('[deposit] Worker 响应体:', data);
 
+  if (!data || !data.deposit_address || String(data.deposit_address).indexOf('0x') !== 0) {
+    console.error('[deposit] Worker 响应缺少有效 deposit_address:', data);
+    throw new Error('充币地址服务未返回有效地址');
+  }
+
+  var addr = String(data.deposit_address).trim();
+  console.log('[deposit] 获取到独立充币地址:', addr, 'cached:', !!data.cached);
+  // 缓存到用户对象，避免重复生成
+  if (user) user.deposit_address = addr;
+  if (coinrealmCurrentUserProfile && coinrealmCurrentUserProfile.id === userId) {
+    coinrealmCurrentUserProfile.deposit_address = addr;
+  }
+  // 同时更新 Supabase 中的用户记录
   if (window.supabase) {
     try {
-      var result = await window.supabase
-        .from('settings')
-        .select('value')
-        .eq('key', 'deposit_wallet_address')
-        .maybeSingle();
-      if (!result.error && result.data && result.data.value) {
-        return String(result.data.value).trim();
-      }
-    } catch (settingsErr) {
-      console.warn('读取固定充币地址失败:', settingsErr);
+      await window.supabase
+        .from('users')
+        .update({ deposit_address: addr })
+        .eq('id', userId);
+    } catch (updateErr) {
+      console.warn('更新用户 deposit_address 失败:', updateErr);
     }
   }
-  return '';
+  return addr;
 }
 
 // CRLM 合约 ABI 见 contracts/CRLM.json，链上转账在 withdraw-worker 中使用
@@ -6802,12 +6790,23 @@ window.addEventListener('hashchange', function () {
 
     setDepositModalContentVisible(true);
 
-    var depositAddress = await fetchDepositWalletAddress(userId, user);
     var addressEl = document.getElementById('deposit-wallet-address');
     var qrEl = document.getElementById('deposit-qr-image');
     var copyTip = document.getElementById('deposit-copy-tip');
-
     if (copyTip) copyTip.classList.add('hidden');
+
+    var depositAddress = '';
+    try {
+      depositAddress = await fetchDepositWalletAddress(userId, user);
+    } catch (err) {
+      console.error('[deposit] 获取充币地址失败:', err);
+      // 显示具体错误信息，不降级到固定地址
+      if (addressEl) addressEl.textContent = pfT('pf_deposit_address_missing') + '（' + (err && err.message ? err.message : err) + '）';
+      if (qrEl) qrEl.removeAttribute('src');
+      modal.classList.remove('hidden');
+      modal.setAttribute('aria-hidden', 'false');
+      return;
+    }
 
     if (!depositAddress) {
       if (addressEl) addressEl.textContent = pfT('pf_deposit_address_missing');
@@ -10236,8 +10235,7 @@ window.addEventListener('hashchange', function () {
       ad_wallet_invite_save_fail: '保存钱包邀请设置失败：',
       ad_tab_deposit: '充币设置',
       ad_deposit_title: '充币设置',
-      ad_deposit_desc: '设置充币监听地址和自动归集阈值。子地址余额达到阈值时会自动归集到主地址，归集时主地址会自动给子地址转 POL 作为 Gas 费。',
-      ad_deposit_address_label: '充币监听地址',
+      ad_deposit_desc: '设置自动归集阈值。每个用户拥有独立的充币地址（由系统自动生成），子地址余额达到阈值时会自动归集到主地址，归集时主地址会自动给子地址转 POL 作为 Gas 费。',
       ad_deposit_threshold_label: '自动归集阈值（CRLM）',
       ad_deposit_threshold_hint: '子地址余额达到此值时触发归集到主地址',
       ad_btn_save_deposit: '保存',
@@ -10391,8 +10389,7 @@ window.addEventListener('hashchange', function () {
       ad_wallet_invite_save_fail: 'Failed to save wallet invite settings: ',
       ad_tab_deposit: 'Deposit',
       ad_deposit_title: 'Deposit Settings',
-      ad_deposit_desc: 'Configure the deposit monitoring address and auto-collection threshold. When a sub-address balance reaches the threshold, funds will be auto-collected to the master address, and POL gas will be sent from the master address.',
-      ad_deposit_address_label: 'Deposit Monitoring Address',
+      ad_deposit_desc: 'Configure the auto-collection threshold. Each user has an independent deposit address (auto-generated by the system). When a sub-address balance reaches the threshold, funds will be auto-collected to the master address, and POL gas will be sent from the master address.',
       ad_deposit_threshold_label: 'Auto-Collection Threshold (CRLM)',
       ad_deposit_threshold_hint: 'Triggers collection to the master address when sub-address balance reaches this value',
       ad_btn_save_deposit: 'Save',
@@ -11679,8 +11676,7 @@ window.addEventListener('hashchange', function () {
   }
 
   var DEPOSIT_SETTINGS_DEFAULTS = {
-    auto_collect_threshold: '100000',
-    deposit_wallet_address: ''
+    auto_collect_threshold: '100000'
   };
 
   async function loadAdminDepositSettings() {
@@ -11702,16 +11698,13 @@ window.addEventListener('hashchange', function () {
       }
     }
 
-    var addressEl = document.getElementById('ad-deposit-address');
     var thresholdEl = document.getElementById('ad-deposit-threshold');
-    if (addressEl) addressEl.value = String(settings.deposit_wallet_address || '');
     if (thresholdEl) thresholdEl.value = String(settings.auto_collect_threshold || '');
   }
 
   async function saveAdminDepositSettings() {
     if (!window.supabase) return;
 
-    var address = String((document.getElementById('ad-deposit-address') || {}).value || '').trim();
     var thresholdRaw = String((document.getElementById('ad-deposit-threshold') || {}).value || '').trim();
     var thresholdNum = Number(thresholdRaw);
     if (!Number.isFinite(thresholdNum) || thresholdNum <= 0) {
@@ -11720,7 +11713,6 @@ window.addEventListener('hashchange', function () {
     }
 
     var rows = [
-      { key: 'deposit_wallet_address', value: address },
       { key: 'auto_collect_threshold', value: String(thresholdNum) }
     ];
 
